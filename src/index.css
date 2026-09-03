@@ -1,0 +1,64 @@
+@import url("https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Hanken+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #0A0C0C;
+  color: #F2F6F4;
+  font-family: "Hanken Grotesk", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+}
+
+#root {
+  max-width: 460px;
+  margin: 0 auto;
+  min-height: 100dvh;
+  position: relative;
+  background: #0A0C0C;
+  border-left: 1px solid #1B211F;
+  border-right: 1px solid #1B211F;
+  overflow: hidden;
+}
+
+/* Ambient night-market glow — breaks up the flat black canvas without
+   competing with food photography, which stays the loudest color. */
+#root::before {
+  content: "";
+  position: fixed;
+  top: -10%;
+  left: 50%;
+  translate: -50% 0;
+  width: 140%;
+  aspect-ratio: 1;
+  max-width: 700px;
+  background: radial-gradient(circle, rgba(47, 214, 196, 0.14) 0%, rgba(47, 214, 196, 0.05) 35%, transparent 65%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+#root > * {
+  position: relative;
+  z-index: 1;
+}
+
+::-webkit-scrollbar { display: none; }
+
+.tabular { font-variant-numeric: tabular-nums; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
