@@ -80,7 +80,7 @@ authRouter.post("/otp/verify", otpVerifyLimiter, async (req, res) => {
   const jti = nanoid();
   const now = Date.now();
   await db.createDeviceAndFamily(
-    { id: deviceId, userId: user.id, familyId, createdAt: now, lastSeenAt: now, label: deviceLabel },
+    { id: deviceId, userId: user.id, familyId, createdAt: now, lastSeenAt: now, label: deviceLabel, ip: req.ip ?? null },
     { familyId, userId: user.id, deviceId, currentJti: jti, revoked: false }
   );
 

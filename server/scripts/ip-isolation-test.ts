@@ -31,12 +31,8 @@ function check(name: string, condition: boolean, detail = "") {
 
 function buildApp() {
   const app = express();
-  // Trust the X-Forwarded-For header — only correct when a real deployment
-  // sits behind a proxy it controls. This flag is deliberately NOT set on
-  // the real app (index.ts) since nothing sits in front of it yet; a real
-  // deploy behind a load balancer/CDN needs this configured correctly
-  // (trusting only that proxy's IP, not "trust everything") or every user
-  // collapses into the proxy's single IP for rate-limiting purposes.
+  // Trust the X-Forwarded-For header — the real app (src/app.ts) now sets
+  // this too, since it's genuinely deployed behind Vercel's edge network.
   app.set("trust proxy", true);
   app.use(createGlobalLimiter());
   app.get("/dishes/x/y", (_req, res) => res.json({ ok: true })); // exempted route

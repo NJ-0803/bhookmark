@@ -22,9 +22,14 @@ CREATE TABLE IF NOT EXISTS devices (
   family_id TEXT NOT NULL,
   label TEXT NOT NULL,
   created_at BIGINT NOT NULL,
-  last_seen_at BIGINT NOT NULL
+  last_seen_at BIGINT NOT NULL,
+  ip TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_devices_user ON devices(user_id);
+-- Added after the table already existed in production — ADD COLUMN IF NOT
+-- EXISTS keeps this migration idempotent for both fresh and existing DBs.
+ALTER TABLE devices ADD COLUMN IF NOT EXISTS ip TEXT;
+CREATE INDEX IF NOT EXISTS idx_devices_ip ON devices(ip);
 
 CREATE TABLE IF NOT EXISTS refresh_families (
   family_id TEXT PRIMARY KEY,
@@ -48,9 +53,27 @@ CREATE TABLE IF NOT EXISTS logs (
   verified BOOLEAN NOT NULL,
   status TEXT NOT NULL,
   device_id TEXT NOT NULL,
-  created_at BIGINT NOT NULL
+  created_at BIGINT NOT NULL,
+  location_verified BOOLEAN NOT NULL DEFAULT false
 );
 CREATE INDEX IF NOT EXISTS idx_logs_user ON logs(user_id);
+-- Added after logs already existed in production.
+ALTER TABLE logs ADD COLUMN IF NOT EXISTS location_verified BOOLEAN NOT NULL DEFAULT false;
+
+-- Ranking-manipulation control (brief 1.5: "repeated delete-and-repost
+-- behaviour"). Deliberately separate from the logs table itself — a log
+-- row is gone once deleted, but the pattern of deleting and reposting at
+-- the same venue is exactly what needs to survive that deletion to detect.
+CREATE TABLE IF NOT EXISTS log_deletions (
+  id SERIAL PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  venue TEXT NOT NULL,
+  category TEXT NOT NULL,
+  subtype TEXT NOT NULL,
+  name TEXT NOT NULL,
+  deleted_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_log_deletions_lookup ON log_deletions(user_id, venue, deleted_at);
 CREATE INDEX IF NOT EXISTS idx_logs_venue_category ON logs(venue, category, status);
 CREATE INDEX IF NOT EXISTS idx_logs_status ON logs(status);
 

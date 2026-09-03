@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { CATEGORIES, dishesForSubtype } from "../data/dishes";
 import type { Category, DishEntry, JournalLog, Verdict } from "../types";
 import DishThumb from "../components/DishThumb";
+import WhyThis from "../components/WhyThis";
 import Duel from "./Duel";
 import { api, currentDeviceId } from "../api";
 import { LIQUID_SPRING, TAP_SCALE } from "../motion";
@@ -306,6 +307,12 @@ export default function LogFlow({
                   {locationCoords || photoUrl ? "adds evidence" : "manual only"}
                 </span>
               </div>
+              <WhyThis
+                title="What does this badge mean?"
+                body="Palate never calls a log “verified” from a client-side toggle. The server checks your evidence itself: a matched location plus a photo counts as full live-capture, either one alone counts as visit-consistent, and a manual-only log is recorded honestly as declared. All of them post — verified evidence just carries more weight in the public score."
+              />
+
+              <div className="mb-4" />
 
               <Field label="Add a note (optional)">
                 <textarea

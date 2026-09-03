@@ -189,6 +189,20 @@ export async function getDishScore(venue: string, category: string, subtype: str
   return res.json();
 }
 
+export interface TrendingResponse {
+  ok: boolean;
+  trending: { venue: string; category: string; subtype: string; name: string; count: number; distinctUsers: number } | null;
+  windowDays: number;
+}
+
+// A real, time-windowed signal — never render an urgency label from this
+// endpoint's absence. `trending: null` is the honest, expected answer
+// whenever real recent activity doesn't clear the evidence floor.
+export async function getTrending(): Promise<TrendingResponse> {
+  const res = await fetch("/dishes/trending");
+  return res.json();
+}
+
 export async function getNearbyVenues(category: string, lat: number, lng: number, radiusKm = 5) {
   const params = new URLSearchParams({ category, lat: String(lat), lng: String(lng), radiusKm: String(radiusKm) });
   // Unauthenticated on purpose — browsing nearby joints shouldn't require signing in first,

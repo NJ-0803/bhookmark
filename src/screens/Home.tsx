@@ -7,7 +7,7 @@ import DishThumb from "../components/DishThumb";
 import ScoreBadge from "../components/ScoreBadge";
 import WhyThis from "../components/WhyThis";
 import BrowseCard from "../components/BrowseCard";
-import { getDietProfile, getDigest, getNextPicks, getDishScore, type DishScoreResponse } from "../api";
+import { getDietProfile, getDigest, getNextPicks, getDishScore, getTrending, type DishScoreResponse, type TrendingResponse } from "../api";
 import { computeSmartOrder, type SmartOrderResult } from "../smartPicks";
 import NearMe from "./NearMe";
 
@@ -62,6 +62,7 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
   const [dishScore, setDishScore] = useState<DishScoreResponse | null>(null);
   const [resultIndex, setResultIndex] = useState(0);
   const [smartOrder, setSmartOrder] = useState<SmartOrderResult | null>(null);
+  const [trending, setTrending] = useState<TrendingResponse["trending"] | null>(null);
   const [smartLoading, setSmartLoading] = useState(false);
   const [smartDismissed, setSmartDismissed] = useState(() => localStorage.getItem(SMART_ORDER_DISMISSED_KEY) === "1");
 
@@ -74,6 +75,7 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
     getNextPicks().then((res) => res.ok && setPicks(res.picks)).catch(() => setPicks([]));
     getDigest().then((res) => res.ok && setDigest(res.digest)).catch(() => setDigest(null));
     getDietProfile().then((res) => res.ok && setUserAllergens(res.allergens)).catch(() => setUserAllergens([]));
+    getTrending().then((res) => setTrending(res.ok ? res.trending : null)).catch(() => setTrending(null));
 
     // Reuse a recent result instead of re-prompting geolocation every visit
     // — but never silently request permission on load (only the explicit
@@ -141,15 +143,44 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
     });
   }, [query, orderedCategories]);
 
-  // A real, highest-scored dish (from the same seed catalog every score on
-  // this screen already comes from) — biased toward whatever the smart
-  // order surfaced first, so "trending" tracks the same personalization.
-  const spotlightDish = useMemo(() => {
+  // Fallback spotlight when there's no real trending signal yet (the
+  // expected, honest state pre-launch): a highest-scored seed dish, labeled
+  // "Top rated" — never "trending", since that has no time window behind it.
+  const fallbackSpotlight = useMemo(() => {
     const topCategory = smartOrder?.categories[0];
     const pool = topCategory ? DISHES.filter((d) => d.category === topCategory) : DISHES;
     const source = pool.length ? pool : DISHES;
     return [...source].sort((a, b) => b.score - a.score)[0];
   }, [smartOrder]);
+
+  // The real trending dish (brief 1.6: an urgency label needs a real
+  // recent-time-window calculation behind it) — matched against the static
+  // catalog for a photo where possible, falling back to a category visual.
+  const trendingSpotlight = useMemo(() => {
+    if (!trending) return null;
+    const catalogMatch = DISHES.find(
+      (d) => d.venue === trending.venue && d.category === trending.category && d.subtype === trending.subtype && d.name === trending.name
+    );
+    if (catalogMatch) return catalogMatch;
+    const visual = categoryVisual(trending.category);
+    return {
+      id: `trending-${trending.venue}-${trending.name}`,
+      category: trending.category as Category,
+      subtype: trending.subtype,
+      name: trending.name,
+      venue: trending.venue,
+      area: "Bangalore",
+      emoji: visual.emoji,
+      tint: visual.tint,
+      score: 0,
+      verifiedPct: 0,
+      logCount: trending.count,
+      priceRs: 0,
+      tasteNotes: [],
+      allergens: [],
+      photo: visual.photo,
+    } satisfies DishEntry;
+  }, [trending]);
 
   if (view.name === "nearby") {
     return <NearMe onBack={() => setView({ name: "search" })} />;
@@ -222,33 +253,36 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
           )
         )}
 
-        {!query.trim() && spotlightDish && (
-          <motion.button
-            key={spotlightDish.id}
-            initial={{ opacity: 0, scale: 0.97 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={LIQUID_SPRING}
-            onClick={() => setView({ name: "profile", dish: spotlightDish })}
-            className="relative w-full aspect-[16/10] rounded-card overflow-hidden text-left mb-5 border border-line"
-          >
-            {spotlightDish.photo ? (
-              <img src={spotlightDish.photo} alt="" className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
-            ) : (
-              <div className={`absolute inset-0 bg-gradient-to-br ${spotlightDish.tint} bg-surface2 flex items-center justify-center text-6xl`}>
-                {spotlightDish.emoji}
+        {!query.trim() && (trendingSpotlight || fallbackSpotlight) && (() => {
+          const dish = trendingSpotlight ?? fallbackSpotlight;
+          return (
+            <motion.button
+              key={dish.id}
+              initial={{ opacity: 0, scale: 0.97 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={LIQUID_SPRING}
+              onClick={() => setView({ name: "profile", dish })}
+              className="relative w-full aspect-[16/10] rounded-card overflow-hidden text-left mb-5 border border-line"
+            >
+              {dish.photo ? (
+                <img src={dish.photo} alt="" className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
+              ) : (
+                <div className={`absolute inset-0 bg-gradient-to-br ${dish.tint} bg-surface2 flex items-center justify-center text-6xl`}>
+                  {dish.emoji}
+                </div>
+              )}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/25 to-black/10" />
+              <span className={`absolute top-3 left-3 text-[10px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-full ${CATEGORY_ACCENT[dish.category]}`}>
+                {trendingSpotlight ? `🔥 Trending — ${trending!.count} logs this week` : "⭐ Top rated"}
+              </span>
+              {!trendingSpotlight && <ScoreBadge score={dish.score} size="sm" className="absolute top-3 right-3" />}
+              <div className="relative h-full flex flex-col justify-end p-4">
+                <div className="font-display font-extrabold text-xl text-white leading-tight drop-shadow">{dish.name}</div>
+                <div className="text-white/70 text-sm mt-0.5">{dish.venue} · {dish.area}</div>
               </div>
-            )}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/25 to-black/10" />
-            <span className={`absolute top-3 left-3 text-[10px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-full ${CATEGORY_ACCENT[spotlightDish.category]}`}>
-              🔥 Trending in Bangalore
-            </span>
-            <ScoreBadge score={spotlightDish.score} size="sm" className="absolute top-3 right-3" />
-            <div className="relative h-full flex flex-col justify-end p-4">
-              <div className="font-display font-extrabold text-xl text-white leading-tight drop-shadow">{spotlightDish.name}</div>
-              <div className="text-white/70 text-sm mt-0.5">{spotlightDish.venue} · {spotlightDish.area}</div>
-            </div>
-          </motion.button>
-        )}
+            </motion.button>
+          );
+        })()}
 
         <button
           onClick={() => setView({ name: "nearby" })}
@@ -303,34 +337,44 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
                   const visual = categoryVisual(p.category);
                   const photo = dishById(p.id)?.photo;
                   return (
-                    <button
-                      key={p.id}
-                      onClick={() => {
-                        const dish = dishById(p.id);
-                        if (dish) setView({ name: "profile", dish });
-                      }}
-                      className="shrink-0 w-64 text-left bg-surface border border-line rounded-card overflow-hidden"
-                    >
-                      <div className="relative aspect-[4/3]">
-                        {photo ? (
-                          <img src={photo} alt="" className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
-                        ) : (
-                          <div className={`absolute inset-0 bg-gradient-to-br ${visual.tint} bg-surface2 flex items-center justify-center text-4xl`}>
-                            {visual.emoji}
-                          </div>
-                        )}
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
-                        <span className={`absolute top-2 left-2 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${CATEGORY_ACCENT[p.category as Category]}`}>
-                          {p.category}
-                        </span>
-                        <ScoreBadge score={p.score} size="sm" className="absolute top-2 right-2" />
+                    <div key={p.id} className="shrink-0 w-64 bg-surface border border-line rounded-card overflow-hidden">
+                      <button
+                        onClick={() => {
+                          const dish = dishById(p.id);
+                          if (dish) setView({ name: "profile", dish });
+                        }}
+                        className="block w-full text-left"
+                      >
+                        <div className="relative aspect-[4/3]">
+                          {photo ? (
+                            <img src={photo} alt="" className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
+                          ) : (
+                            <div className={`absolute inset-0 bg-gradient-to-br ${visual.tint} bg-surface2 flex items-center justify-center text-4xl`}>
+                              {visual.emoji}
+                            </div>
+                          )}
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+                          <span className={`absolute top-2 left-2 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${CATEGORY_ACCENT[p.category as Category]}`}>
+                            {p.category}
+                          </span>
+                          <ScoreBadge score={p.score} size="sm" className="absolute top-2 right-2" />
+                        </div>
+                        <div className="p-3 pb-0">
+                          <div className="font-semibold text-sm truncate">{p.name}</div>
+                          <div className="text-faint text-xs mb-1.5 truncate">{p.venue}</div>
+                          <p className="text-ink/80 text-xs leading-snug line-clamp-2">{p.reason}</p>
+                        </div>
+                      </button>
+                      <div className="px-3 pb-3">
+                        <WhyThis
+                          body={
+                            p.reasonSource === "llm"
+                              ? "Grounded in your real dietary profile and log history — an AI model only rewrote the sentence, it never chose the dish or invented a fact not already in your data."
+                              : "Grounded in your real dietary profile and log history — a fixed template, no AI model was involved in wording this one."
+                          }
+                        />
                       </div>
-                      <div className="p-3">
-                        <div className="font-semibold text-sm truncate">{p.name}</div>
-                        <div className="text-faint text-xs mb-1.5 truncate">{p.venue}</div>
-                        <p className="text-ink/80 text-xs leading-snug line-clamp-2">{p.reason}</p>
-                      </div>
-                    </button>
+                    </div>
                   );
                 })}
               </div>

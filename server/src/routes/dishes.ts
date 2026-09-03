@@ -20,6 +20,19 @@ dishesRouter.get("/:category/:subtype", async (req, res) => {
   });
 });
 
+const TRENDING_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const TRENDING_MIN_COUNT = 5;
+const TRENDING_MIN_USERS = 3;
+
+// Real trending signal (brief 1.6): never label something "trending"
+// without a defined recent-time-window calculation behind it. Returns null
+// — not a fallback guess — when nothing in the last 7 days clears the
+// minimum-evidence floor, which is the honest, expected state pre-launch.
+dishesRouter.get("/trending", async (_req, res) => {
+  const trending = await db.getTrendingDish(TRENDING_WINDOW_MS, TRENDING_MIN_COUNT, TRENDING_MIN_USERS);
+  res.json({ ok: true, trending, windowDays: 7 });
+});
+
 function avg(logs: DishLog[]): number | null {
   return logs.length ? logs.reduce((s, l) => s + l.score, 0) / logs.length : null;
 }

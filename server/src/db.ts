@@ -31,6 +31,7 @@ export interface Device {
   createdAt: number;
   lastSeenAt: number;
   label: string;
+  ip: string | null;
 }
 
 export interface RefreshFamily {
@@ -62,6 +63,7 @@ export interface DishLog {
   status: LogStatus;
   deviceId: string;
   createdAt: number;
+  locationVerified: boolean;
 }
 
 export interface PushSubscriptionJSON {
@@ -89,7 +91,7 @@ function userFromRow(r: any): User {
 }
 
 function deviceFromRow(r: any): Device {
-  return { id: r.id, userId: r.user_id, familyId: r.family_id, createdAt: Number(r.created_at), lastSeenAt: Number(r.last_seen_at), label: r.label };
+  return { id: r.id, userId: r.user_id, familyId: r.family_id, createdAt: Number(r.created_at), lastSeenAt: Number(r.last_seen_at), label: r.label, ip: r.ip ?? null };
 }
 
 function familyFromRow(r: any): RefreshFamily {
@@ -112,6 +114,7 @@ function logFromRow(r: any): DishLog {
     status: r.status,
     deviceId: r.device_id,
     createdAt: Number(r.created_at),
+    locationVerified: r.location_verified ?? false,
   };
 }
 
@@ -167,8 +170,23 @@ export async function deleteOtp(phone: string): Promise<void> {
 
 export async function createDeviceAndFamily(device: Device, family: RefreshFamily): Promise<void> {
   const db = sql();
-  await db`INSERT INTO devices (id, user_id, family_id, label, created_at, last_seen_at) VALUES (${device.id}, ${device.userId}, ${device.familyId}, ${device.label}, ${device.createdAt}, ${device.lastSeenAt})`;
+  await db`INSERT INTO devices (id, user_id, family_id, label, created_at, last_seen_at, ip) VALUES (${device.id}, ${device.userId}, ${device.familyId}, ${device.label}, ${device.createdAt}, ${device.lastSeenAt}, ${device.ip})`;
   await db`INSERT INTO refresh_families (family_id, user_id, device_id, current_jti, revoked) VALUES (${family.familyId}, ${family.userId}, ${family.deviceId}, ${family.currentJti}, false)`;
+}
+
+// Ranking-manipulation control (brief 1.5: "multiple accounts from the same
+// device or network"): counts distinct accounts that have logged in from
+// one IP recently. A real signal from data already collected at login —
+// not a new tracking mechanism — used to hold ranking influence, never to
+// auto-block (a shared office/hostel network is expected to have several
+// real accounts; this only fires on real distinct-account volume, not on
+// request volume from repeat logins of the same account).
+export async function countDistinctUsersFromIp(ip: string, windowMs: number): Promise<number> {
+  if (!ip) return 0;
+  const cutoff = Date.now() - windowMs;
+  const rows = await sql()`
+    SELECT COUNT(DISTINCT user_id)::int AS n FROM devices WHERE ip = ${ip} AND created_at > ${cutoff}`;
+  return (rows[0] as any)?.n ?? 0;
 }
 
 export async function getFamily(familyId: string): Promise<RefreshFamily | undefined> {
@@ -202,8 +220,8 @@ export async function listDevicesForUser(userId: string): Promise<Device[]> {
 
 export async function createLog(log: DishLog): Promise<void> {
   await sql()`
-    INSERT INTO logs (id, user_id, category, subtype, name, venue, verdict, score, note, evidence_level, verified, status, device_id, created_at)
-    VALUES (${log.id}, ${log.userId}, ${log.category}, ${log.subtype}, ${log.name}, ${log.venue}, ${log.verdict}, ${log.score}, ${log.note}, ${log.evidenceLevel}, ${log.verified}, ${log.status}, ${log.deviceId}, ${log.createdAt})`;
+    INSERT INTO logs (id, user_id, category, subtype, name, venue, verdict, score, note, evidence_level, verified, status, device_id, created_at, location_verified)
+    VALUES (${log.id}, ${log.userId}, ${log.category}, ${log.subtype}, ${log.name}, ${log.venue}, ${log.verdict}, ${log.score}, ${log.note}, ${log.evidenceLevel}, ${log.verified}, ${log.status}, ${log.deviceId}, ${log.createdAt}, ${log.locationVerified})`;
 }
 
 export async function getLogById(id: string): Promise<DishLog | undefined> {
@@ -213,6 +231,28 @@ export async function getLogById(id: string): Promise<DishLog | undefined> {
 
 export async function deleteLog(id: string): Promise<void> {
   await sql()`DELETE FROM logs WHERE id = ${id}`;
+}
+
+// ---------- Ranking-manipulation signals (brief 1.5) ----------
+
+export async function mostRecentLocationVerifiedLog(userId: string, excludeVenue?: string): Promise<DishLog | undefined> {
+  const rows = excludeVenue
+    ? await sql()`SELECT * FROM logs WHERE user_id = ${userId} AND location_verified = true AND venue <> ${excludeVenue} ORDER BY created_at DESC LIMIT 1`
+    : await sql()`SELECT * FROM logs WHERE user_id = ${userId} AND location_verified = true ORDER BY created_at DESC LIMIT 1`;
+  return rows[0] ? logFromRow(rows[0]) : undefined;
+}
+
+export async function recordLogDeletion(userId: string, venue: string, category: string, subtype: string, name: string): Promise<void> {
+  await sql()`
+    INSERT INTO log_deletions (user_id, venue, category, subtype, name, deleted_at)
+    VALUES (${userId}, ${venue}, ${category}, ${subtype}, ${name}, ${Date.now()})`;
+}
+
+export async function countRecentDeletions(userId: string, venue: string, windowMs: number): Promise<number> {
+  const cutoff = Date.now() - windowMs;
+  const rows = await sql()`
+    SELECT COUNT(*)::int AS n FROM log_deletions WHERE user_id = ${userId} AND venue = ${venue} AND deleted_at > ${cutoff}`;
+  return (rows[0] as any)?.n ?? 0;
 }
 
 export async function listLogsForUser(userId: string): Promise<DishLog[]> {
@@ -238,6 +278,40 @@ export async function listPublishedLogsForDish(venue: string, category: string, 
     SELECT * FROM logs
     WHERE venue = ${venue} AND category = ${category} AND subtype = ${subtype} AND name = ${name} AND status = 'published'`;
   return rows.map(logFromRow);
+}
+
+export interface TrendingDish {
+  venue: string;
+  category: string;
+  subtype: string;
+  name: string;
+  count: number;
+  distinctUsers: number;
+}
+
+// Real "trending" signal (brief 1.6: never use an urgency label like
+// "trending" unless it's backed by a defined recent-time-window
+// calculation) — a real count of real logs in the trailing window, with a
+// minimum-evidence floor on both log count AND distinct users so a single
+// account (or a small coordinated burst) can't manufacture a trend. Test
+// fixtures created by this project's own QA scripts are excluded by name
+// pattern so they can never surface as a fake "trending" claim.
+export async function getTrendingDish(windowMs: number, minCount: number, minUsers: number): Promise<TrendingDish | null> {
+  const cutoff = Date.now() - windowMs;
+  const rows = await sql()`
+    SELECT venue, category, subtype, name, COUNT(*)::int AS cnt, COUNT(DISTINCT user_id)::int AS distinct_users
+    FROM logs
+    WHERE status = 'published'
+      AND created_at > ${cutoff}
+      AND venue NOT ILIKE 'QA %' AND venue NOT ILIKE '%test%'
+      AND name NOT ILIKE '%test%' AND name NOT ILIKE 'ghost%'
+    GROUP BY venue, category, subtype, name
+    HAVING COUNT(*) >= ${minCount} AND COUNT(DISTINCT user_id) >= ${minUsers}
+    ORDER BY cnt DESC
+    LIMIT 1`;
+  if (!rows[0]) return null;
+  const r = rows[0] as any;
+  return { venue: r.venue, category: r.category, subtype: r.subtype, name: r.name, count: r.cnt, distinctUsers: r.distinct_users };
 }
 
 export async function listHeldLogs(): Promise<DishLog[]> {
