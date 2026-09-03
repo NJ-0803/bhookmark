@@ -73,6 +73,18 @@ CREATE TABLE IF NOT EXISTS security_events (
   at BIGINT NOT NULL
 );
 
+-- Passive eval log for AI dish-recognition corrections (brief 1.3): stores
+-- what the model suggested vs. what the user actually confirmed/changed.
+-- Never read back into the detection path automatically — eval-only.
+CREATE TABLE IF NOT EXISTS ai_corrections (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  ai_suggestion JSONB NOT NULL,
+  user_correction JSONB NOT NULL,
+  created_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ai_corrections_created ON ai_corrections(created_at);
+
 CREATE TABLE IF NOT EXISTS push_subscriptions (
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   endpoint TEXT NOT NULL,

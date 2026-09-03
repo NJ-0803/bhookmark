@@ -5,6 +5,7 @@ import * as db from "../db";
 import type { DishLog, EvidenceLevel } from "../db";
 import { requireAuth } from "../middleware";
 import { VENUES, haversineKm } from "../venues";
+import { detectDish, visionConfigured } from "../vision";
 
 export const logsRouter = Router();
 
@@ -99,6 +100,66 @@ logsRouter.post("/", requireAuth, async (req, res) => {
   const body = { ok: true, log };
   if (idKey) await db.setIdempotent(idKey, 201, body);
   res.status(201).json(body);
+});
+
+// Section 1.3 (AI dish recognition): whether the client should show a
+// camera-first flow at all. Without a configured vendor key, the client
+// should skip straight to manual entry rather than dead-end into a spinner.
+logsRouter.get("/detect/status", requireAuth, (_req, res) => {
+  res.json({ ok: true, configured: visionConfigured() });
+});
+
+const DAILY_DETECT_LIMIT = 15;
+
+const detectSchema = z.object({
+  imageBase64: z.string().min(1),
+  mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+});
+
+// Real image analysis, scoped per the brief: never fabricates confidence,
+// never blocks manual logging on failure, never persists the photo (there is
+// no object storage yet — see the implementation plan's Q1 decision). The
+// per-user daily cap only counts requests that actually reach the vendor,
+// not ones short-circuited by a missing key or bad payload.
+logsRouter.post("/detect", requireAuth, async (req, res) => {
+  const parsed = detectSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ ok: false, error: "Expected a base64 image and a supported mime type.", issues: parsed.error.issues });
+  }
+
+  if (!visionConfigured()) {
+    return res.json({ ok: false, error: "vision_not_configured" });
+  }
+
+  const dailyCount = await db.recordVenueHit(`ai-detect:${req.user!.sub}`, Date.now(), 24 * 60 * 60 * 1000);
+  if (dailyCount > DAILY_DETECT_LIMIT) {
+    return res.status(429).json({ ok: false, error: `Daily AI-detect limit reached (${DAILY_DETECT_LIMIT}/day) — enter the dish manually instead.` });
+  }
+
+  const result = await detectDish(parsed.data.imageBase64, parsed.data.mimeType);
+  res.json(result);
+});
+
+const correctionSchema = z.object({
+  aiSuggestion: z.unknown(),
+  userCorrection: z.unknown(),
+});
+
+// Passive eval logging only (brief 1.3: "user corrections are logged for
+// evaluation, not automatically used as unreviewed training data") — this
+// never feeds back into detectDish() or any ranking/recommendation path.
+logsRouter.post("/correction", requireAuth, async (req, res) => {
+  const parsed = correctionSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ ok: false, error: "Invalid correction payload." });
+
+  await db.recordAiCorrection({
+    id: nanoid(),
+    userId: req.user!.sub,
+    aiSuggestion: parsed.data.aiSuggestion,
+    userCorrection: parsed.data.userCorrection,
+    createdAt: Date.now(),
+  });
+  res.json({ ok: true });
 });
 
 logsRouter.get("/mine", requireAuth, async (req, res) => {
