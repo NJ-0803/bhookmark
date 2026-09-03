@@ -16,7 +16,7 @@ type Step = "capture" | "details" | "verify" | "confirm" | "duel" | "done";
 type ServerStatus = "published" | "held" | "local-only" | "session-expired";
 
 const TINTS = ["from-amber-500/30 to-amber-900/40", "from-rose-500/30 to-rose-900/40", "from-cyan-600/30 to-slate-900/40", "from-emerald-500/30 to-emerald-900/40"];
-const EMOJI: Record<Category, string> = { "Dosa & Idli": "🥞", Biryani: "🍛", "Filter Coffee": "☕", Burger: "🍔", Pizza: "🍕" };
+const EMOJI: Record<Category, string> = { "Dosa & Idli": "🥞", Biryani: "🍛", "Filter Coffee": "☕", Burger: "🍔", Pizza: "🍕", Momos: "🥟" };
 
 export default function LogFlow({
   prefillDish,
