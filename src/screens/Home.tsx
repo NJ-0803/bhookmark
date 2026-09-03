@@ -11,13 +11,18 @@ import { getDietProfile, getDigest, getNextPicks, getDishScore, type DishScoreRe
 import { computeSmartOrder, type SmartOrderResult } from "../smartPicks";
 import NearMe from "./NearMe";
 
-const QUICK_PICKS: { label: string; emoji: string; category: Category }[] = [
-  { label: "Pizza", emoji: "🍕", category: "Pizza" },
-  { label: "Burger", emoji: "🍔", category: "Burger" },
-  { label: "Biryani", emoji: "🍛", category: "Biryani" },
-  { label: "Momos", emoji: "🥟", category: "Momos" },
-  { label: "Dosa", emoji: "🥞", category: "Dosa & Idli" },
-];
+// Restrained per-category accents (brief's Phase 5 direction: "chilli red,
+// saffron, butter yellow, coffee brown" instead of one flat accent color
+// everywhere) — used on badges and the spotlight card, never as a full
+// background swap of the black+turquoise base identity.
+const CATEGORY_ACCENT: Record<Category, string> = {
+  "Dosa & Idli": "bg-amber-400 text-amber-950",
+  Biryani: "bg-orange-600 text-orange-50",
+  "Filter Coffee": "bg-amber-800 text-amber-50",
+  Burger: "bg-rose-500 text-rose-50",
+  Pizza: "bg-red-600 text-red-50",
+  Momos: "bg-teal-500 text-teal-950",
+};
 
 const SMART_ORDER_CACHE_KEY = "palate.smartOrder";
 const SMART_ORDER_DISMISSED_KEY = "palate.smartOrderDismissed";
@@ -136,6 +141,16 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
     });
   }, [query, orderedCategories]);
 
+  // A real, highest-scored dish (from the same seed catalog every score on
+  // this screen already comes from) — biased toward whatever the smart
+  // order surfaced first, so "trending" tracks the same personalization.
+  const spotlightDish = useMemo(() => {
+    const topCategory = smartOrder?.categories[0];
+    const pool = topCategory ? DISHES.filter((d) => d.category === topCategory) : DISHES;
+    const source = pool.length ? pool : DISHES;
+    return [...source].sort((a, b) => b.score - a.score)[0];
+  }, [smartOrder]);
+
   if (view.name === "nearby") {
     return <NearMe onBack={() => setView({ name: "search" })} />;
   }
@@ -149,19 +164,30 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
         </h1>
         <p className="text-muted text-sm mb-4">Pick a craving. We'll do the rest.</p>
 
-        <div className="flex gap-2 overflow-x-auto mb-4 -mx-5 px-5" style={{ scrollbarWidth: "none" }}>
-          {QUICK_PICKS.map((qp) => (
-            <motion.button
-              key={qp.label}
-              whileTap={TAP_SCALE}
-              transition={LIQUID_SPRING}
-              onClick={() => setView({ name: "subtype", category: qp.category })}
-              className="shrink-0 flex items-center gap-1.5 bg-surface border border-line rounded-full pl-2.5 pr-4 py-2 text-sm font-medium"
-            >
-              <span className="text-lg">{qp.emoji}</span>
-              {qp.label}
-            </motion.button>
-          ))}
+        <div className="flex gap-4 overflow-x-auto mb-5 -mx-5 px-5" style={{ scrollbarWidth: "none" }}>
+          {orderedCategories.map((c) => {
+            const visual = categoryVisual(c.name);
+            return (
+              <motion.button
+                key={c.name}
+                whileTap={TAP_SCALE}
+                transition={LIQUID_SPRING}
+                onClick={() => setView({ name: "subtype", category: c.name })}
+                className="shrink-0 flex flex-col items-center gap-1.5 w-16"
+              >
+                <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-line relative">
+                  {visual.photo ? (
+                    <img src={visual.photo} alt="" className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
+                  ) : (
+                    <div className={`absolute inset-0 bg-gradient-to-br ${visual.tint} bg-surface2 flex items-center justify-center text-2xl`}>
+                      {visual.emoji}
+                    </div>
+                  )}
+                </div>
+                <span className="text-[11px] font-medium text-muted truncate w-full text-center">{c.name}</span>
+              </motion.button>
+            );
+          })}
         </div>
 
         <input
@@ -196,6 +222,34 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
           )
         )}
 
+        {!query.trim() && spotlightDish && (
+          <motion.button
+            key={spotlightDish.id}
+            initial={{ opacity: 0, scale: 0.97 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={LIQUID_SPRING}
+            onClick={() => setView({ name: "profile", dish: spotlightDish })}
+            className="relative w-full aspect-[16/10] rounded-card overflow-hidden text-left mb-5 border border-line"
+          >
+            {spotlightDish.photo ? (
+              <img src={spotlightDish.photo} alt="" className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
+            ) : (
+              <div className={`absolute inset-0 bg-gradient-to-br ${spotlightDish.tint} bg-surface2 flex items-center justify-center text-6xl`}>
+                {spotlightDish.emoji}
+              </div>
+            )}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/25 to-black/10" />
+            <span className={`absolute top-3 left-3 text-[10px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-full ${CATEGORY_ACCENT[spotlightDish.category]}`}>
+              🔥 Trending in Bangalore
+            </span>
+            <ScoreBadge score={spotlightDish.score} size="sm" className="absolute top-3 right-3" />
+            <div className="relative h-full flex flex-col justify-end p-4">
+              <div className="font-display font-extrabold text-xl text-white leading-tight drop-shadow">{spotlightDish.name}</div>
+              <div className="text-white/70 text-sm mt-0.5">{spotlightDish.venue} · {spotlightDish.area}</div>
+            </div>
+          </motion.button>
+        )}
+
         <button
           onClick={() => setView({ name: "nearby" })}
           className="w-full flex items-center gap-3 bg-gradient-to-r from-accentDim to-surface border border-accent/30 rounded-xl px-4 py-3.5 mb-6 text-left"
@@ -227,32 +281,67 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
           </div>
         )}
 
-        {picks && picks.length > 0 && (
+        {picks === null ? (
           <div className="mb-7">
             <p className="font-mono text-[11px] tracking-[0.1em] uppercase text-faint mb-3">Recommended for you</p>
-            <div className="flex flex-col gap-2.5">
-              {picks.map((p) => {
-                const visual = categoryVisual(p.category);
-                return (
-                  <div key={p.id} className="flex gap-3 bg-surface border border-line rounded-card p-3.5">
-                    <DishThumb emoji={visual.emoji} tint={visual.tint} photo={dishById(p.id)?.photo} size="md" />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2 mb-1">
-                        <span className="font-semibold text-sm truncate">{p.name}</span>
-                        <ScoreBadge score={p.score} size="sm" />
-                      </div>
-                      <div className="text-faint text-xs mb-1.5 truncate">{p.venue}</div>
-                      <p className="text-ink/80 text-xs leading-snug">{p.reason}</p>
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="flex gap-3 overflow-x-auto -mx-5 px-5" style={{ scrollbarWidth: "none" }}>
+              {[0, 1].map((i) => (
+                <div key={i} className="shrink-0 w-64">
+                  <div className="aspect-[4/3] rounded-card bg-surface2 animate-pulse mb-2" />
+                  <div className="h-3.5 w-3/4 rounded bg-surface2 animate-pulse mb-1.5" />
+                  <div className="h-3 w-1/2 rounded bg-surface2 animate-pulse" />
+                </div>
+              ))}
             </div>
           </div>
+        ) : (
+          picks.length > 0 && (
+            <div className="mb-7">
+              <p className="font-mono text-[11px] tracking-[0.1em] uppercase text-faint mb-3">Recommended for you</p>
+              <div className="flex gap-3 overflow-x-auto -mx-5 px-5 pb-1" style={{ scrollbarWidth: "none" }}>
+                {picks.map((p) => {
+                  const visual = categoryVisual(p.category);
+                  const photo = dishById(p.id)?.photo;
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => {
+                        const dish = dishById(p.id);
+                        if (dish) setView({ name: "profile", dish });
+                      }}
+                      className="shrink-0 w-64 text-left bg-surface border border-line rounded-card overflow-hidden"
+                    >
+                      <div className="relative aspect-[4/3]">
+                        {photo ? (
+                          <img src={photo} alt="" className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
+                        ) : (
+                          <div className={`absolute inset-0 bg-gradient-to-br ${visual.tint} bg-surface2 flex items-center justify-center text-4xl`}>
+                            {visual.emoji}
+                          </div>
+                        )}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+                        <span className={`absolute top-2 left-2 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${CATEGORY_ACCENT[p.category as Category]}`}>
+                          {p.category}
+                        </span>
+                        <ScoreBadge score={p.score} size="sm" className="absolute top-2 right-2" />
+                      </div>
+                      <div className="p-3">
+                        <div className="font-semibold text-sm truncate">{p.name}</div>
+                        <div className="text-faint text-xs mb-1.5 truncate">{p.venue}</div>
+                        <p className="text-ink/80 text-xs leading-snug line-clamp-2">{p.reason}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )
         )}
 
+        {query.trim() && (
+          <>
         <p className="font-mono text-[11px] tracking-[0.1em] uppercase text-faint mb-3">
-          {query.trim() ? `Matching "${query.trim()}"` : "Categories"}
+          Matching "{query.trim()}"
         </p>
         {filteredCategories.length === 0 ? (
           <div className="border border-dashed border-line rounded-card px-6 py-10 text-center">
@@ -292,6 +381,8 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
               );
             })}
           </div>
+        )}
+          </>
         )}
       </motion.div>
     );
