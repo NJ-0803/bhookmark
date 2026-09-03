@@ -1,17 +1,21 @@
 import type { RemoteLog } from "./api";
 
-// Brief section 1.1: a "signature craving" is a confident claim about
-// someone's taste, and the un-gated version of this app could make that
-// claim after a single logged dish. Require real repetition — across
-// venues, not just repeat visits to one place — before showing it as fact.
+// Brief section 1.1 + evidence table: a taste claim must scale with real
+// repetition, not jump straight from silence to a confident claim. Three
+// tiers, matching the brief's own table exactly:
+//   "insufficient" — nothing worth saying yet
+//   "early"        — 3+ logs in one category: a qualitative, hedged hint
+//   "unlocked"     — 5+ logs across 3+ venues: the actual signature-craving claim
+const EARLY_LOGS_NEEDED = 3;
 const LOGS_NEEDED = 5;
 const VENUES_NEEDED = 3;
 const STRONG_LOGS = 15;
 const STRONG_VENUES = 6;
 
 export type SignatureCravingResult =
-  | { unlocked: true; category: string; band: "developing" | "strong" }
-  | { unlocked: false; logsSeen: number; logsNeeded: number; venuesSeen: number; venuesNeeded: number };
+  | { tier: "unlocked"; category: string; band: "developing" | "strong" }
+  | { tier: "early"; category: string; logsSeen: number }
+  | { tier: "insufficient"; logsSeen: number; logsNeeded: number; venuesSeen: number; venuesNeeded: number };
 
 export function signatureCraving(logs: RemoteLog[]): SignatureCravingResult {
   const eligible = logs.filter((l) => l.status !== "removed");
@@ -29,19 +33,23 @@ export function signatureCraving(logs: RemoteLog[]): SignatureCravingResult {
     }
   }
 
-  if (!best || best.logs.length < LOGS_NEEDED || best.venues.size < VENUES_NEEDED) {
+  if (best && best.logs.length >= LOGS_NEEDED && best.venues.size >= VENUES_NEEDED) {
     return {
-      unlocked: false,
-      logsSeen: best?.logs.length ?? 0,
-      logsNeeded: LOGS_NEEDED,
-      venuesSeen: best?.venues.size ?? 0,
-      venuesNeeded: VENUES_NEEDED,
+      tier: "unlocked",
+      category: best.category,
+      band: best.logs.length >= STRONG_LOGS && best.venues.size >= STRONG_VENUES ? "strong" : "developing",
     };
   }
 
+  if (best && best.logs.length >= EARLY_LOGS_NEEDED) {
+    return { tier: "early", category: best.category, logsSeen: best.logs.length };
+  }
+
   return {
-    unlocked: true,
-    category: best.category,
-    band: best.logs.length >= STRONG_LOGS && best.venues.size >= STRONG_VENUES ? "strong" : "developing",
+    tier: "insufficient",
+    logsSeen: best?.logs.length ?? 0,
+    logsNeeded: LOGS_NEEDED,
+    venuesSeen: best?.venues.size ?? 0,
+    venuesNeeded: VENUES_NEEDED,
   };
 }

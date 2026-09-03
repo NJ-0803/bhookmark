@@ -67,6 +67,12 @@ export default function Palate({
               <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-accent mb-1">Flavor DNA</p>
               {flavorNote.kind === "note" ? (
                 <p className="text-sm text-ink/90">{flavorNote.text}</p>
+              ) : flavorNote.kind === "early" ? (
+                <p className="text-sm text-ink/90">
+                  <span className="text-gold font-semibold">Early signal</span> — leaning toward{" "}
+                  <span className="text-accent font-semibold">{flavorNote.category}</span>, based on {flavorNote.logsSeen} loved logs.
+                  Not a real pattern yet.
+                </p>
               ) : (
                 <>
                   <p className="text-sm text-ink/90 mb-2">Log a few more loved dishes and a real pattern shows up here — not a guess from one good meal.</p>
@@ -150,19 +156,24 @@ function Chip({ label, tone }: { label: string; tone: "accent" | "neutral" | "wa
 
 type FlavorNote =
   | { kind: "note"; text: string }
+  | { kind: "early"; category: string; logsSeen: number }
   | { kind: "progress"; logsSeen: number; logsNeeded: number; venuesSeen: number; venuesNeeded: number };
 
-// Evidence-gated (brief 1.1): "you consistently rank X highest" is a claim
-// about a pattern, and a pattern isn't one good meal. Loved dishes only —
-// the threshold applies to conviction, not just frequency.
+// Evidence-gated (brief 1.1 + evidence table): "you consistently rank X
+// highest" is a claim about a pattern, and a pattern isn't one good meal.
+// Loved dishes only — the threshold applies to conviction, not frequency.
+// Three tiers: nothing yet, an early hedged hint, or the full claim.
 function deriveFlavorNote(loved: RemoteLog[]): FlavorNote | null {
   if (loved.length === 0) return null;
   const result = signatureCraving(loved);
-  if (result.unlocked) {
+  if (result.tier === "unlocked") {
     return {
       kind: "note",
       text: `You consistently rank ${result.category} highest when it's verified and eaten fresh off the counter — not delivered.`,
     };
+  }
+  if (result.tier === "early") {
+    return { kind: "early", category: result.category, logsSeen: result.logsSeen };
   }
   return { kind: "progress", logsSeen: result.logsSeen, logsNeeded: result.logsNeeded, venuesSeen: result.venuesSeen, venuesNeeded: result.venuesNeeded };
 }

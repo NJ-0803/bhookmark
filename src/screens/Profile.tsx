@@ -104,10 +104,16 @@ export default function Profile({
 
       <div className="bg-surface border border-line rounded-card p-4 mb-3">
         <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-faint mb-2">Signature craving</p>
-        {cravingResult.unlocked ? (
+        {cravingResult.tier === "unlocked" ? (
           <p className="text-sm text-ink/90">
             <span className="text-accent font-semibold">{cravingResult.category}</span> shows up more than anything else in your Palate
             {cravingResult.band === "strong" ? " — and it's a real, repeated pattern by now." : "."}
+          </p>
+        ) : cravingResult.tier === "early" ? (
+          <p className="text-sm text-ink/90">
+            <span className="text-gold font-semibold">Early signal</span> — you might be into{" "}
+            <span className="text-accent font-semibold">{cravingResult.category}</span>, based on {cravingResult.logsSeen} logs so far.
+            Not enough for a real pattern yet.
           </p>
         ) : (
           <>
