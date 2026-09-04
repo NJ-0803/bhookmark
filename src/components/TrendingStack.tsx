@@ -24,7 +24,12 @@ export default function TrendingStack({ cards, onSelect }: { cards: StackCard[];
   const visible = order.slice(0, 3);
 
   return (
-    <div className="relative mb-5" style={{ height: 220 }}>
+    // Responsive aspect-ratio height (not a hardcoded pixel value) — a fixed
+    // 220px assumed a card width this app never guarantees, so on a narrower
+    // real phone the 16:10 card was taller than its own box and bled into
+    // whatever came next. paddingBottom scales with the actual rendered
+    // width instead, plus room for the peek offset and the caption below.
+    <div className="relative mb-9" style={{ paddingBottom: "calc(62.5% + 20px)" }}>
       <AnimatePresence>
         {visible.map((cardIndex, stackPos) => {
           const { dish, badge } = cards[cardIndex];
@@ -73,7 +78,7 @@ export default function TrendingStack({ cards, onSelect }: { cards: StackCard[];
         })}
       </AnimatePresence>
       {cards.length > 1 && (
-        <p className="absolute -bottom-6 inset-x-0 text-center text-faint text-[11px]">Drag to see what else is hot</p>
+        <p className="absolute bottom-0 inset-x-0 text-center text-faint text-[11px]">Drag to see what else is hot</p>
       )}
     </div>
   );
