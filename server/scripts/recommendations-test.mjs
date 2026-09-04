@@ -74,8 +74,7 @@ async function main() {
     !picks.some((p) => nonVegNames.includes(p.name)),
     JSON.stringify(picks.map((p) => p.name))
   );
-  check("reports whether the high-level model wrote the blurb or the template did", ["llm", "template"].includes(picks[0]?.reasonSource), JSON.stringify(picks[0]));
-  console.log(`    llmConfigured: ${nextRes.body.llmConfigured}  →  first pick reasonSource: ${picks[0]?.reasonSource}`);
+  check("each pick has a non-empty template-written reason", typeof picks[0]?.reason === "string" && picks[0].reason.length > 0, JSON.stringify(picks[0]));
   console.log(`    "${picks[0]?.reason}"`);
 
   console.log("\nEngagement digest — a real reason to reopen the app, computed from real logs");

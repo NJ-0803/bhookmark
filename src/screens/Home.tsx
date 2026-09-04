@@ -36,7 +36,6 @@ interface Pick {
   venue: string;
   score: number;
   reason: string;
-  reasonSource: "llm" | "template";
 }
 
 interface DigestData {
@@ -366,13 +365,7 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
                         </div>
                       </button>
                       <div className="px-3 pb-3">
-                        <WhyThis
-                          body={
-                            p.reasonSource === "llm"
-                              ? "Grounded in your real dietary profile and log history — an AI model only rewrote the sentence, it never chose the dish or invented a fact not already in your data."
-                              : "Grounded in your real dietary profile and log history — a fixed template, no AI model was involved in wording this one."
-                          }
-                        />
+                        <WhyThis body="Grounded in your real dietary profile and log history — a fixed template, no AI model involved in wording this one." />
                       </div>
                     </div>
                   );

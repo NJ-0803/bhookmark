@@ -2,7 +2,6 @@ import { Router } from "express";
 import * as db from "../db";
 import { requireAuth } from "../middleware";
 import { computeFavorites, computeAvoid, computeNextPicks, computeDigest } from "../recommend";
-import { craftRecommendationBlurb, llmConfigured } from "../llm";
 
 export const recommendationsRouter = Router();
 
@@ -24,18 +23,11 @@ recommendationsRouter.get("/next", requireAuth, async (req, res) => {
   if (!user) return res.status(404).json({ ok: false, error: "User not found." });
 
   const logs = await myLogs(user.id);
-  const favorites = computeFavorites(logs, 5);
-  const avoid = computeAvoid(logs, 5);
   const picks = computeNextPicks(user, logs, 3);
 
-  const enriched = await Promise.all(
-    picks.map(async (pick) => {
-      const blurb = await craftRecommendationBlurb(favorites, avoid, pick);
-      return { ...pick.dish, reason: blurb.text, reasonSource: blurb.source };
-    })
-  );
+  const enriched = picks.map((pick) => ({ ...pick.dish, reason: pick.reason }));
 
-  res.json({ ok: true, picks: enriched, llmConfigured: llmConfigured() });
+  res.json({ ok: true, picks: enriched });
 });
 
 recommendationsRouter.get("/digest", requireAuth, async (req, res) => {

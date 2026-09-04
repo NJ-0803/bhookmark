@@ -76,8 +76,8 @@ export interface NextPick {
 }
 
 /** AI recommender #3: the actual pick is fully rule-based and grounded in
- * the real catalog (never invented) — an optional LLM layer (see llm.ts)
- * only rewrites the explanation text, never the decision of which dish. */
+ * the real catalog (never invented) — the explanation text is a deterministic
+ * template, not a model call (no paid API, per the zero-cost decision). */
 export function computeNextPicks(
   user: Pick<User, "dietaryProfile" | "allergens">,
   logs: DishLog[],
