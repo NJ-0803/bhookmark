@@ -4,10 +4,31 @@ import { LIQUID_SPRING, TAP_SCALE } from "../motion";
 import { disablePushNotifications, enablePushNotifications, getPushSubscriptionState, simulateFriendNearby } from "../push";
 
 const CIRCLES = [
-  { name: "College friends", members: 6, matchScore: 78, lastActive: "Aish added a dosa pick" },
-  { name: "Flatmates", members: 3, matchScore: 91, lastActive: "3 unread in 'Where are we eating?'" },
-  { name: "Office lunch crew", members: 9, matchScore: 64, lastActive: "New Craving Room started" },
+  { name: "College friends", members: 6, matchScore: 78, lastActive: "Aish added a dosa pick", tint: "from-rose-500/40 to-rose-900/50" },
+  { name: "Flatmates", members: 3, matchScore: 91, lastActive: "3 unread in 'Where are we eating?'", tint: "from-cyan-500/40 to-cyan-900/50" },
+  { name: "Office lunch crew", members: 9, matchScore: 64, lastActive: "New Craving Room started", tint: "from-amber-500/40 to-amber-900/50" },
 ];
+
+function initialsFor(name: string, count: number) {
+  return name
+    .split(" ")
+    .filter((w) => w[0] === w[0]?.toUpperCase())
+    .map((w) => w[0])
+    .slice(0, count);
+}
+
+function MatchRing({ score }: { score: number }) {
+  return (
+    <div
+      className="relative w-9 h-9 rounded-full shrink-0"
+      style={{ background: `conic-gradient(#2FD6C4 ${score * 3.6}deg, #242B29 0deg)` }}
+    >
+      <div className="absolute inset-[3px] rounded-full bg-surface flex items-center justify-center">
+        <span className="font-mono text-[9px] font-semibold text-accent tabular">{score}</span>
+      </div>
+    </div>
+  );
+}
 
 export default function FoodCircles() {
   const [pushState, setPushState] = useState<"unsupported" | "denied" | "subscribed" | "not-subscribed" | "checking">("checking");
@@ -76,15 +97,36 @@ export default function FoodCircles() {
       </div>
 
       <div className="flex flex-col gap-2.5">
-        {CIRCLES.map((c) => (
-          <button key={c.name} className="text-left bg-surface border border-line rounded-card p-4 hover:border-accent/50 transition-colors">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="font-semibold text-sm">{c.name}</span>
-              <span className="font-mono text-xs text-accent tabular">{c.matchScore}% match</span>
-            </div>
-            <div className="text-faint text-xs">{c.members} members · {c.lastActive}</div>
-          </button>
-        ))}
+        {CIRCLES.map((c, i) => {
+          const initials = initialsFor(c.name, 3);
+          return (
+            <motion.button
+              key={c.name}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ ...LIQUID_SPRING, delay: i * 0.05 }}
+              className="text-left bg-surface border border-line rounded-card p-4 hover:border-accent/50 transition-colors flex items-center gap-3"
+            >
+              <MatchRing score={c.matchScore} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-semibold text-sm truncate">{c.name}</span>
+                  <div className="flex -space-x-2 shrink-0">
+                    {initials.map((letter, j) => (
+                      <div
+                        key={j}
+                        className={`w-6 h-6 rounded-full bg-gradient-to-br ${c.tint} border-2 border-surface flex items-center justify-center text-[10px] font-semibold`}
+                      >
+                        {letter}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="text-faint text-xs truncate">{c.members} members · {c.lastActive}</div>
+              </div>
+            </motion.button>
+          );
+        })}
       </div>
       <button className="w-full mt-5 bg-surface border border-dashed border-line rounded-card py-3.5 text-sm font-medium text-muted">
         + Start a Food Circle

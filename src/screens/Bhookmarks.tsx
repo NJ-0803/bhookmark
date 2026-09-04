@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import type { RemoteLog } from "../api";
-import { categoryVisual } from "../data/dishes";
+import { CATEGORY_ACCENT, categoryVisual, findDishPhoto } from "../data/dishes";
+import type { Category } from "../types";
 import DishThumb from "../components/DishThumb";
 import ScoreBadge from "../components/ScoreBadge";
 import { LIQUID_SPRING, TAP_SCALE } from "../motion";
@@ -89,6 +90,7 @@ export default function Bhookmarks({
           <div className="flex flex-col gap-2.5">
             {visibleLogs.map((log, i) => {
               const visual = categoryVisual(log.category);
+              const photo = findDishPhoto(log.category, log.subtype, log.name, log.venue);
               const reorder = log.verdict === "loved";
               return (
                 <motion.div
@@ -98,7 +100,16 @@ export default function Bhookmarks({
                   transition={{ ...LIQUID_SPRING, delay: i * 0.03 }}
                   className="flex gap-3 bg-surface border border-line rounded-xl p-3"
                 >
-                  <DishThumb emoji={visual.emoji} tint={visual.tint} photo={visual.photo} size="md" />
+                  <div className="relative shrink-0">
+                    <DishThumb emoji={visual.emoji} tint={visual.tint} photo={photo ?? visual.photo} size="card" />
+                    <span
+                      className={`absolute -top-1.5 -left-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full border border-bg ${
+                        CATEGORY_ACCENT[log.category as Category] ?? "bg-surface2 text-muted"
+                      }`}
+                    >
+                      {visual.emoji}
+                    </span>
+                  </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-semibold text-sm truncate">{log.name}</span>

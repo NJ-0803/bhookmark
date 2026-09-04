@@ -413,6 +413,24 @@ const CATEGORY_TINT: Record<string, string> = {
   Momos: "from-teal-500/30 to-emerald-950/40",
 };
 
+/** Restrained per-category accents (brief's Phase 5 direction: "chilli red,
+ * saffron, butter yellow, coffee brown") — shared across every screen that
+ * shows a category pill, so Home/Bhookmarks/Circles all read as one system. */
+export const CATEGORY_ACCENT: Record<Category, string> = {
+  "Dosa & Idli": "bg-amber-400 text-amber-950",
+  Biryani: "bg-orange-600 text-orange-50",
+  "Filter Coffee": "bg-amber-800 text-amber-50",
+  Burger: "bg-rose-500 text-rose-50",
+  Pizza: "bg-red-600 text-red-50",
+  Momos: "bg-teal-500 text-teal-950",
+};
+
+/** Matches a backend log (category/subtype/name/venue only, no photo) back
+ * to the static catalog so real photography can be reused where it exists. */
+export function findDishPhoto(category: string, subtype: string, name: string, venue: string): string | undefined {
+  return DISHES.find((d) => d.category === category && d.subtype === subtype && d.name === name && d.venue === venue)?.photo;
+}
+
 /** A representative real photo for a whole category — used on category tiles
  * and anywhere a specific dish photo isn't available (e.g. a backend log,
  * which only carries category/subtype, not an image). */

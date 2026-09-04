@@ -35,8 +35,15 @@ Per-log `visibility: "private" | "public"` (public is the default — deliberate
 
 UI: a toggle in BiteLog's confirm step (`src/screens/LogFlow.tsx`). "Circle-only" visibility is explicitly not built — Circles has no real backend to be visible *to* yet.
 
-### Visual redesign (Phase 5, partial)
-Home/Crave screen only: circular real-photo category rail, a "Trending"/"Top rated" spotlight card, photo-forward "Recommended for you" cards, category-accent colors, page-transition motion. **Not yet applied to Bhookmarks, Profile, or Circles screens.**
+### Visual redesign (Phase 5, mostly done)
+Home/Crave: circular real-photo category rail, a "Trending"/"Top rated" spotlight card, photo-forward "Recommended for you" cards, category-accent colors, page-transition motion.
+
+Extended to the rest of the app this session: `CATEGORY_ACCENT` and `findDishPhoto` moved to `src/data/dishes.ts` (shared, no longer duplicated in Home.tsx) so every screen reads from one source.
+- **Bhookmarks** (`src/screens/Bhookmarks.tsx`): log cards now use a larger photo-forward `DishThumb` (real catalog photo when the log matches one, via `findDishPhoto`) with a category-accent pill badge overlaid on the corner.
+- **Profile**: every card now fades in staggered on load (previously zero motion); the Signature Craving card shows a category-accent pill once a pattern is unlocked or hinted.
+- **Circles**: `FoodCircles.tsx` gained a conic-gradient match-score ring and avatar-initial stacks per circle; `RemixableLists.tsx` gained a colored accent spine + tinted clone-count badge per list; both use the same stagger-fade motion as everywhere else. `CravingRoom.tsx` already had this treatment and was left as-is.
+
+**Not done**: a full accessibility audit (44×44 targets, screen-reader pass, contrast) — that's the one remaining Phase 5 item.
 
 ### Also fixed this session
 - Horizontal swipeable results deck (Tinder-style) replacing a bland vertical list capped at ~2 static demo dishes; expanded the Pizza catalog to 10 real Bangalore chains.
@@ -65,7 +72,7 @@ Home/Crave screen only: circular real-photo category rail, a "Trending"/"Top rat
 - Custom domain purchase (user's action) + DNS wiring (my action, once they have a domain name).
 - Phase 3: You-page progressive-disclosure redesign (`Profile.tsx` is still one flat scroll), Bhookmarks redesign (calendar, taste fingerprint, notes search), Bite Buddy / Taste Pulse (not built at all).
 - Phase 4: Craving Rooms / Food Circles / Lists — all still fully mocked, zero real backend (push notifications are the one real piece already built).
-- Phase 5 remainder: same visual-redesign treatment applied to Bhookmarks/Profile/Circles; a full accessibility audit (44×44 targets, screen-reader pass, contrast).
+- Phase 5 remainder: a full accessibility audit (44×44 targets, screen-reader pass, contrast) — the visual-redesign parity across Bhookmarks/Profile/Circles is now done.
 - The formal manual QA click-through promised early in the project — done piecemeal via ad hoc testing across this whole session, never once as a single formal pass.
 - Data export + account deletion workflow (Phase 2) — explicitly deferred by the user ("not needed for now, will see afterwards").
 

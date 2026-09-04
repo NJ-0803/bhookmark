@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { LIQUID_SPRING, TAP_SCALE } from "../motion";
-import { CATEGORIES, DISHES, categoryVisual, dishById, dishesForSubtype } from "../data/dishes";
+import { CATEGORIES, CATEGORY_ACCENT, DISHES, categoryVisual, dishById, dishesForSubtype } from "../data/dishes";
 import type { Category, DishEntry } from "../types";
 import DishThumb from "../components/DishThumb";
 import ScoreBadge from "../components/ScoreBadge";
@@ -10,19 +10,6 @@ import BrowseCard from "../components/BrowseCard";
 import { getDietProfile, getDigest, getNextPicks, getDishScore, getTrending, type DishScoreResponse, type TrendingResponse } from "../api";
 import { computeSmartOrder, type SmartOrderResult } from "../smartPicks";
 import NearMe from "./NearMe";
-
-// Restrained per-category accents (brief's Phase 5 direction: "chilli red,
-// saffron, butter yellow, coffee brown" instead of one flat accent color
-// everywhere) — used on badges and the spotlight card, never as a full
-// background swap of the black+turquoise base identity.
-const CATEGORY_ACCENT: Record<Category, string> = {
-  "Dosa & Idli": "bg-amber-400 text-amber-950",
-  Biryani: "bg-orange-600 text-orange-50",
-  "Filter Coffee": "bg-amber-800 text-amber-50",
-  Burger: "bg-rose-500 text-rose-50",
-  Pizza: "bg-red-600 text-red-50",
-  Momos: "bg-teal-500 text-teal-950",
-};
 
 const SMART_ORDER_CACHE_KEY = "bhookmark.smartOrder";
 const SMART_ORDER_DISMISSED_KEY = "bhookmark.smartOrderDismissed";

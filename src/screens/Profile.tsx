@@ -1,7 +1,15 @@
 import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
 import type { RemoteLog, VenueClaim } from "../api";
 import { claimVenue, clearSession, currentDeviceId, getDietProfile, getMyVenueClaims, getSession, listSessions, revokeSession, setDietProfile } from "../api";
 import { signatureCraving } from "../evidenceThresholds";
+import { CATEGORY_ACCENT } from "../data/dishes";
+import type { Category } from "../types";
+import { LIQUID_SPRING } from "../motion";
+
+function fadeUp(delay: number) {
+  return { initial: { opacity: 0, y: 8 }, animate: { opacity: 1, y: 0 }, transition: { ...LIQUID_SPRING, delay } };
+}
 
 interface SessionRow {
   deviceId: string;
@@ -110,24 +118,31 @@ export default function Profile({
   return (
     <div className="px-5 pt-8 pb-32">
       <p className="font-mono text-[11px] tracking-[0.14em] uppercase text-faint mb-1">Bhookmark Passport</p>
-      <div className="flex items-center gap-3 mb-6">
-        <div className="w-14 h-14 rounded-full bg-gradient-to-br from-accent/40 to-accentDim border border-accent/40 flex items-center justify-center font-display font-bold text-lg">
+      <motion.div {...fadeUp(0)} className="flex items-center gap-3 mb-6">
+        <div className="w-14 h-14 rounded-full bg-gradient-to-br from-accent/40 to-accentDim border border-accent/40 flex items-center justify-center font-display font-bold text-lg shadow-lift">
           N
         </div>
         <div>
           <h1 className="font-display font-bold text-lg">Navtej</h1>
           <p className="text-faint text-xs">{session?.user.phone ?? "Koramangala"} · Bangalore</p>
         </div>
-      </div>
+      </motion.div>
 
-      <div className="grid grid-cols-3 gap-2.5 mb-3">
+      <motion.div {...fadeUp(0.04)} className="grid grid-cols-3 gap-2.5 mb-3">
         <Stat label="Dishes logged" value={String(visibleLogs.length)} />
         <Stat label="Verified" value={`${verifiedPct}%`} />
         <Stat label="Would bhookmark again" value={String(repeatOrders)} />
-      </div>
+      </motion.div>
 
-      <div className="bg-surface border border-line rounded-card p-4 mb-3">
-        <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-faint mb-2">Signature craving</p>
+      <motion.div {...fadeUp(0.08)} className="bg-surface border border-line rounded-card p-4 mb-3">
+        <div className="flex items-center gap-2 mb-2">
+          <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-faint">Signature craving</p>
+          {(cravingResult.tier === "unlocked" || cravingResult.tier === "early") && (
+            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${CATEGORY_ACCENT[cravingResult.category as Category] ?? "bg-surface2 text-muted"}`}>
+              {cravingResult.category}
+            </span>
+          )}
+        </div>
         {cravingResult.tier === "unlocked" ? (
           <p className="text-sm text-ink/90">
             <span className="text-accent font-semibold">{cravingResult.category}</span> shows up more than anything else in your Bhookmarks
@@ -153,19 +168,19 @@ export default function Profile({
             </p>
           </>
         )}
-      </div>
+      </motion.div>
 
       {contrarian && (
-        <div className="bg-surface border border-line rounded-card p-4 mb-3">
+        <motion.div {...fadeUp(0.12)} className="bg-surface border border-line rounded-card p-4 mb-3">
           <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-faint mb-2">Contrarian pick</p>
           <p className="text-sm text-ink/90">
             You loved <span className="text-accent font-semibold">{contrarian.name}</span> even though the city
             ranks it below 8.0 — your taste and the crowd's don't always agree, and that's the point.
           </p>
-        </div>
+        </motion.div>
       )}
 
-      <div className="bg-surface border border-line rounded-card p-4 mb-3">
+      <motion.div {...fadeUp(0.16)} className="bg-surface border border-line rounded-card p-4 mb-3">
         <div className="flex items-center justify-between mb-2">
           <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-faint">Dietary profile</p>
           {dietSaved && <span className="text-accent text-[11px]">saved</span>}
@@ -198,23 +213,24 @@ export default function Profile({
             </button>
           ))}
         </div>
-      </div>
+      </motion.div>
 
-      <div className="bg-surface border border-line rounded-card p-4 mb-3">
+      <motion.div {...fadeUp(0.2)} className="bg-surface border border-line rounded-card p-4 mb-3">
         <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-faint mb-2">City leaderboard</p>
         <p className="text-sm text-ink/90">Ranked by dish diversity, not visit count — logging the same burger ten times won't move you up.</p>
-      </div>
+      </motion.div>
 
-      <button
+      <motion.button
+        {...fadeUp(0.24)}
         onClick={() => setShowClaim((v) => !v)}
         className="w-full flex items-center justify-between bg-surface border border-line rounded-card p-4 mb-3"
       >
         <span className="font-mono text-[11px] tracking-[0.08em] uppercase text-faint">Run a restaurant?</span>
         <span className="text-faint text-xs">{showClaim ? "hide" : "show"}</span>
-      </button>
+      </motion.button>
 
       {showClaim && (
-        <div className="bg-surface border border-line rounded-card p-4 mb-3">
+        <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} transition={LIQUID_SPRING} className="bg-surface border border-line rounded-card p-4 mb-3">
           <p className="text-muted text-xs mb-3">
             Claim your venue so your own logs there are disclosed and never count toward its public score — Bhookmark never lets a
             restaurant quietly rate itself.
@@ -252,19 +268,20 @@ export default function Profile({
               ))}
             </div>
           )}
-        </div>
+        </motion.div>
       )}
 
-      <button
+      <motion.button
+        {...fadeUp(0.28)}
         onClick={() => setShowSessions((v) => !v)}
         className="w-full flex items-center justify-between bg-surface border border-line rounded-card p-4 mb-3"
       >
         <span className="font-mono text-[11px] tracking-[0.08em] uppercase text-faint">Devices &amp; sessions</span>
         <span className="text-faint text-xs">{showSessions ? "hide" : "show"}</span>
-      </button>
+      </motion.button>
 
       {showSessions && (
-        <div className="flex flex-col gap-2 mb-3">
+        <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} transition={LIQUID_SPRING} className="flex flex-col gap-2 mb-3">
           {sessionsError && <p className="text-bad text-sm px-1">{sessionsError}</p>}
           {sessions.map((s) => (
             <div key={s.deviceId} className="bg-surface border border-line rounded-xl p-3 flex items-center justify-between gap-3">
@@ -283,13 +300,13 @@ export default function Profile({
               )}
             </div>
           ))}
-        </div>
+        </motion.div>
       )}
 
-      <div className="bg-surface border border-line rounded-card p-4 mb-6">
+      <motion.div {...fadeUp(0.32)} className="bg-surface border border-line rounded-card p-4 mb-6">
         <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-faint mb-2">Privacy</p>
         <p className="text-sm text-ink/90">Your exact location is never shown publicly — only used to confirm a verified log at the moment you make it.</p>
-      </div>
+      </motion.div>
 
       <button
         onClick={() => {

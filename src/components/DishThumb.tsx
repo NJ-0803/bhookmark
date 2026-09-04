@@ -2,13 +2,14 @@ interface Props {
   emoji: string;
   tint: string;
   photo?: string;
-  size?: "sm" | "md" | "lg";
+  size?: "sm" | "md" | "card" | "lg";
   scrim?: boolean;
 }
 
 const sizes = {
   sm: "w-12 h-12 text-xl rounded-lg",
   md: "w-16 h-16 text-2xl rounded-xl",
+  card: "w-20 h-20 text-2xl rounded-xl",
   lg: "w-full aspect-[4/3] text-5xl rounded-card",
 };
 
