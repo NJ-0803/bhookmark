@@ -65,12 +65,12 @@ export default function Bhookmarks({
         <>
           {flavorNote && (
             <div className="bg-surface border border-line rounded-card px-4 py-3.5 mb-5">
-              <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-accent mb-1">Flavor DNA</p>
+              <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-saffron mb-1">Flavor DNA</p>
               {flavorNote.kind === "note" ? (
                 <p className="text-sm text-ink/90">{flavorNote.text}</p>
               ) : flavorNote.kind === "early" ? (
                 <p className="text-sm text-ink/90">
-                  <span className="text-gold font-semibold">Early signal</span> — leaning toward{" "}
+                  <span className="text-saffron font-semibold">Early signal</span> — leaning toward{" "}
                   <span className="text-accent font-semibold">{flavorNote.category}</span>, based on {flavorNote.logsSeen} loved logs.
                   Not a real pattern yet.
                 </p>
@@ -132,7 +132,7 @@ export default function Bhookmarks({
                           transition={LIQUID_SPRING}
                           onClick={() => react(log.id, r)}
                           className={`text-[10px] font-medium px-2 py-1 rounded-full border ${
-                            reactions[log.id] === r ? "bg-accent text-accentInk border-accent" : "bg-surface2 border-line text-faint"
+                            reactions[log.id] === r ? "bg-coral text-bg border-coral" : "bg-surface2 border-line text-faint"
                           }`}
                         >
                           {r}
@@ -161,7 +161,7 @@ function timeAgo(ts: number) {
 function Chip({ label, tone }: { label: string; tone: "accent" | "neutral" | "warn" | "bad" }) {
   const toneClass =
     tone === "accent" ? "bg-accentDim text-accent" :
-    tone === "warn" ? "bg-gold/15 text-gold" :
+    tone === "warn" ? "bg-saffron/15 text-saffron" :
     tone === "bad" ? "bg-badDim text-bad" :
     "bg-surface2 text-muted";
   return <span className={`text-[10px] font-medium px-2 py-1 rounded-full ${toneClass}`}>{label}</span>;

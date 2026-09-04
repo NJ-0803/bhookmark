@@ -6,7 +6,7 @@ import type { RemoteLog } from "./api";
 //   "insufficient" — nothing worth saying yet
 //   "early"        — 3+ logs in one category: a qualitative, hedged hint
 //   "unlocked"     — 5+ logs across 3+ venues: the actual signature-craving claim
-const EARLY_LOGS_NEEDED = 3;
+export const EARLY_LOGS_NEEDED = 3;
 const LOGS_NEEDED = 5;
 const VENUES_NEEDED = 3;
 const STRONG_LOGS = 15;

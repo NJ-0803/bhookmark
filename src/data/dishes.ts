@@ -425,6 +425,18 @@ export const CATEGORY_ACCENT: Record<Category, string> = {
   Momos: "bg-teal-500 text-teal-950",
 };
 
+/** Which of the three palette roles (turquoise/saffron/coral) a category's
+ * hover-lift shadow borrows — shared so Home's cards and the trending stack
+ * cast the same "food-coloured shadow" the redesign brief asked for. */
+export const CATEGORY_SHADOW: Record<Category, string> = {
+  "Dosa & Idli": "shadow-saffronGlow",
+  Biryani: "shadow-coralGlow",
+  "Filter Coffee": "shadow-saffronGlow",
+  Burger: "shadow-coralGlow",
+  Pizza: "shadow-coralGlow",
+  Momos: "shadow-accentGlow",
+};
+
 /** Matches a backend log (category/subtype/name/venue only, no photo) back
  * to the static catalog so real photography can be reused where it exists. */
 export function findDishPhoto(category: string, subtype: string, name: string, venue: string): string | undefined {

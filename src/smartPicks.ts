@@ -72,7 +72,7 @@ function weatherNudge(weather: WeatherContext): { category: Category; reason: st
   return null;
 }
 
-async function reverseGeocode(lat: number, lng: number): Promise<{ country: string; city: string } | null> {
+async function reverseGeocode(lat: number, lng: number): Promise<{ country: string; city: string; area: string | null } | null> {
   try {
     const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`, {
       headers: { "Accept-Language": "en" },
@@ -82,7 +82,10 @@ async function reverseGeocode(lat: number, lng: number): Promise<{ country: stri
     const addr = data?.address ?? {};
     const country: string = addr.country ?? "";
     const city: string = addr.city ?? addr.town ?? addr.state_district ?? addr.state ?? "";
-    return country ? { country, city } : null;
+    // Neighborhood-level, when Nominatim has it — real data only, never a
+    // fabricated distance or made-up locality (this app doesn't guess).
+    const area: string | null = addr.suburb ?? addr.neighbourhood ?? addr.city_district ?? null;
+    return country ? { country, city, area } : null;
   } catch {
     return null;
   }
@@ -91,6 +94,12 @@ async function reverseGeocode(lat: number, lng: number): Promise<{ country: stri
 export interface SmartOrderResult {
   categories: Category[];
   reasons: string[];
+  /** Real resolved area/city for a location pill — never a distance, since
+   * nothing here is anchored to one venue yet to measure distance against. */
+  area: string | null;
+  /** Real live weather condition, when resolved, for a contextual UI accent
+   * (e.g. a rain/heat emoji) — never fabricated when weather lookup fails. */
+  weatherMood: "rain" | "hot" | "cold" | null;
 }
 
 /** Real, best-effort personalization from where you actually are and what
@@ -104,6 +113,8 @@ export async function computeSmartOrder(lat: number, lng: number): Promise<Smart
 
   let categories = CATEGORIES.map((c) => c.name);
   const reasons: string[] = [];
+  const area = geo ? geo.area ?? geo.city ?? null : null;
+  const weatherMood = weather ? (weather.isRaining ? "rain" : weather.isHot ? "hot" : weather.isCold ? "cold" : null) : null;
 
   if (geo) {
     const region = regionPriority(geo.country, geo.city);
@@ -121,5 +132,5 @@ export async function computeSmartOrder(lat: number, lng: number): Promise<Smart
     }
   }
 
-  return reasons.length > 0 ? { categories, reasons } : null;
+  return reasons.length > 0 ? { categories, reasons, area, weatherMood } : null;
 }

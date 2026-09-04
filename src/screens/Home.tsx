@@ -1,15 +1,32 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { LIQUID_SPRING, TAP_SCALE } from "../motion";
-import { CATEGORIES, CATEGORY_ACCENT, DISHES, categoryVisual, dishById, dishesForSubtype } from "../data/dishes";
+import { CATEGORIES, CATEGORY_ACCENT, CATEGORY_SHADOW, DISHES, categoryVisual, dishById, dishesForSubtype } from "../data/dishes";
 import type { Category, DishEntry } from "../types";
 import DishThumb from "../components/DishThumb";
 import ScoreBadge from "../components/ScoreBadge";
 import WhyThis from "../components/WhyThis";
 import BrowseCard from "../components/BrowseCard";
+import CravingOrb from "../components/CravingOrb";
+import TrendingStack, { type StackCard } from "../components/TrendingStack";
 import { getDietProfile, getDigest, getNextPicks, getDishScore, getTrending, type DishScoreResponse, type TrendingResponse } from "../api";
 import { computeSmartOrder, type SmartOrderResult } from "../smartPicks";
 import NearMe from "./NearMe";
+
+// Real signal only (live weather beats a guess; local device time is a
+// real fact even weather isn't available) — never a fabricated mood.
+function contextualEmoji(weatherMood: SmartOrderResult["weatherMood"] | undefined): string {
+  if (weatherMood === "rain") return "🌧️";
+  if (weatherMood === "hot") return "🥵";
+  if (weatherMood === "cold") return "🥶";
+  const hour = new Date().getHours();
+  if (hour < 5) return "🌙";
+  if (hour < 11) return "🌅";
+  if (hour < 17) return "😋";
+  if (hour < 21) return "🌆";
+  return "🌃";
+}
+
 
 const SMART_ORDER_CACHE_KEY = "bhookmark.smartOrder";
 const SMART_ORDER_DISMISSED_KEY = "bhookmark.smartOrderDismissed";
@@ -51,6 +68,7 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
   const [trending, setTrending] = useState<TrendingResponse["trending"] | null>(null);
   const [smartLoading, setSmartLoading] = useState(false);
   const [smartDismissed, setSmartDismissed] = useState(() => localStorage.getItem(SMART_ORDER_DISMISSED_KEY) === "1");
+  const [hoveredCategory, setHoveredCategory] = useState<string | null>(null);
 
   const resultsKey = view.name === "results" ? `${view.category}|${view.subtype}` : null;
   useEffect(() => {
@@ -70,7 +88,7 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
     try {
       const cached = JSON.parse(localStorage.getItem(SMART_ORDER_CACHE_KEY) ?? "null");
       if (cached && Date.now() - cached.at < SMART_ORDER_MAX_AGE_MS) {
-        setSmartOrder({ categories: cached.categories, reasons: cached.reasons });
+        setSmartOrder({ categories: cached.categories, reasons: cached.reasons, area: cached.area ?? null, weatherMood: cached.weatherMood ?? null });
       }
     } catch {
       // ignore malformed cache
@@ -168,18 +186,49 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
     } satisfies DishEntry;
   }, [trending]);
 
+  // Layered stack: the trending/top-rated dish up front, then up to two
+  // more real recommended picks peeking behind — never padded with filler.
+  const stackCards = useMemo<StackCard[]>(() => {
+    const front = trendingSpotlight ?? fallbackSpotlight;
+    if (!front) return [];
+    const cards: StackCard[] = [{ dish: front, badge: trendingSpotlight ? `🔥 Trending — ${trending?.count ?? 0} logs this week` : "⭐ Top rated" }];
+    for (const p of picks ?? []) {
+      if (cards.length >= 3) break;
+      const dish = dishById(p.id);
+      if (dish && dish.id !== front.id) cards.push({ dish, badge: "✨ For you" });
+    }
+    return cards;
+  }, [trendingSpotlight, fallbackSpotlight, trending, picks]);
+
   if (view.name === "nearby") {
     return <NearMe onBack={() => setView({ name: "search" })} />;
   }
 
   if (view.name === "search") {
     return (
-      <motion.div key="search" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={LIQUID_SPRING} className="px-5 pt-8 pb-32">
-        <p className="font-mono text-[11px] tracking-[0.14em] uppercase text-faint mb-2">Bangalore · Today</p>
-        <h1 className="font-display font-extrabold text-3xl leading-tight mb-1 text-balance">
-          What are you<br />bhookmarking now? 😏🤤😂
-        </h1>
-        <p className="text-muted text-sm mb-4">Pick a craving. We'll do the rest.</p>
+      <motion.div key="search" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={LIQUID_SPRING} className="relative px-5 pt-8 pb-32">
+        <CravingOrb activeCategory={hoveredCategory} />
+        <div className="relative">
+          {smartOrder?.area ? (
+            <span className="inline-flex items-center gap-1 font-mono text-[11px] tracking-[0.1em] uppercase text-faint bg-surface border border-line rounded-full px-2.5 py-1 mb-3">
+              📍 {smartOrder.area}
+            </span>
+          ) : (
+            <p className="font-mono text-[11px] tracking-[0.14em] uppercase text-faint mb-2">Bangalore · Today</p>
+          )}
+          <h1 className="font-display font-extrabold text-3xl leading-tight mb-1 text-balance">
+            What are you<br />bhookmarking now? <motion.span
+              key={contextualEmoji(smartOrder?.weatherMood)}
+              initial={{ scale: 0.5, rotate: -20, opacity: 0 }}
+              animate={{ scale: 1, rotate: 0, opacity: 1 }}
+              transition={LIQUID_SPRING}
+              className="inline-block"
+            >
+              {contextualEmoji(smartOrder?.weatherMood)}
+            </motion.span>
+          </h1>
+          <p className="text-muted text-sm mb-4">Pick a craving. We'll do the rest.</p>
+        </div>
 
         <div className="flex gap-4 overflow-x-auto mb-5 -mx-5 px-5" style={{ scrollbarWidth: "none" }}>
           {orderedCategories.map((c) => {
@@ -187,12 +236,19 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
             return (
               <motion.button
                 key={c.name}
-                whileTap={TAP_SCALE}
+                whileTap={{ ...TAP_SCALE, y: -2 }}
                 transition={LIQUID_SPRING}
+                onPointerDown={() => setHoveredCategory(c.name)}
+                onPointerEnter={() => setHoveredCategory(c.name)}
+                onPointerLeave={() => setHoveredCategory(null)}
                 onClick={() => setView({ name: "subtype", category: c.name })}
                 className="shrink-0 flex flex-col items-center gap-1.5 w-16"
               >
-                <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-line relative">
+                <div
+                  className={`w-16 h-16 rounded-full overflow-hidden border-2 relative transition-colors ${
+                    hoveredCategory === c.name ? "border-accent" : "border-line"
+                  }`}
+                >
                   {visual.photo ? (
                     <img src={visual.photo} alt="" className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
                   ) : (
@@ -240,36 +296,9 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
           )
         )}
 
-        {!query.trim() && (trendingSpotlight || fallbackSpotlight) && (() => {
-          const dish = trendingSpotlight ?? fallbackSpotlight;
-          return (
-            <motion.button
-              key={dish.id}
-              initial={{ opacity: 0, scale: 0.97 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={LIQUID_SPRING}
-              onClick={() => setView({ name: "profile", dish })}
-              className="relative w-full aspect-[16/10] rounded-card overflow-hidden text-left mb-5 border border-line"
-            >
-              {dish.photo ? (
-                <img src={dish.photo} alt="" className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
-              ) : (
-                <div className={`absolute inset-0 bg-gradient-to-br ${dish.tint} bg-surface2 flex items-center justify-center text-6xl`}>
-                  {dish.emoji}
-                </div>
-              )}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/25 to-black/10" />
-              <span className={`absolute top-3 left-3 text-[10px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-full ${CATEGORY_ACCENT[dish.category]}`}>
-                {trendingSpotlight ? `🔥 Trending — ${trending!.count} logs this week` : "⭐ Top rated"}
-              </span>
-              {!trendingSpotlight && <ScoreBadge score={dish.score} size="sm" className="absolute top-3 right-3" />}
-              <div className="relative h-full flex flex-col justify-end p-4">
-                <div className="font-display font-extrabold text-xl text-white leading-tight drop-shadow">{dish.name}</div>
-                <div className="text-white/70 text-sm mt-0.5">{dish.venue} · {dish.area}</div>
-              </div>
-            </motion.button>
-          );
-        })()}
+        {!query.trim() && (trendingSpotlight || fallbackSpotlight) && (
+          <TrendingStack cards={stackCards} onSelect={(dish) => setView({ name: "profile", dish })} />
+        )}
 
         <button
           onClick={() => setView({ name: "nearby" })}
@@ -285,7 +314,7 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
 
         {digest && (digest.daysSinceLastLog === null || digest.daysSinceLastLog >= 1) && (
           <div className="bg-surface border border-line rounded-card p-4 mb-6">
-            <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-accent mb-1.5">👀 while you were gone</p>
+            <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-saffron mb-1.5">👀 while you were gone</p>
             {digest.logsThisWeek > 0 ? (
               <p className="text-sm text-ink/90">
                 {digest.logsThisWeek} dish{digest.logsThisWeek > 1 ? "es" : ""} logged this week, mostly{" "}
@@ -324,7 +353,11 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
                   const visual = categoryVisual(p.category);
                   const photo = dishById(p.id)?.photo;
                   return (
-                    <div key={p.id} className="shrink-0 w-64 bg-surface border border-line rounded-card overflow-hidden">
+                    <motion.div
+                      key={p.id}
+                      whileHover={{ rotate: 2, y: -4, transition: LIQUID_SPRING }}
+                      className={`shrink-0 w-64 bg-surface border border-line rounded-card overflow-hidden ${CATEGORY_SHADOW[p.category as Category] ?? ""}`}
+                    >
                       <button
                         onClick={() => {
                           const dish = dishById(p.id);
@@ -355,7 +388,7 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
                       <div className="px-3 pb-3">
                         <WhyThis body="Grounded in your real dietary profile and log history — a fixed template, no AI model involved in wording this one." />
                       </div>
-                    </div>
+                    </motion.div>
                   );
                 })}
               </div>
@@ -624,7 +657,7 @@ function ConfidenceChip({ band }: { band: "insufficient" | "early" | "developing
   const copy = { insufficient: "no data", early: "early", developing: "developing", strong: "strong" }[band];
   const tone =
     band === "strong" ? "bg-accentDim text-accent" :
-    band === "developing" ? "bg-gold/10 text-gold" :
+    band === "developing" ? "bg-saffron/10 text-saffron" :
     "bg-surface2 text-faint";
   return <span className={`text-[10px] font-mono uppercase tracking-wide px-2 py-0.5 rounded-full ${tone}`}>{copy}</span>;
 }

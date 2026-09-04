@@ -10,7 +10,7 @@ interface Props {
 export default function ScoreBadge({ score, verified, size = "md", className = "" }: Props) {
   const tone =
     score >= 8.5 ? "text-accent border-accent/40 bg-accentDim" :
-    score >= 7 ? "text-gold border-gold/40 bg-gold/10" :
+    score >= 7 ? "text-saffron border-saffron/40 bg-saffron/10" :
     "text-muted border-line bg-surface2";
 
   const dims = size === "sm" ? "text-xs px-2 py-0.5" : "text-sm px-2.5 py-1";

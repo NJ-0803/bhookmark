@@ -368,7 +368,7 @@ export default function LogFlow({
               <div className="text-4xl mb-3">✓</div>
               <h3 className="font-display font-bold text-xl mb-1">Added to your Bhookmarks</h3>
               {serverStatus === "held" ? (
-                <p className="text-gold text-xs mb-5">Held for a quick review before it counts publicly — logging bursts on one venue trigger this automatically.</p>
+                <p className="text-saffron text-xs mb-5">Held for a quick review before it counts publicly — logging bursts on one venue trigger this automatically.</p>
               ) : serverStatus === "local-only" ? (
                 <p className="text-faint text-xs mb-5">Saved locally — the Bhookmark API wasn't reachable, so it'll sync once it is.</p>
               ) : serverStatus === "session-expired" ? (

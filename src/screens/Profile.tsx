@@ -2,13 +2,25 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import type { RemoteLog, VenueClaim } from "../api";
 import { claimVenue, clearSession, currentDeviceId, getDietProfile, getMyVenueClaims, getSession, listSessions, revokeSession, setDietProfile } from "../api";
-import { signatureCraving } from "../evidenceThresholds";
+import { signatureCraving, EARLY_LOGS_NEEDED } from "../evidenceThresholds";
 import { CATEGORY_ACCENT } from "../data/dishes";
 import type { Category } from "../types";
 import { LIQUID_SPRING } from "../motion";
+import PassportCard from "../components/PassportCard";
+import BottomSheet from "../components/BottomSheet";
 
 function fadeUp(delay: number) {
   return { initial: { opacity: 0, y: 8 }, animate: { opacity: 1, y: 0 }, transition: { ...LIQUID_SPRING, delay } };
+}
+
+// Masked by default — a full phone number sitting in plain view reads as
+// a privacy slip, not a polished product. Reveals only on an explicit tap.
+function maskPhone(phone: string): string {
+  const digits = phone.replace(/[^\d]/g, "");
+  if (digits.length < 4) return phone;
+  const last2 = digits.slice(-2);
+  const cc = phone.trim().startsWith("+") ? phone.trim().slice(0, 3) : "";
+  return `${cc} •••• ••${last2}`.trim();
 }
 
 interface SessionRow {
@@ -27,6 +39,8 @@ const DIET_OPTIONS = [
   { id: "eggetarian", label: "Eggetarian" },
 ];
 const ALLERGEN_OPTIONS = ["dairy", "gluten", "nuts"];
+
+type Sheet = "dietary" | "claim" | "sessions" | null;
 
 export default function Profile({
   logs,
@@ -48,13 +62,13 @@ export default function Profile({
   const contrarian = visibleLogs.find((l) => l.verdict === "loved" && l.score < 8.0);
   const repeatOrders = visibleLogs.filter((l) => l.verdict === "loved").length;
 
+  const [sheet, setSheet] = useState<Sheet>(null);
+  const [phoneRevealed, setPhoneRevealed] = useState(false);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
-  const [showSessions, setShowSessions] = useState(false);
   const [diet, setDiet] = useState("no-restriction");
   const [allergens, setAllergens] = useState<string[]>([]);
   const [dietSaved, setDietSaved] = useState(false);
-  const [showClaim, setShowClaim] = useState(false);
   const [claimVenueName, setClaimVenueName] = useState("");
   const [claims, setClaims] = useState<VenueClaim[]>([]);
   const [claimSubmitting, setClaimSubmitting] = useState(false);
@@ -70,9 +84,9 @@ export default function Profile({
   }, []);
 
   useEffect(() => {
-    if (!showClaim) return;
+    if (sheet !== "claim") return;
     getMyVenueClaims().then((res) => res.ok && setClaims(res.claims));
-  }, [showClaim]);
+  }, [sheet]);
 
   async function submitClaim() {
     if (!claimVenueName.trim()) return;
@@ -104,39 +118,45 @@ export default function Profile({
   }
 
   useEffect(() => {
-    if (!showSessions) return;
+    if (sheet !== "sessions") return;
     listSessions()
       .then((res) => (res.ok ? setSessions(res.sessions) : setSessionsError(res.error ?? "Couldn't load sessions.")))
       .catch(() => setSessionsError("Can't reach the Bhookmark API."));
-  }, [showSessions]);
+  }, [sheet]);
 
   async function handleRevoke(deviceId: string) {
     const res = await revokeSession(deviceId);
     if (res.ok) setSessions((prev) => prev.map((s) => (s.deviceId === deviceId ? { ...s, revoked: true } : s)));
   }
 
+  const phone = session?.user.phone ?? null;
+
   return (
     <div className="px-5 pt-8 pb-32">
-      <p className="font-mono text-[11px] tracking-[0.14em] uppercase text-faint mb-1">Bhookmark Passport</p>
-      <motion.div {...fadeUp(0)} className="flex items-center gap-3 mb-6">
-        <div className="w-14 h-14 rounded-full bg-gradient-to-br from-accent/40 to-accentDim border border-accent/40 flex items-center justify-center font-display font-bold text-lg shadow-lift">
-          N
-        </div>
-        <div>
-          <h1 className="font-display font-bold text-lg">Navtej</h1>
-          <p className="text-faint text-xs">{session?.user.phone ?? "Koramangala"} · Bangalore</p>
-        </div>
-      </motion.div>
-
-      <motion.div {...fadeUp(0.04)} className="grid grid-cols-3 gap-2.5 mb-3">
-        <Stat label="Dishes logged" value={String(visibleLogs.length)} />
-        <Stat label="Verified" value={`${verifiedPct}%`} />
-        <Stat label="Would bhookmark again" value={String(repeatOrders)} />
-      </motion.div>
+      <PassportCard
+        name="Navtej"
+        city={
+          phone
+            ? `${phoneRevealed ? phone : maskPhone(phone)} · Bangalore`
+            : "Bangalore"
+        }
+        dishesLogged={visibleLogs.length}
+        verifiedPct={verifiedPct}
+        repeatCount={repeatOrders}
+        cravingCategory={cravingResult.tier === "unlocked" ? cravingResult.category : null}
+      />
+      {phone && (
+        <button
+          onClick={() => setPhoneRevealed((v) => !v)}
+          className="text-faint text-[11px] underline underline-offset-2 -mt-4 mb-3 block"
+        >
+          {phoneRevealed ? "hide number" : "tap to reveal number"}
+        </button>
+      )}
 
       <motion.div {...fadeUp(0.08)} className="bg-surface border border-line rounded-card p-4 mb-3">
         <div className="flex items-center gap-2 mb-2">
-          <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-faint">Signature craving</p>
+          <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-faint">Flavor DNA</p>
           {(cravingResult.tier === "unlocked" || cravingResult.tier === "early") && (
             <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${CATEGORY_ACCENT[cravingResult.category as Category] ?? "bg-surface2 text-muted"}`}>
               {cravingResult.category}
@@ -150,21 +170,23 @@ export default function Profile({
           </p>
         ) : cravingResult.tier === "early" ? (
           <p className="text-sm text-ink/90">
-            <span className="text-gold font-semibold">Early signal</span> — you might be into{" "}
+            <span className="text-saffron font-semibold">Early signal</span> — you might be into{" "}
             <span className="text-accent font-semibold">{cravingResult.category}</span>, based on {cravingResult.logsSeen} logs so far.
             Not enough for a real pattern yet.
           </p>
         ) : (
           <>
-            <p className="text-sm text-ink/90 mb-2.5">Not enough evidence yet — a real pattern needs more than one lucky order.</p>
+            <p className="text-sm text-ink/90 mb-2.5">
+              Log {EARLY_LOGS_NEEDED} dishes to unlock your Flavor DNA
+            </p>
             <div className="w-full h-1.5 rounded-full bg-surface2 overflow-hidden mb-1.5">
               <div
                 className="h-full bg-accent"
-                style={{ width: `${Math.min(100, (cravingResult.logsSeen / cravingResult.logsNeeded) * 100)}%` }}
+                style={{ width: `${Math.min(100, (cravingResult.logsSeen / EARLY_LOGS_NEEDED) * 100)}%` }}
               />
             </div>
-            <p className="text-faint text-[11px]">
-              {cravingResult.logsSeen}/{cravingResult.logsNeeded} logs · {cravingResult.venuesSeen}/{cravingResult.venuesNeeded} venues in your top category
+            <p className="text-faint text-[11px] tabular">
+              {cravingResult.logsSeen} / {EARLY_LOGS_NEEDED}
             </p>
           </>
         )}
@@ -181,12 +203,61 @@ export default function Profile({
       )}
 
       <motion.div {...fadeUp(0.16)} className="bg-surface border border-line rounded-card p-4 mb-3">
+        <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-faint mb-2">City leaderboard</p>
+        <p className="text-sm text-ink/90">Ranked by dish diversity, not visit count — logging the same burger ten times won't move you up.</p>
+      </motion.div>
+
+      <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-faint mb-2 mt-2">Settings</p>
+      <div className="flex flex-col gap-2 mb-6">
+        <motion.button
+          {...fadeUp(0.2)}
+          onClick={() => setSheet("dietary")}
+          className="w-full flex items-center justify-between bg-surface border border-line rounded-card p-4"
+        >
+          <span className="text-sm font-medium">Dietary profile &amp; allergens</span>
+          <span className="text-faint">›</span>
+        </motion.button>
+
+        <motion.button
+          {...fadeUp(0.24)}
+          onClick={() => setSheet("claim")}
+          className="w-full flex items-center justify-between bg-surface border border-line rounded-card p-4"
+        >
+          <span className="text-sm font-medium">Run a restaurant?</span>
+          <span className="text-faint">›</span>
+        </motion.button>
+
+        <motion.button
+          {...fadeUp(0.28)}
+          onClick={() => setSheet("sessions")}
+          className="w-full flex items-center justify-between bg-surface border border-line rounded-card p-4"
+        >
+          <span className="text-sm font-medium">Devices &amp; sessions</span>
+          <span className="text-faint">›</span>
+        </motion.button>
+      </div>
+
+      <motion.div {...fadeUp(0.32)} className="bg-surface border border-line rounded-card p-4 mb-6">
+        <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-faint mb-2">Privacy</p>
+        <p className="text-sm text-ink/90">Your exact location is never shown publicly — only used to confirm a verified log at the moment you make it.</p>
+      </motion.div>
+
+      <button
+        onClick={() => {
+          clearSession();
+          onSignOut();
+        }}
+        className="w-full text-bad text-sm font-medium py-3"
+      >
+        Sign out
+      </button>
+
+      <BottomSheet open={sheet === "dietary"} onClose={() => setSheet(null)} title="Dietary profile & allergens">
         <div className="flex items-center justify-between mb-2">
-          <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-faint">Dietary profile</p>
           {dietSaved && <span className="text-accent text-[11px]">saved</span>}
         </div>
         <p className="text-muted text-xs mb-3">Filters search, dish warnings, and recommendations across the whole app — set once instead of every search.</p>
-        <div className="flex flex-wrap gap-2 mb-3">
+        <div className="flex flex-wrap gap-2 mb-4">
           {DIET_OPTIONS.map((d) => (
             <button
               key={d.id}
@@ -213,79 +284,54 @@ export default function Profile({
             </button>
           ))}
         </div>
-      </motion.div>
+      </BottomSheet>
 
-      <motion.div {...fadeUp(0.2)} className="bg-surface border border-line rounded-card p-4 mb-3">
-        <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-faint mb-2">City leaderboard</p>
-        <p className="text-sm text-ink/90">Ranked by dish diversity, not visit count — logging the same burger ten times won't move you up.</p>
-      </motion.div>
-
-      <motion.button
-        {...fadeUp(0.24)}
-        onClick={() => setShowClaim((v) => !v)}
-        className="w-full flex items-center justify-between bg-surface border border-line rounded-card p-4 mb-3"
-      >
-        <span className="font-mono text-[11px] tracking-[0.08em] uppercase text-faint">Run a restaurant?</span>
-        <span className="text-faint text-xs">{showClaim ? "hide" : "show"}</span>
-      </motion.button>
-
-      {showClaim && (
-        <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} transition={LIQUID_SPRING} className="bg-surface border border-line rounded-card p-4 mb-3">
-          <p className="text-muted text-xs mb-3">
-            Claim your venue so your own logs there are disclosed and never count toward its public score — Bhookmark never lets a
-            restaurant quietly rate itself.
-          </p>
-          <div className="flex gap-2 mb-2">
-            <input
-              value={claimVenueName}
-              onChange={(e) => setClaimVenueName(e.target.value)}
-              placeholder="Exact venue name, e.g. Truffles"
-              aria-label="Venue name"
-              className="flex-1 bg-surface2 border border-line rounded-lg px-3 py-2 text-sm outline-none focus:border-accent"
-            />
-            <button
-              onClick={submitClaim}
-              disabled={claimSubmitting || !claimVenueName.trim()}
-              className="bg-accent text-accentInk font-semibold rounded-lg px-4 text-sm disabled:opacity-40"
-            >
-              Claim
-            </button>
+      <BottomSheet open={sheet === "claim"} onClose={() => setSheet(null)} title="Run a restaurant?">
+        <p className="text-muted text-xs mb-3">
+          Claim your venue so your own logs there are disclosed and never count toward its public score — Bhookmark never lets a
+          restaurant quietly rate itself.
+        </p>
+        <div className="flex gap-2 mb-2">
+          <input
+            value={claimVenueName}
+            onChange={(e) => setClaimVenueName(e.target.value)}
+            placeholder="Exact venue name, e.g. Truffles"
+            aria-label="Venue name"
+            className="flex-1 bg-surface2 border border-line rounded-lg px-3 py-2 text-sm outline-none focus:border-accent"
+          />
+          <button
+            onClick={submitClaim}
+            disabled={claimSubmitting || !claimVenueName.trim()}
+            className="bg-accent text-accentInk font-semibold rounded-lg px-4 text-sm disabled:opacity-40"
+          >
+            Claim
+          </button>
+        </div>
+        {claimError && <p className="text-bad text-xs mb-2">{claimError}</p>}
+        <p className="text-faint text-[11px] mb-3">A moderator reviews every claim manually before it takes effect.</p>
+        {claims.length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            {claims.map((c) => (
+              <div key={c.id} className="flex items-center justify-between bg-surface2 rounded-lg px-3 py-2">
+                <span className="text-sm truncate">{c.venue}</span>
+                <span
+                  className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded-full shrink-0 ${
+                    c.status === "approved" ? "bg-accentDim text-accent" : c.status === "rejected" ? "bg-badDim text-bad" : "bg-surface text-faint"
+                  }`}
+                >
+                  {c.status}
+                </span>
+              </div>
+            ))}
           </div>
-          {claimError && <p className="text-bad text-xs mb-2">{claimError}</p>}
-          <p className="text-faint text-[11px] mb-3">A moderator reviews every claim manually before it takes effect.</p>
-          {claims.length > 0 && (
-            <div className="flex flex-col gap-1.5">
-              {claims.map((c) => (
-                <div key={c.id} className="flex items-center justify-between bg-surface2 rounded-lg px-3 py-2">
-                  <span className="text-sm truncate">{c.venue}</span>
-                  <span
-                    className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded-full shrink-0 ${
-                      c.status === "approved" ? "bg-accentDim text-accent" : c.status === "rejected" ? "bg-badDim text-bad" : "bg-surface text-faint"
-                    }`}
-                  >
-                    {c.status}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </motion.div>
-      )}
+        )}
+      </BottomSheet>
 
-      <motion.button
-        {...fadeUp(0.28)}
-        onClick={() => setShowSessions((v) => !v)}
-        className="w-full flex items-center justify-between bg-surface border border-line rounded-card p-4 mb-3"
-      >
-        <span className="font-mono text-[11px] tracking-[0.08em] uppercase text-faint">Devices &amp; sessions</span>
-        <span className="text-faint text-xs">{showSessions ? "hide" : "show"}</span>
-      </motion.button>
-
-      {showSessions && (
-        <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} transition={LIQUID_SPRING} className="flex flex-col gap-2 mb-3">
+      <BottomSheet open={sheet === "sessions"} onClose={() => setSheet(null)} title="Devices & sessions">
+        <div className="flex flex-col gap-2">
           {sessionsError && <p className="text-bad text-sm px-1">{sessionsError}</p>}
           {sessions.map((s) => (
-            <div key={s.deviceId} className="bg-surface border border-line rounded-xl p-3 flex items-center justify-between gap-3">
+            <div key={s.deviceId} className="bg-surface2 border border-line rounded-xl p-3 flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <div className="text-sm font-medium truncate">
                   {s.label} {s.deviceId === currentDeviceId() && <span className="text-accent text-xs">· this device</span>}
@@ -301,23 +347,8 @@ export default function Profile({
               )}
             </div>
           ))}
-        </motion.div>
-      )}
-
-      <motion.div {...fadeUp(0.32)} className="bg-surface border border-line rounded-card p-4 mb-6">
-        <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-faint mb-2">Privacy</p>
-        <p className="text-sm text-ink/90">Your exact location is never shown publicly — only used to confirm a verified log at the moment you make it.</p>
-      </motion.div>
-
-      <button
-        onClick={() => {
-          clearSession();
-          onSignOut();
-        }}
-        className="w-full text-bad text-sm font-medium py-3"
-      >
-        Sign out
-      </button>
+        </div>
+      </BottomSheet>
     </div>
   );
 }
@@ -327,13 +358,4 @@ function timeAgo(ts: number) {
   if (s < 60) return "just now";
   if (s < 3600) return `${Math.floor(s / 60)}m ago`;
   return `${Math.floor(s / 3600)}h ago`;
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="bg-surface border border-line rounded-xl p-3 text-center">
-      <div className="font-mono text-lg font-semibold tabular text-accent">{value}</div>
-      <div className="text-faint text-[10px] mt-0.5">{label}</div>
-    </div>
-  );
 }

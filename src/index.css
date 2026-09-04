@@ -12,8 +12,8 @@ html, body, #root {
 
 body {
   margin: 0;
-  background: #0A0C0C;
-  color: #F2F6F4;
+  background: #070908;
+  color: #F5F1E8;
   font-family: "Hanken Grotesk", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   overscroll-behavior-y: none;
@@ -24,14 +24,15 @@ body {
   margin: 0 auto;
   min-height: 100dvh;
   position: relative;
-  background: #0A0C0C;
-  border-left: 1px solid #1B211F;
-  border-right: 1px solid #1B211F;
+  background: #070908;
+  border-left: 1px solid #171E1B;
+  border-right: 1px solid #171E1B;
   overflow: hidden;
 }
 
-/* Ambient night-market glow — breaks up the flat black canvas without
-   competing with food photography, which stays the loudest color. */
+/* Ambient night-market glow — turquoise up top where actions live, a much
+   fainter saffron warmth low down (discovery/trending territory). Both stay
+   subtle: food photography is still the loudest color on any screen. */
 #root::before {
   content: "";
   position: fixed;
@@ -41,7 +42,21 @@ body {
   width: 140%;
   aspect-ratio: 1;
   max-width: 700px;
-  background: radial-gradient(circle, rgba(47, 214, 196, 0.14) 0%, rgba(47, 214, 196, 0.05) 35%, transparent 65%);
+  background: radial-gradient(circle, rgba(49, 226, 209, 0.13) 0%, rgba(49, 226, 209, 0.045) 35%, transparent 65%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+#root::after {
+  content: "";
+  position: fixed;
+  bottom: -15%;
+  left: 50%;
+  translate: -50% 0;
+  width: 120%;
+  aspect-ratio: 1;
+  max-width: 600px;
+  background: radial-gradient(circle, rgba(255, 181, 71, 0.05) 0%, transparent 60%);
   pointer-events: none;
   z-index: 0;
 }
