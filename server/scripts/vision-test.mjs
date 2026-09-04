@@ -147,8 +147,12 @@ async function main() {
     "\nNOTE: the actual vendor call inside detectDish() (real Claude vision analysis of a genuine photo) is " +
     "NOT exercised by this suite — there is no ANTHROPIC_API_KEY configured anywhere in this project yet. " +
     "Everything up to that boundary (auth, schema validation, honest failure mode, rate-limit bookkeeping, " +
-    "and the correction eval-log round trip) is real and passing. Add a real key and re-run against a real " +
-    "photo to validate the vendor-call path before relying on it in production."
+    "and the correction eval-log round trip) is real and passing. This ALSO means the new GLOBAL daily budget " +
+    "cap (AI_DETECT_GLOBAL_DAILY_LIMIT, default 100/day across all users combined — see routes/logs.ts) is " +
+    "untested for the same reason: with vision unconfigured, /logs/detect returns before ever touching that " +
+    "counter, by design (never charge the budget for a call that never happened). Add a real key and re-run " +
+    "against a real photo — and drive the global counter past its limit — to validate both paths before " +
+    "relying on either in production."
   );
   process.exit(fail > 0 ? 1 : 0);
 }

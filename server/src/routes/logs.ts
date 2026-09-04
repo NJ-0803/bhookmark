@@ -186,6 +186,17 @@ logsRouter.get("/detect/status", requireAuth, (_req, res) => {
 
 const DAILY_DETECT_LIMIT = 15;
 
+// A per-user cap alone doesn't bound total cost — 100 users each hitting
+// their own cap is still 100x the spend. This is the actual ceiling on
+// what the whole app can spend on vision calls in a day, independent of
+// how many users show up. Configurable via env var (edit + redeploy to
+// change it, no code logic change needed) — verified against Claude
+// Sonnet 5's real published pricing ($2/M input, $10/M output) and this
+// app's own 768px-downscaled image size (~700 visual tokens): each call
+// costs under half a cent, so the 100/day default caps worst-case spend
+// at roughly $0.40/day (~$12/month) regardless of how many users show up.
+const GLOBAL_DAILY_DETECT_LIMIT = Number(process.env.AI_DETECT_GLOBAL_DAILY_LIMIT) || 100;
+
 const detectSchema = z.object({
   imageBase64: z.string().min(1),
   mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
@@ -193,9 +204,11 @@ const detectSchema = z.object({
 
 // Real image analysis, scoped per the brief: never fabricates confidence,
 // never blocks manual logging on failure, never persists the photo (there is
-// no object storage yet — see the implementation plan's Q1 decision). The
-// per-user daily cap only counts requests that actually reach the vendor,
-// not ones short-circuited by a missing key or bad payload.
+// no object storage yet — see the implementation plan's Q1 decision). Both
+// caps below only count requests that actually reach this point — never
+// ones short-circuited by a missing key or bad payload — and the per-user
+// check runs first so a user already over their own limit never eats into
+// the shared global budget for a call that was never going to happen anyway.
 logsRouter.post("/detect", requireAuth, async (req, res) => {
   const parsed = detectSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -209,6 +222,12 @@ logsRouter.post("/detect", requireAuth, async (req, res) => {
   const dailyCount = await db.recordVenueHit(`ai-detect:${req.user!.sub}`, Date.now(), 24 * 60 * 60 * 1000);
   if (dailyCount > DAILY_DETECT_LIMIT) {
     return res.status(429).json({ ok: false, error: `Daily AI-detect limit reached (${DAILY_DETECT_LIMIT}/day) — enter the dish manually instead.` });
+  }
+
+  const globalCount = await db.recordVenueHit("ai-detect:global", Date.now(), 24 * 60 * 60 * 1000);
+  if (globalCount > GLOBAL_DAILY_DETECT_LIMIT) {
+    await db.logSecurityEvent("ai_detect_global_budget_reached", `limit=${GLOBAL_DAILY_DETECT_LIMIT}`);
+    return res.status(429).json({ ok: false, error: "daily_budget_reached" });
   }
 
   const result = await detectDish(parsed.data.imageBase64, parsed.data.mimeType);
