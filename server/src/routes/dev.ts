@@ -21,9 +21,3 @@ devRouter.post("/set-role", requireAuth, async (req, res) => {
 devRouter.get("/security-events", async (_req, res) => {
   res.json({ ok: true, events: await db.listSecurityEvents() });
 });
-
-// DEV-ONLY visibility into the AI-correction eval log (brief 1.3) — no
-// admin console exists yet, and this table has no other read path.
-devRouter.get("/ai-corrections", async (_req, res) => {
-  res.json({ ok: true, corrections: await db.listAiCorrections() });
-});

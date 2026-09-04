@@ -83,14 +83,6 @@ export interface PushSubscriptionJSON {
   keys: { p256dh: string; auth: string };
 }
 
-export interface AiCorrection {
-  id: string;
-  userId: string;
-  aiSuggestion: unknown;
-  userCorrection: unknown;
-  createdAt: number;
-}
-
 function userFromRow(r: any): User {
   return {
     id: r.id,
@@ -380,25 +372,6 @@ export async function logSecurityEvent(type: string, detail: string): Promise<vo
 export async function listSecurityEvents(limit = 50): Promise<{ type: string; detail: string; at: number }[]> {
   const rows = await sql()`SELECT type, detail, at FROM security_events ORDER BY at DESC LIMIT ${limit}`;
   return rows.map((r: any) => ({ type: r.type, detail: r.detail, at: Number(r.at) }));
-}
-
-// ---------- AI corrections (eval-only) ----------
-
-export async function recordAiCorrection(c: AiCorrection): Promise<void> {
-  await sql()`
-    INSERT INTO ai_corrections (id, user_id, ai_suggestion, user_correction, created_at)
-    VALUES (${c.id}, ${c.userId}, ${JSON.stringify(c.aiSuggestion)}, ${JSON.stringify(c.userCorrection)}, ${c.createdAt})`;
-}
-
-export async function listAiCorrections(limit = 50): Promise<AiCorrection[]> {
-  const rows = await sql()`SELECT * FROM ai_corrections ORDER BY created_at DESC LIMIT ${limit}`;
-  return rows.map((r: any) => ({
-    id: r.id,
-    userId: r.user_id,
-    aiSuggestion: r.ai_suggestion,
-    userCorrection: r.user_correction,
-    createdAt: Number(r.created_at),
-  }));
 }
 
 // ---------- Venue claims (brief 1.5: restaurant self-rating disclosure) ----------

@@ -36,11 +36,7 @@ app.use(
     origin: [/^http:\/\/localhost:\d+$/, /^https:\/\/localhost:\d+$/, /\.vercel\.app$/],
   })
 );
-// Raised from 1mb to fit a compressed, client-downscaled base64 photo for
-// /logs/detect (AI vision). The real ceiling is Vercel's own platform
-// request-size limit, not this value — this just avoids Express rejecting
-// a reasonably-sized image before it ever reaches that limit.
-app.use(express.json({ limit: "6mb" }));
+app.use(express.json({ limit: "1mb" }));
 
 // A13/global abuse floor: defense in depth behind the endpoint-specific
 // limiters in routes/auth.ts. Found by an actual 100-concurrent-user test
