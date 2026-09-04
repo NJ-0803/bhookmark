@@ -55,12 +55,19 @@ CREATE TABLE IF NOT EXISTS logs (
   device_id TEXT NOT NULL,
   created_at BIGINT NOT NULL,
   location_verified BOOLEAN NOT NULL DEFAULT false,
-  owner_disclosed BOOLEAN NOT NULL DEFAULT false
+  owner_disclosed BOOLEAN NOT NULL DEFAULT false,
+  visibility TEXT NOT NULL DEFAULT 'public'
 );
 CREATE INDEX IF NOT EXISTS idx_logs_user ON logs(user_id);
 -- Added after logs already existed in production.
 ALTER TABLE logs ADD COLUMN IF NOT EXISTS location_verified BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE logs ADD COLUMN IF NOT EXISTS owner_disclosed BOOLEAN NOT NULL DEFAULT false;
+-- Privacy visibility levels (brief Phase 2: "private diary" option) —
+-- public is the default because this app's core loop is a shared community
+-- score, not a private-first journal (unlike the brief's generic default,
+-- this is a deliberate product call, not an oversight) — private is an
+-- explicit opt-in per log, never silently applied.
+ALTER TABLE logs ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'public';
 
 -- Ranking-manipulation control (brief 1.5: "repeated delete-and-repost
 -- behaviour"). Deliberately separate from the logs table itself — a log

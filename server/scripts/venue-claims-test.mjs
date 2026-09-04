@@ -55,8 +55,8 @@ async function becomeModerator(phone, ip) {
 // threshold and starts failing unrelated assertions (this bit qa-brief-tests.mjs
 // once already; see its own randomTestIp for the full story).
 function randomTestIp() {
-  const b = () => 2 + Math.floor(Math.random() * 250);
-  return `203.0.113.${b()}`;
+  const o = () => Math.floor(Math.random() * 256);
+  return `10.${o()}.${o()}.${o()}`;
 }
 
 async function main() {

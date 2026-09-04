@@ -150,6 +150,7 @@ export interface RemoteLog {
   status: "published" | "held" | "removed";
   createdAt: number;
   ownerDisclosed?: boolean;
+  visibility?: "private" | "public";
 }
 
 export async function getMyLogs(): Promise<{ ok: boolean; logs: RemoteLog[]; error?: string }> {

@@ -26,15 +26,17 @@ async function j(path, opts = {}) {
   return { status: res.status, body };
 }
 
-// A fresh random fake IP per test run — NOT a fixed constant. A hardcoded
-// test IP re-run enough times across sessions eventually crosses the real
-// multi-account-network threshold itself (exactly what happened here: the
-// first fixed IPs used for this file worked once, then started tripping
-// the very signal a different test was trying to isolate from). Random
-// per-run octets in a reserved test-net range avoid ever accumulating.
+// A fresh random fake IP per test run — NOT a fixed constant, and NOT drawn
+// from a small fixed /24 either. A hardcoded IP, or one from a 250-address
+// pool, eventually crosses the real multi-account-network threshold itself
+// after enough repeated runs across a long session (this happened twice:
+// once with fixed constants, again with a single reserved /24 that
+// accumulated history over many runs today). Three random octets inside
+// 10.0.0.0/8 (~16.7M addresses) makes that collision practically impossible
+// regardless of how many times this suite runs in one day.
 function randomTestIp() {
-  const b = () => 2 + Math.floor(Math.random() * 250);
-  return `198.51.100.${b()}`;
+  const o = () => Math.floor(Math.random() * 256);
+  return `10.${o()}.${o()}.${o()}`;
 }
 
 // `ip` sets X-Forwarded-For, which the real app now honors (app.set("trust

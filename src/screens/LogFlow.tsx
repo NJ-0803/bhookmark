@@ -39,6 +39,7 @@ export default function LogFlow({
   const [locationCoords, setLocationCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [locationMessage, setLocationMessage] = useState<string | null>(null);
   const [note, setNote] = useState("");
+  const [isPrivate, setIsPrivate] = useState(false);
   const [offlineSim, setOfflineSim] = useState(false);
   const [showOfflineBanner, setShowOfflineBanner] = useState(false);
   const [serverStatus, setServerStatus] = useState<ServerStatus>("local-only");
@@ -130,6 +131,7 @@ export default function LogFlow({
           score,
           note,
           deviceId: currentDeviceId() ?? "unknown-device",
+          visibility: isPrivate ? "private" : "public",
           evidence: { livePhoto: !!photoUrl, receipt: false, location: locationCoords },
         }),
       });
@@ -324,6 +326,14 @@ export default function LogFlow({
                 />
               </Field>
               <div className="mb-4" />
+
+              <ToggleRow
+                label="Keep this private"
+                sub="Never counts toward any public score or shows to anyone else — still saved to your own Palate"
+                value={isPrivate}
+                onChange={setIsPrivate}
+              />
+              <div className="mb-2.5" />
 
               <ToggleRow label="Simulate poor connection" sub="For testing the offline fallback" value={offlineSim} onChange={setOfflineSim} />
 

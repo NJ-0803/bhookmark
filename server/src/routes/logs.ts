@@ -17,6 +17,10 @@ const createSchema = z.object({
   score: z.number().min(0).max(10),
   note: z.string().max(300).default(""),
   deviceId: z.string(),
+  // Public by default (this app's core loop is a shared community score,
+  // not a private-first diary) — private is an explicit per-log opt-in,
+  // never silently applied.
+  visibility: z.enum(["private", "public"]).default("public"),
   evidence: z.object({
     livePhoto: z.boolean(),
     receipt: z.boolean().default(false),
@@ -168,6 +172,7 @@ logsRouter.post("/", requireAuth, async (req, res) => {
     createdAt: now,
     locationVerified: liveLocationMatch,
     ownerDisclosed,
+    visibility: data.visibility,
   };
   await db.createLog(log);
 

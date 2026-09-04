@@ -48,6 +48,8 @@ export interface OtpRecord {
   attempts: number;
 }
 
+export type LogVisibility = "private" | "public";
+
 export interface DishLog {
   id: string;
   userId: string;
@@ -65,6 +67,7 @@ export interface DishLog {
   createdAt: number;
   locationVerified: boolean;
   ownerDisclosed: boolean;
+  visibility: LogVisibility;
 }
 
 export type VenueClaimStatus = "pending" | "approved" | "rejected";
@@ -120,6 +123,7 @@ function logFromRow(r: any): DishLog {
     createdAt: Number(r.created_at),
     locationVerified: r.location_verified ?? false,
     ownerDisclosed: r.owner_disclosed ?? false,
+    visibility: r.visibility ?? "public",
   };
 }
 
@@ -225,8 +229,8 @@ export async function listDevicesForUser(userId: string): Promise<Device[]> {
 
 export async function createLog(log: DishLog): Promise<void> {
   await sql()`
-    INSERT INTO logs (id, user_id, category, subtype, name, venue, verdict, score, note, evidence_level, verified, status, device_id, created_at, location_verified, owner_disclosed)
-    VALUES (${log.id}, ${log.userId}, ${log.category}, ${log.subtype}, ${log.name}, ${log.venue}, ${log.verdict}, ${log.score}, ${log.note}, ${log.evidenceLevel}, ${log.verified}, ${log.status}, ${log.deviceId}, ${log.createdAt}, ${log.locationVerified}, ${log.ownerDisclosed})`;
+    INSERT INTO logs (id, user_id, category, subtype, name, venue, verdict, score, note, evidence_level, verified, status, device_id, created_at, location_verified, owner_disclosed, visibility)
+    VALUES (${log.id}, ${log.userId}, ${log.category}, ${log.subtype}, ${log.name}, ${log.venue}, ${log.verdict}, ${log.score}, ${log.note}, ${log.evidenceLevel}, ${log.verified}, ${log.status}, ${log.deviceId}, ${log.createdAt}, ${log.locationVerified}, ${log.ownerDisclosed}, ${log.visibility})`;
 }
 
 export async function getLogById(id: string): Promise<DishLog | undefined> {
@@ -270,13 +274,17 @@ export async function listLogsForUser(userId: string): Promise<DishLog[]> {
 // influence organic rankings) — an owner's own log still exists and shows
 // up on their personal Palate, it just never counts toward what other
 // people see as "the" score.
+// All public reads exclude both owner-disclosed logs (above) AND private
+// logs (brief Phase 2: granular visibility) — a private log still exists
+// for its owner's own journal, it just never enters any aggregate anyone
+// else can see.
 export async function listPublishedLogs(venue: string, category: string): Promise<DishLog[]> {
-  const rows = await sql()`SELECT * FROM logs WHERE venue = ${venue} AND category = ${category} AND status = 'published' AND owner_disclosed = false ORDER BY created_at DESC`;
+  const rows = await sql()`SELECT * FROM logs WHERE venue = ${venue} AND category = ${category} AND status = 'published' AND owner_disclosed = false AND visibility = 'public' ORDER BY created_at DESC`;
   return rows.map(logFromRow);
 }
 
 export async function listPublishedLogsByCategorySubtype(category: string, subtype: string): Promise<DishLog[]> {
-  const rows = await sql()`SELECT * FROM logs WHERE category = ${category} AND subtype = ${subtype} AND status = 'published' AND owner_disclosed = false`;
+  const rows = await sql()`SELECT * FROM logs WHERE category = ${category} AND subtype = ${subtype} AND status = 'published' AND owner_disclosed = false AND visibility = 'public'`;
   return rows.map(logFromRow);
 }
 
@@ -286,7 +294,7 @@ export async function listPublishedLogsByCategorySubtype(category: string, subty
 export async function listPublishedLogsForDish(venue: string, category: string, subtype: string, name: string): Promise<DishLog[]> {
   const rows = await sql()`
     SELECT * FROM logs
-    WHERE venue = ${venue} AND category = ${category} AND subtype = ${subtype} AND name = ${name} AND status = 'published' AND owner_disclosed = false`;
+    WHERE venue = ${venue} AND category = ${category} AND subtype = ${subtype} AND name = ${name} AND status = 'published' AND owner_disclosed = false AND visibility = 'public'`;
   return rows.map(logFromRow);
 }
 
@@ -312,6 +320,7 @@ export async function getTrendingDish(windowMs: number, minCount: number, minUse
     SELECT venue, category, subtype, name, COUNT(*)::int AS cnt, COUNT(DISTINCT user_id)::int AS distinct_users
     FROM logs
     WHERE status = 'published'
+      AND visibility = 'public'
       AND created_at > ${cutoff}
       AND venue NOT ILIKE 'QA %' AND venue NOT ILIKE '%test%'
       AND name NOT ILIKE '%test%' AND name NOT ILIKE 'ghost%'
