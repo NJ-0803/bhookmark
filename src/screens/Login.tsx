@@ -62,6 +62,9 @@ export default function Login({ onSignedIn }: { onSignedIn: () => void }) {
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             placeholder="+91 98765 43210"
+            aria-label="Phone number"
+            type="tel"
+            autoComplete="tel"
             className="w-full bg-surface border border-line rounded-xl px-4 py-3.5 text-[15px] outline-none focus:border-accent transition-colors mb-4"
           />
           {error && <p className="text-bad text-sm mb-4">{error}</p>}
@@ -85,6 +88,8 @@ export default function Login({ onSignedIn }: { onSignedIn: () => void }) {
             onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
             placeholder="000000"
             inputMode="numeric"
+            aria-label="6-digit verification code"
+            autoComplete="one-time-code"
             className="w-full bg-surface border border-line rounded-xl px-4 py-3.5 text-[15px] tracking-[0.3em] text-center font-mono outline-none focus:border-accent transition-colors mb-4"
           />
           {error && <p className="text-bad text-sm mb-4">{error}</p>}

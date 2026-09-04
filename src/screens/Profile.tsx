@@ -240,6 +240,7 @@ export default function Profile({
               value={claimVenueName}
               onChange={(e) => setClaimVenueName(e.target.value)}
               placeholder="Exact venue name, e.g. Truffles"
+              aria-label="Venue name"
               className="flex-1 bg-surface2 border border-line rounded-lg px-3 py-2 text-sm outline-none focus:border-accent"
             />
             <button

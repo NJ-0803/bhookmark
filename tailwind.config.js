@@ -10,7 +10,7 @@ export default {
         line: "#242B29",
         ink: "#F2F6F4",
         muted: "#8CA09C",
-        faint: "#5B6D69",
+        faint: "#7B8D89",
         accent: "#2FD6C4",
         accentInk: "#06201D",
         accentDim: "#123330",

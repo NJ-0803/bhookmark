@@ -61,7 +61,7 @@ export default function CravingRoom() {
         </div>
 
         <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-faint mb-2">Radius</p>
-        <input type="range" min={1} max={10} value={radius} onChange={(e) => setRadius(Number(e.target.value))} className="w-full accent-accent mb-1" />
+        <input type="range" min={1} max={10} value={radius} onChange={(e) => setRadius(Number(e.target.value))} aria-label="Search radius in kilometers" className="w-full accent-accent mb-1" />
         <p className="text-sm text-ink/80 mb-6">{radius} km from Koramangala</p>
 
         <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-faint mb-2">Mood</p>
@@ -203,10 +203,10 @@ function SwipeCard({ dish, onSwipe }: { dish: (typeof DISHES)[number]; onSwipe: 
         <p className="text-muted text-sm mt-1">{dish.venue} · {dish.area}</p>
       </div>
       <div className="grid grid-cols-2 gap-4">
-        <motion.button onClick={() => tapButton(false)} whileTap={TAP_SCALE} transition={LIQUID_SPRING} className="bg-surface2 border border-line rounded-xl py-4 text-2xl">
+        <motion.button onClick={() => tapButton(false)} whileTap={TAP_SCALE} transition={LIQUID_SPRING} aria-label="Not for me" className="bg-surface2 border border-line rounded-xl py-4 text-2xl">
           ✕
         </motion.button>
-        <motion.button onClick={() => tapButton(true)} whileTap={TAP_SCALE} transition={LIQUID_SPRING} className="bg-accentDim border border-accent/40 rounded-xl py-4 text-2xl">
+        <motion.button onClick={() => tapButton(true)} whileTap={TAP_SCALE} transition={LIQUID_SPRING} aria-label="Loved it" className="bg-accentDim border border-accent/40 rounded-xl py-4 text-2xl">
           ♥
         </motion.button>
       </div>

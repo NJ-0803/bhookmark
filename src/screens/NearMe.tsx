@@ -50,8 +50,8 @@ export default function NearMe({ onBack }: { onBack: () => void }) {
   return (
     <div className="px-5 pt-6 pb-32">
       <div className="flex items-center gap-3 mb-5">
-        <button onClick={onBack} className="w-8 h-8 rounded-full bg-surface border border-line flex items-center justify-center text-muted">‹</button>
-        <h2 className="font-display font-semibold text-lg">Near me</h2>
+        <button onClick={onBack} aria-label="Back" className="w-11 h-11 rounded-full bg-surface border border-line flex items-center justify-center text-muted">‹</button>
+        <h1 className="font-display font-semibold text-lg">Near me</h1>
       </div>
 
       {stage.name === "pick" && (
@@ -77,7 +77,7 @@ export default function NearMe({ onBack }: { onBack: () => void }) {
           </div>
 
           <p className="font-mono text-[11px] tracking-[0.1em] uppercase text-faint mb-2">Radius</p>
-          <input type="range" min={1} max={10} value={radiusKm} onChange={(e) => setRadiusKm(Number(e.target.value))} className="w-full accent-accent mb-1" />
+          <input type="range" min={1} max={10} value={radiusKm} onChange={(e) => setRadiusKm(Number(e.target.value))} aria-label="Search radius in kilometers" className="w-full accent-accent mb-1" />
           <p className="text-sm text-ink/80 mb-7">{radiusKm} km from wherever you are right now</p>
 
           <motion.button onClick={findNearby} whileTap={TAP_SCALE} transition={LIQUID_SPRING} className="w-full bg-accent text-accentInk font-semibold rounded-xl py-3.5">

@@ -182,7 +182,8 @@ export default function LogFlow({
             onClick={onClose}
             whileTap={TAP_SCALE}
             transition={LIQUID_SPRING}
-            className="w-8 h-8 rounded-full bg-surface border border-line flex items-center justify-center text-muted"
+            aria-label="Close"
+            className="w-11 h-11 rounded-full bg-surface border border-line flex items-center justify-center text-muted"
           >
             ✕
           </motion.button>

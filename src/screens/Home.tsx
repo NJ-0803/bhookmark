@@ -211,6 +211,7 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search a craving — burger, dosa, biryani…"
+          aria-label="Search a craving"
           className="w-full bg-surface border border-line rounded-xl px-4 py-3.5 text-[15px] placeholder:text-faint outline-none focus:border-accent transition-colors mb-4"
         />
 
@@ -231,7 +232,7 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
                 </div>
               </button>
               {!smartLoading && (
-                <button onClick={dismissSmartPicks} className="text-faint text-xs shrink-0 px-1" aria-label="Dismiss">
+                <button onClick={dismissSmartPicks} className="text-faint text-xs shrink-0 w-11 h-11 -mr-2 flex items-center justify-center" aria-label="Dismiss">
                   ✕
                 </button>
               )}
@@ -493,7 +494,8 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
                   <button
                     onClick={() => setResultIndex((i) => Math.max(i - 1, 0))}
                     disabled={!canPrev}
-                    className="w-9 h-9 rounded-full bg-surface border border-line flex items-center justify-center text-muted disabled:opacity-30"
+                    aria-label="Previous dish"
+                    className="w-11 h-11 rounded-full bg-surface border border-line flex items-center justify-center text-muted disabled:opacity-30"
                   >
                     ‹
                   </button>
@@ -505,7 +507,8 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
                   <button
                     onClick={() => setResultIndex((i) => Math.min(i + 1, dishes.length - 1))}
                     disabled={!canNext}
-                    className="w-9 h-9 rounded-full bg-surface border border-line flex items-center justify-center text-muted disabled:opacity-30"
+                    aria-label="Next dish"
+                    className="w-11 h-11 rounded-full bg-surface border border-line flex items-center justify-center text-muted disabled:opacity-30"
                   >
                     ›
                   </button>
@@ -629,7 +632,7 @@ function ConfidenceChip({ band }: { band: "insufficient" | "early" | "developing
 function BackRow({ label, onBack }: { label: string; onBack: () => void }) {
   return (
     <div className="flex items-center gap-3 mb-4">
-      <button onClick={onBack} className="w-8 h-8 rounded-full bg-surface border border-line flex items-center justify-center text-muted">
+      <button onClick={onBack} aria-label="Back" className="w-11 h-11 rounded-full bg-surface border border-line flex items-center justify-center text-muted">
         ‹
       </button>
       <h2 className="font-display font-semibold text-lg truncate">{label}</h2>

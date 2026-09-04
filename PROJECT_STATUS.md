@@ -43,7 +43,14 @@ Extended to the rest of the app this session: `CATEGORY_ACCENT` and `findDishPho
 - **Profile**: every card now fades in staggered on load (previously zero motion); the Signature Craving card shows a category-accent pill once a pattern is unlocked or hinted.
 - **Circles**: `FoodCircles.tsx` gained a conic-gradient match-score ring and avatar-initial stacks per circle; `RemixableLists.tsx` gained a colored accent spine + tinted clone-count badge per list; both use the same stagger-fade motion as everywhere else. `CravingRoom.tsx` already had this treatment and was left as-is.
 
-**Not done**: a full accessibility audit (44×44 targets, screen-reader pass, contrast) — that's the one remaining Phase 5 item.
+### Accessibility audit (Phase 5, closes it out)
+- **Contrast**: `text-faint` (used 96x app-wide) measured 3.58:1 against the main background — below WCAG AA's 4.5:1 for normal text. Fixed at the token level (`tailwind.config.js`: `#5B6D69` → `#7B8D89`), which fixed every usage at once since it's never used for anything but text color.
+- **Tap targets**: 5 real interactive controls were 32-36px (back buttons in Home/NearMe, LogFlow's close button, Home's carousel prev/next) — bumped to 44×44 (`w-11 h-11`), the WCAG minimum. Checked every other small element found (avatars, match-rings, decorative chips) and confirmed they're non-interactive, so left alone.
+- **Screen reader labels**: added `aria-label` to icon-only controls that had none (CravingRoom's ✕/♥ swipe buttons, Home/Login/Profile's placeholder-only text inputs, the two radius `<input type="range">` sliders). LogFlow's inputs were already properly wrapped in `<label>` — no change needed there. Fixed a heading-order slip in `NearMe.tsx` (`<h2>` → `<h1>`, since it's the sole heading when that screen is the active view).
+- **Reduced motion**: found the existing `prefers-reduced-motion` CSS rule in `index.css` only catches native CSS transitions — every `motion.*` component (all the page fades, stagger-ins, swipe cards) is framer-motion, driven in JS, and doesn't respect that rule at all. Fixed by wrapping the app root in `<MotionConfig reducedMotion="user">` (`src/main.tsx`) — framer's own native equivalent, so vestibular-safe users get it everywhere at once.
+- **Images**: audited every `<img alt="">` (dish/venue photos) — all are adjacent to visible text naming the same dish/venue, so decorative `alt=""` is correct, not an oversight.
+
+Verified: both typechecks clean, all 89 backend + 4 IP-isolation + 15 frontend tests still pass, spot-checked live in a browser (44px hit areas confirmed via `getBoundingClientRect()`, new contrast visibly more legible).
 
 ### Also fixed this session
 - Horizontal swipeable results deck (Tinder-style) replacing a bland vertical list capped at ~2 static demo dishes; expanded the Pizza catalog to 10 real Bangalore chains.
@@ -72,7 +79,7 @@ Extended to the rest of the app this session: `CATEGORY_ACCENT` and `findDishPho
 - Custom domain purchase (user's action) + DNS wiring (my action, once they have a domain name).
 - Phase 3: You-page progressive-disclosure redesign (`Profile.tsx` is still one flat scroll), Bhookmarks redesign (calendar, taste fingerprint, notes search), Bite Buddy / Taste Pulse (not built at all).
 - Phase 4: Craving Rooms / Food Circles / Lists — all still fully mocked, zero real backend (push notifications are the one real piece already built).
-- Phase 5 remainder: a full accessibility audit (44×44 targets, screen-reader pass, contrast) — the visual-redesign parity across Bhookmarks/Profile/Circles is now done.
+- ~~Phase 5 remainder: accessibility audit~~ — **done** (2026-09-04). Phase 5 is now fully closed.
 - The formal manual QA click-through promised early in the project — done piecemeal via ad hoc testing across this whole session, never once as a single formal pass.
 - Data export + account deletion workflow (Phase 2) — explicitly deferred by the user ("not needed for now, will see afterwards").
 
