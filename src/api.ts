@@ -149,10 +149,33 @@ export interface RemoteLog {
   verified: boolean;
   status: "published" | "held" | "removed";
   createdAt: number;
+  ownerDisclosed?: boolean;
 }
 
 export async function getMyLogs(): Promise<{ ok: boolean; logs: RemoteLog[]; error?: string }> {
   const res = await api("/logs/mine");
+  return res.json();
+}
+
+export interface VenueClaim {
+  id: string;
+  userId: string;
+  venue: string;
+  status: "pending" | "approved" | "rejected";
+  createdAt: number;
+  reviewedAt: number | null;
+}
+
+// Brief 1.5: restaurant staff self-rating disclosure. Submitting a claim
+// grants nothing by itself — a moderator has to approve it before the
+// venue's own logs stop counting toward its public score.
+export async function claimVenue(venue: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await api("/venues/claim", { method: "POST", body: JSON.stringify({ venue }) });
+  return res.json();
+}
+
+export async function getMyVenueClaims(): Promise<{ ok: boolean; claims: VenueClaim[] }> {
+  const res = await api("/venues/claims/mine");
   return res.json();
 }
 
@@ -201,6 +224,43 @@ export interface TrendingResponse {
 export async function getTrending(): Promise<TrendingResponse> {
   const res = await fetch("/dishes/trending");
   return res.json();
+}
+
+export async function getDetectStatus(): Promise<{ ok: boolean; configured: boolean }> {
+  const res = await api("/logs/detect/status");
+  return res.json();
+}
+
+export interface DishCandidate {
+  category: string;
+  subtype: string;
+  name: string;
+  confidence: number;
+}
+
+export type DetectResult =
+  | { ok: true; isFood: true; candidates: DishCandidate[] }
+  | { ok: true; isFood: false; reason: string }
+  | { ok: false; error: string };
+
+// Real image analysis (brief 1.3) — never fabricates a guess. The photo is
+// sent once for this analysis and never persisted anywhere (see the
+// implementation notes on why: no object storage exists, and that was a
+// deliberate scope decision, not an oversight).
+export async function detectDish(imageBase64: string, mimeType: string): Promise<DetectResult> {
+  const res = await api("/logs/detect", { method: "POST", body: JSON.stringify({ imageBase64, mimeType }) });
+  return res.json();
+}
+
+// Passive eval log only (brief 1.3: corrections are logged for evaluation,
+// never used as unreviewed training data) — fire-and-forget from the UI's
+// perspective, a failure here must never block saving the actual log.
+export async function submitCorrection(aiSuggestion: unknown, userCorrection: unknown): Promise<void> {
+  try {
+    await api("/logs/correction", { method: "POST", body: JSON.stringify({ aiSuggestion, userCorrection }) });
+  } catch {
+    // best-effort only
+  }
 }
 
 export async function getNearbyVenues(category: string, lat: number, lng: number, radiusKm = 5) {

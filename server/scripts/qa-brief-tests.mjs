@@ -26,6 +26,17 @@ async function j(path, opts = {}) {
   return { status: res.status, body };
 }
 
+// A fresh random fake IP per test run — NOT a fixed constant. A hardcoded
+// test IP re-run enough times across sessions eventually crosses the real
+// multi-account-network threshold itself (exactly what happened here: the
+// first fixed IPs used for this file worked once, then started tripping
+// the very signal a different test was trying to isolate from). Random
+// per-run octets in a reserved test-net range avoid ever accumulating.
+function randomTestIp() {
+  const b = () => 2 + Math.floor(Math.random() * 250);
+  return `198.51.100.${b()}`;
+}
+
 // `ip` sets X-Forwarded-For, which the real app now honors (app.set("trust
 // proxy", true) — see the fix that made this test correct in the first
 // place) so plain fetch from one machine can still simulate real network
@@ -53,7 +64,7 @@ async function main() {
   // ---- P0 functional / trust: private (held/removed) logs never leak into public aggregates ----
   console.log("\nP0 functional/trust — held logs never contribute to a public score");
   {
-    const ip = "198.51.100.1"; // dedicated fake network — isolates this test from this
+    const ip = randomTestIp(); // dedicated fake network — isolates this test from this
     // machine's own real IP, which accumulates distinct QA accounts across every
     // run and would otherwise trip the multi-account-network signal by accident.
     const phone = `+91900001${Math.floor(Math.random() * 9000 + 1000)}`;
@@ -83,7 +94,7 @@ async function main() {
   // ---- P0 authorization: public API never exposes another user's private note or exact location ----
   console.log("\nP0 authorization — /dishes/score never leaks a private note or raw coordinates");
   {
-    const ip = "198.51.100.2";
+    const ip = randomTestIp();
     const phoneA = `+91900002${Math.floor(Math.random() * 9000 + 1000)}`;
     const userA = await signUp(phoneA, ip);
     const dish = { category: "Pizza", subtype: "Veg", name: "QA Privacy Pizza", venue: "QA Privacy Cafe" };
@@ -108,7 +119,7 @@ async function main() {
     const results = [];
     for (let i = 0; i < 8; i++) {
       const phone = `+91900003${1000 + i}`;
-      const ip = `203.0.113.${10 + i}`; // TEST-NET-3 (RFC 5737) — distinct per simulated user
+      const ip = randomTestIp(); // distinct per simulated user — see randomTestIp's own note on why this can't be a fixed constant
       const user = await signUp(phone, ip);
       const r = await createLog(user, dish, undefined, ip);
       results.push(r.body?.log?.status);
@@ -124,7 +135,7 @@ async function main() {
   // ---- P0 trust: the multi-account-same-network signal DOES fire when it should ----
   console.log("\nP0 trust — many new accounts from the SAME network in a short window ARE held (brief 1.5: multi-account/same-network)");
   {
-    const sharedIp = "203.0.113.99";
+    const sharedIp = randomTestIp();
     const dish = { category: "Burger", subtype: "Chicken", name: "QA Sockpuppet Burger", venue: "QA Sockpuppet Diner" };
     const results = [];
     for (let i = 0; i < 5; i++) {
@@ -177,7 +188,7 @@ async function main() {
   // ---- P0 trust: repeated delete-and-repost at the same venue is held ----
   console.log("\nP0 trust — a single delete-and-repost is fine, but the 3rd cycle at the same venue in a day is held");
   {
-    const ip = "198.51.100.3";
+    const ip = randomTestIp();
     const phone = `+91900006${Math.floor(Math.random() * 9000 + 1000)}`;
     const user = await signUp(phone, ip);
     const dish = { category: "Momos", subtype: "Veg", name: "QA Repost Momo", venue: "QA Repost Kitchen" };
@@ -200,7 +211,7 @@ async function main() {
   // ---- P0 trust: impossible travel between two location-verified logs is held ----
   console.log("\nP0 trust — two location-verified logs at real venues too far apart to reach in time are held");
   {
-    const ip = "198.51.100.4";
+    const ip = randomTestIp();
     const phone = `+91900007${Math.floor(Math.random() * 9000 + 1000)}`;
     const user = await signUp(phone, ip);
     const CTR = { lat: 12.9941, lng: 77.5709 }; // Malleshwaram

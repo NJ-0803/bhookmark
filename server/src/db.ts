@@ -64,6 +64,18 @@ export interface DishLog {
   deviceId: string;
   createdAt: number;
   locationVerified: boolean;
+  ownerDisclosed: boolean;
+}
+
+export type VenueClaimStatus = "pending" | "approved" | "rejected";
+
+export interface VenueClaim {
+  id: string;
+  userId: string;
+  venue: string;
+  status: VenueClaimStatus;
+  createdAt: number;
+  reviewedAt: number | null;
 }
 
 export interface PushSubscriptionJSON {
@@ -115,6 +127,7 @@ function logFromRow(r: any): DishLog {
     deviceId: r.device_id,
     createdAt: Number(r.created_at),
     locationVerified: r.location_verified ?? false,
+    ownerDisclosed: r.owner_disclosed ?? false,
   };
 }
 
@@ -220,8 +233,8 @@ export async function listDevicesForUser(userId: string): Promise<Device[]> {
 
 export async function createLog(log: DishLog): Promise<void> {
   await sql()`
-    INSERT INTO logs (id, user_id, category, subtype, name, venue, verdict, score, note, evidence_level, verified, status, device_id, created_at, location_verified)
-    VALUES (${log.id}, ${log.userId}, ${log.category}, ${log.subtype}, ${log.name}, ${log.venue}, ${log.verdict}, ${log.score}, ${log.note}, ${log.evidenceLevel}, ${log.verified}, ${log.status}, ${log.deviceId}, ${log.createdAt}, ${log.locationVerified})`;
+    INSERT INTO logs (id, user_id, category, subtype, name, venue, verdict, score, note, evidence_level, verified, status, device_id, created_at, location_verified, owner_disclosed)
+    VALUES (${log.id}, ${log.userId}, ${log.category}, ${log.subtype}, ${log.name}, ${log.venue}, ${log.verdict}, ${log.score}, ${log.note}, ${log.evidenceLevel}, ${log.verified}, ${log.status}, ${log.deviceId}, ${log.createdAt}, ${log.locationVerified}, ${log.ownerDisclosed})`;
 }
 
 export async function getLogById(id: string): Promise<DishLog | undefined> {
@@ -260,13 +273,18 @@ export async function listLogsForUser(userId: string): Promise<DishLog[]> {
   return rows.map(logFromRow);
 }
 
+// All three public aggregates below exclude owner_disclosed logs (brief
+// 1.5: restaurant staff self-rating their own venue must not silently
+// influence organic rankings) — an owner's own log still exists and shows
+// up on their personal Palate, it just never counts toward what other
+// people see as "the" score.
 export async function listPublishedLogs(venue: string, category: string): Promise<DishLog[]> {
-  const rows = await sql()`SELECT * FROM logs WHERE venue = ${venue} AND category = ${category} AND status = 'published' ORDER BY created_at DESC`;
+  const rows = await sql()`SELECT * FROM logs WHERE venue = ${venue} AND category = ${category} AND status = 'published' AND owner_disclosed = false ORDER BY created_at DESC`;
   return rows.map(logFromRow);
 }
 
 export async function listPublishedLogsByCategorySubtype(category: string, subtype: string): Promise<DishLog[]> {
-  const rows = await sql()`SELECT * FROM logs WHERE category = ${category} AND subtype = ${subtype} AND status = 'published'`;
+  const rows = await sql()`SELECT * FROM logs WHERE category = ${category} AND subtype = ${subtype} AND status = 'published' AND owner_disclosed = false`;
   return rows.map(logFromRow);
 }
 
@@ -276,7 +294,7 @@ export async function listPublishedLogsByCategorySubtype(category: string, subty
 export async function listPublishedLogsForDish(venue: string, category: string, subtype: string, name: string): Promise<DishLog[]> {
   const rows = await sql()`
     SELECT * FROM logs
-    WHERE venue = ${venue} AND category = ${category} AND subtype = ${subtype} AND name = ${name} AND status = 'published'`;
+    WHERE venue = ${venue} AND category = ${category} AND subtype = ${subtype} AND name = ${name} AND status = 'published' AND owner_disclosed = false`;
   return rows.map(logFromRow);
 }
 
@@ -381,6 +399,49 @@ export async function listAiCorrections(limit = 50): Promise<AiCorrection[]> {
     userCorrection: r.user_correction,
     createdAt: Number(r.created_at),
   }));
+}
+
+// ---------- Venue claims (brief 1.5: restaurant self-rating disclosure) ----------
+
+function venueClaimFromRow(r: any): VenueClaim {
+  return { id: r.id, userId: r.user_id, venue: r.venue, status: r.status, createdAt: Number(r.created_at), reviewedAt: r.reviewed_at ? Number(r.reviewed_at) : null };
+}
+
+export async function createVenueClaim(claim: { id: string; userId: string; venue: string; createdAt: number }): Promise<void> {
+  await sql()`
+    INSERT INTO venue_claims (id, user_id, venue, status, created_at)
+    VALUES (${claim.id}, ${claim.userId}, ${claim.venue}, 'pending', ${claim.createdAt})`;
+}
+
+export async function listVenueClaims(status?: VenueClaimStatus): Promise<VenueClaim[]> {
+  const rows = status
+    ? await sql()`SELECT * FROM venue_claims WHERE status = ${status} ORDER BY created_at DESC`
+    : await sql()`SELECT * FROM venue_claims ORDER BY created_at DESC`;
+  return rows.map(venueClaimFromRow);
+}
+
+export async function getVenueClaimById(id: string): Promise<VenueClaim | undefined> {
+  const rows = await sql()`SELECT * FROM venue_claims WHERE id = ${id}`;
+  return rows[0] ? venueClaimFromRow(rows[0]) : undefined;
+}
+
+export async function setVenueClaimStatus(id: string, status: "approved" | "rejected"): Promise<VenueClaim | undefined> {
+  const rows = await sql()`UPDATE venue_claims SET status = ${status}, reviewed_at = ${Date.now()} WHERE id = ${id} RETURNING *`;
+  return rows[0] ? venueClaimFromRow(rows[0]) : undefined;
+}
+
+// The actual check used at log-creation time — a user is a disclosed owner
+// of a venue only once a moderator has approved the claim, never on the
+// strength of a pending self-submission alone.
+export async function isApprovedOwnerOfVenue(userId: string, venue: string): Promise<boolean> {
+  const rows = await sql()`
+    SELECT 1 FROM venue_claims WHERE user_id = ${userId} AND venue = ${venue} AND status = 'approved' LIMIT 1`;
+  return rows.length > 0;
+}
+
+export async function listApprovedVenuesForUser(userId: string): Promise<string[]> {
+  const rows = await sql()`SELECT venue FROM venue_claims WHERE user_id = ${userId} AND status = 'approved'`;
+  return rows.map((r: any) => r.venue);
 }
 
 // ---------- Push subscriptions ----------

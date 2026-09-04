@@ -1,9 +1,29 @@
 import { Router } from "express";
+import { nanoid } from "nanoid";
 import { z } from "zod";
 import * as db from "../db";
+import { requireAuth } from "../middleware";
 import { VENUES, haversineKm } from "../venues";
 
 export const venuesRouter = Router();
+
+const claimSchema = z.object({ venue: z.string().min(1).max(120) });
+
+// Brief 1.5: restaurant staff self-rating disclosure starts with a claim.
+// This alone grants nothing — see isApprovedOwnerOfVenue, which only ever
+// looks at claims a moderator has approved. Submitting is intentionally
+// cheap; the trust boundary is entirely at the approval step.
+venuesRouter.post("/claim", requireAuth, async (req, res) => {
+  const parsed = claimSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ ok: false, error: "Enter the exact venue name." });
+  await db.createVenueClaim({ id: nanoid(), userId: req.user!.sub, venue: parsed.data.venue, createdAt: Date.now() });
+  res.status(201).json({ ok: true });
+});
+
+venuesRouter.get("/claims/mine", requireAuth, async (req, res) => {
+  const claims = await db.listVenueClaims();
+  res.json({ ok: true, claims: claims.filter((c) => c.userId === req.user!.sub) });
+});
 
 const querySchema = z.object({
   category: z.string(),

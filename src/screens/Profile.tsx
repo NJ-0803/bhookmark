@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import type { RemoteLog } from "../api";
-import { clearSession, currentDeviceId, getDietProfile, getSession, listSessions, revokeSession, setDietProfile } from "../api";
+import type { RemoteLog, VenueClaim } from "../api";
+import { claimVenue, clearSession, currentDeviceId, getDietProfile, getMyVenueClaims, getSession, listSessions, revokeSession, setDietProfile } from "../api";
 import { signatureCraving } from "../evidenceThresholds";
 
 interface SessionRow {
@@ -46,6 +46,11 @@ export default function Profile({
   const [diet, setDiet] = useState("no-restriction");
   const [allergens, setAllergens] = useState<string[]>([]);
   const [dietSaved, setDietSaved] = useState(false);
+  const [showClaim, setShowClaim] = useState(false);
+  const [claimVenueName, setClaimVenueName] = useState("");
+  const [claims, setClaims] = useState<VenueClaim[]>([]);
+  const [claimSubmitting, setClaimSubmitting] = useState(false);
+  const [claimError, setClaimError] = useState<string | null>(null);
 
   useEffect(() => {
     getDietProfile().then((res) => {
@@ -55,6 +60,25 @@ export default function Profile({
       }
     });
   }, []);
+
+  useEffect(() => {
+    if (!showClaim) return;
+    getMyVenueClaims().then((res) => res.ok && setClaims(res.claims));
+  }, [showClaim]);
+
+  async function submitClaim() {
+    if (!claimVenueName.trim()) return;
+    setClaimSubmitting(true);
+    setClaimError(null);
+    const res = await claimVenue(claimVenueName.trim());
+    setClaimSubmitting(false);
+    if (res.ok) {
+      setClaimVenueName("");
+      getMyVenueClaims().then((r) => r.ok && setClaims(r.claims));
+    } else {
+      setClaimError(res.error ?? "Couldn't submit that claim.");
+    }
+  }
 
   async function saveDiet(nextDiet: string, nextAllergens: string[]) {
     setDiet(nextDiet);
@@ -180,6 +204,56 @@ export default function Profile({
         <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-faint mb-2">City leaderboard</p>
         <p className="text-sm text-ink/90">Ranked by dish diversity, not visit count — logging the same burger ten times won't move you up.</p>
       </div>
+
+      <button
+        onClick={() => setShowClaim((v) => !v)}
+        className="w-full flex items-center justify-between bg-surface border border-line rounded-card p-4 mb-3"
+      >
+        <span className="font-mono text-[11px] tracking-[0.08em] uppercase text-faint">Run a restaurant?</span>
+        <span className="text-faint text-xs">{showClaim ? "hide" : "show"}</span>
+      </button>
+
+      {showClaim && (
+        <div className="bg-surface border border-line rounded-card p-4 mb-3">
+          <p className="text-muted text-xs mb-3">
+            Claim your venue so your own logs there are disclosed and never count toward its public score — Palate never lets a
+            restaurant quietly rate itself.
+          </p>
+          <div className="flex gap-2 mb-2">
+            <input
+              value={claimVenueName}
+              onChange={(e) => setClaimVenueName(e.target.value)}
+              placeholder="Exact venue name, e.g. Truffles"
+              className="flex-1 bg-surface2 border border-line rounded-lg px-3 py-2 text-sm outline-none focus:border-accent"
+            />
+            <button
+              onClick={submitClaim}
+              disabled={claimSubmitting || !claimVenueName.trim()}
+              className="bg-accent text-accentInk font-semibold rounded-lg px-4 text-sm disabled:opacity-40"
+            >
+              Claim
+            </button>
+          </div>
+          {claimError && <p className="text-bad text-xs mb-2">{claimError}</p>}
+          <p className="text-faint text-[11px] mb-3">A moderator reviews every claim manually before it takes effect.</p>
+          {claims.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              {claims.map((c) => (
+                <div key={c.id} className="flex items-center justify-between bg-surface2 rounded-lg px-3 py-2">
+                  <span className="text-sm truncate">{c.venue}</span>
+                  <span
+                    className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded-full shrink-0 ${
+                      c.status === "approved" ? "bg-accentDim text-accent" : c.status === "rejected" ? "bg-badDim text-bad" : "bg-surface text-faint"
+                    }`}
+                  >
+                    {c.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <button
         onClick={() => setShowSessions((v) => !v)}

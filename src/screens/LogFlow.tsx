@@ -1,19 +1,60 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { CATEGORIES, dishesForSubtype } from "../data/dishes";
 import type { Category, DishEntry, JournalLog, Verdict } from "../types";
 import DishThumb from "../components/DishThumb";
 import WhyThis from "../components/WhyThis";
 import Duel from "./Duel";
-import { api, currentDeviceId } from "../api";
+import { api, currentDeviceId, getDetectStatus, detectDish, submitCorrection, type DishCandidate, type DetectResult } from "../api";
 import { LIQUID_SPRING, TAP_SCALE } from "../motion";
 
-// Note: this used to show a fabricated "AI suggestion · 92% confident" from
-// a hardcoded array picked at random — no photo was ever actually analyzed.
-// Removed entirely per the brief's core invariant: never present fabricated
-// confidence as fact. Manual entry until real vision analysis is wired up
-// (needs a configured ANTHROPIC_API_KEY server-side — see server/src/llm.ts).
-type Step = "capture" | "details" | "verify" | "confirm" | "duel" | "done";
+// Real image analysis now (brief 1.3) when ANTHROPIC_API_KEY is configured
+// server-side — see server/src/vision.ts. Confidence is always whatever the
+// model actually reports, bucketed into a qualitative band rather than a
+// fake-precise decimal; a blank/unclear photo gets an honest "couldn't
+// identify" state instead of a forced guess, and AI failure never blocks
+// manual logging (see the "detect" step's ok:false fallback below).
+type Step = "capture" | "detect" | "details" | "verify" | "confirm" | "duel" | "done";
+
+function downscaleImage(file: File, maxDim = 768, quality = 0.6): Promise<{ base64: string; mimeType: string }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > height && width > maxDim) {
+        height = Math.round((height * maxDim) / width);
+        width = maxDim;
+      } else if (height > maxDim) {
+        width = Math.round((width * maxDim) / height);
+        height = maxDim;
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      URL.revokeObjectURL(objectUrl);
+      if (!ctx) {
+        reject(new Error("Canvas not supported"));
+        return;
+      }
+      ctx.drawImage(img, 0, 0, width, height);
+      const dataUrl = canvas.toDataURL("image/jpeg", quality);
+      resolve({ base64: dataUrl.split(",")[1] ?? "", mimeType: "image/jpeg" });
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("Could not load image"));
+    };
+    img.src = objectUrl;
+  });
+}
+
+function ConfidenceTag({ confidence }: { confidence: number }) {
+  const band = confidence >= 75 ? "Strong match" : confidence >= 40 ? "Possible match" : "Long shot";
+  const tone = confidence >= 75 ? "bg-accentDim text-accent" : confidence >= 40 ? "bg-gold/10 text-gold" : "bg-surface2 text-faint";
+  return <span className={`text-[10px] font-mono uppercase tracking-wide px-2 py-1 rounded-full shrink-0 ${tone}`}>{band}</span>;
+}
 type ServerStatus = "published" | "held" | "local-only" | "session-expired";
 
 const TINTS = ["from-amber-500/30 to-amber-900/40", "from-rose-500/30 to-rose-900/40", "from-cyan-600/30 to-slate-900/40", "from-emerald-500/30 to-emerald-900/40"];
@@ -30,6 +71,12 @@ export default function LogFlow({
 }) {
   const [step, setStep] = useState<Step>(prefillDish ? "verify" : "capture");
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [photoBase64, setPhotoBase64] = useState<string | null>(null);
+  const [photoMime, setPhotoMime] = useState<string | null>(null);
+  const [visionConfigured, setVisionConfigured] = useState(false);
+  const [detecting, setDetecting] = useState(false);
+  const [detectResult, setDetectResult] = useState<DetectResult | null>(null);
+  const [aiSuggestion, setAiSuggestion] = useState<DishCandidate | null>(null);
   const [category, setCategory] = useState<Category | "Other">(prefillDish?.category ?? CATEGORIES[0].name);
   const [subtype, setSubtype] = useState(prefillDish?.subtype ?? CATEGORIES[0].subtypes[0]);
   const [customCategory, setCustomCategory] = useState("");
@@ -68,10 +115,59 @@ export default function LogFlow({
 
   const opponents = dishesForSubtype(workingDish.category, workingDish.subtype).filter((d) => d.id !== workingDish.id);
 
-  function attachPhoto(e: React.ChangeEvent<HTMLInputElement>) {
+  useEffect(() => {
+    getDetectStatus().then((res) => setVisionConfigured(res.ok && res.configured)).catch(() => setVisionConfigured(false));
+  }, []);
+
+  async function attachPhoto(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     setPhotoUrl(URL.createObjectURL(file));
+    try {
+      const { base64, mimeType } = await downscaleImage(file);
+      setPhotoBase64(base64);
+      setPhotoMime(mimeType);
+    } catch {
+      setPhotoBase64(null);
+      setPhotoMime(null);
+    }
+  }
+
+  async function runDetection() {
+    if (!photoBase64) {
+      setStep("details");
+      return;
+    }
+    setStep("detect");
+    setDetecting(true);
+    const result = await detectDish(photoBase64, photoMime ?? "image/jpeg");
+    setDetectResult(result);
+    setDetecting(false);
+  }
+
+  function pickCandidate(c: DishCandidate) {
+    setAiSuggestion(c);
+    const matchedCategory = CATEGORIES.find((cat) => cat.name === c.category);
+    if (matchedCategory) {
+      setCategory(c.category as Category);
+      setSubtype(matchedCategory.subtypes.includes(c.subtype) ? c.subtype : matchedCategory.subtypes[0]);
+    } else {
+      setCategory("Other");
+      setCustomCategory(c.category);
+      setSubtype(c.subtype);
+    }
+    setName(c.name);
+    setStep("details");
+  }
+
+  function continueFromDetails() {
+    if (aiSuggestion) {
+      const changed = aiSuggestion.name !== name || aiSuggestion.category !== resolvedCategory || aiSuggestion.subtype !== subtype;
+      if (changed) {
+        submitCorrection(aiSuggestion, { category: resolvedCategory, subtype, name });
+      }
+    }
+    setStep("verify");
   }
 
   // Real navigator.geolocation call — replaces what used to be a pure UI
@@ -190,7 +286,11 @@ export default function LogFlow({
           {step === "capture" && (
             <div className="px-5">
               <h3 className="font-display font-bold text-xl mb-1">Snap the dish</h3>
-              <p className="text-muted text-sm mb-5">Optional, for your own Taste Receipt — Palate doesn't analyze it, so you'll fill in the details next either way.</p>
+              <p className="text-muted text-sm mb-5">
+                {visionConfigured
+                  ? "Optional — Palate can take a real guess at what this is, or you can just type it in."
+                  : "Optional, for your own Taste Receipt — Palate doesn't analyze it, so you'll fill in the details next either way."}
+              </p>
               <label className="block aspect-[4/3] rounded-card border-2 border-dashed border-line overflow-hidden relative cursor-pointer hover:border-accent/50 transition-colors">
                 <input type="file" accept="image/*" capture="environment" onChange={attachPhoto} className="sr-only" />
                 {photoUrl ? (
@@ -204,9 +304,66 @@ export default function LogFlow({
               </label>
               <div className="flex gap-2.5 mt-4">
                 <button onClick={() => setStep("details")} className="flex-1 bg-surface border border-line rounded-xl py-3 text-sm font-medium">
-                  {photoUrl ? "Continue without changes" : "Skip photo"}
+                  {photoUrl ? "Skip AI, enter manually" : "Skip photo"}
                 </button>
+                {photoUrl && visionConfigured && (
+                  <button onClick={runDetection} className="flex-1 bg-accent text-accentInk font-semibold rounded-xl py-3 text-sm active:scale-[0.98] transition-transform">
+                    Identify with AI
+                  </button>
+                )}
               </div>
+            </div>
+          )}
+
+          {step === "detect" && (
+            <div className="px-5">
+              {detecting ? (
+                <div className="text-center py-16">
+                  <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                  <p className="text-muted text-sm">Analyzing photo…</p>
+                </div>
+              ) : detectResult?.ok && detectResult.isFood ? (
+                <>
+                  <h3 className="font-display font-bold text-xl mb-1">Is it one of these?</h3>
+                  <p className="text-muted text-sm mb-5">A real AI guess, not a certainty — pick one, or adjust every detail after.</p>
+                  <div className="flex flex-col gap-2.5 mb-4">
+                    {detectResult.candidates.map((c, i) => (
+                      <button
+                        key={i}
+                        onClick={() => pickCandidate(c)}
+                        className="flex items-center justify-between gap-3 bg-surface border border-line rounded-xl px-4 py-3.5 text-left hover:border-accent/50 transition-colors"
+                      >
+                        <div className="min-w-0">
+                          <div className="font-semibold text-sm truncate">{c.name}</div>
+                          <div className="text-faint text-xs mt-0.5 truncate">{c.category} · {c.subtype}</div>
+                        </div>
+                        <ConfidenceTag confidence={c.confidence} />
+                      </button>
+                    ))}
+                  </div>
+                  <button onClick={() => setStep("details")} className="w-full text-center text-faint text-xs underline underline-offset-2">
+                    None of these — search manually
+                  </button>
+                </>
+              ) : detectResult?.ok && !detectResult.isFood ? (
+                <div className="text-center py-10">
+                  <div className="text-3xl mb-3">🤔</div>
+                  <h3 className="font-display font-bold text-lg mb-1.5">Couldn't identify this</h3>
+                  <p className="text-muted text-sm mb-6 max-w-[30ch] mx-auto">{detectResult.reason}</p>
+                  <button onClick={() => setStep("details")} className="w-full bg-accent text-accentInk font-semibold rounded-xl py-3.5">
+                    Enter manually
+                  </button>
+                </div>
+              ) : (
+                <div className="text-center py-10">
+                  <div className="text-3xl mb-3">📝</div>
+                  <h3 className="font-display font-bold text-lg mb-1.5">Let's do this manually</h3>
+                  <p className="text-muted text-sm mb-6 max-w-[30ch] mx-auto">Photo analysis isn't available right now — your photo still made it into the Taste Receipt.</p>
+                  <button onClick={() => setStep("details")} className="w-full bg-accent text-accentInk font-semibold rounded-xl py-3.5">
+                    Continue
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -251,7 +408,7 @@ export default function LogFlow({
                 <input value={venue} onChange={(e) => setVenue(e.target.value)} placeholder="e.g. Truffles, Koramangala" className="input" />
               </Field>
               <button
-                onClick={() => setStep("verify")}
+                onClick={continueFromDetails}
                 disabled={!name.trim() || !venue.trim()}
                 className="w-full bg-accent text-accentInk font-semibold rounded-xl py-3.5 mt-2 disabled:opacity-40 active:scale-[0.98] transition-transform"
               >

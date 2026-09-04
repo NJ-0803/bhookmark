@@ -24,3 +24,23 @@ moderationRouter.post("/logs/:id/remove", async (req, res) => {
   if (!log) return res.status(404).json({ ok: false, error: "Not found." });
   res.json({ ok: true, log });
 });
+
+// Brief 1.5: venue-ownership claims are manually reviewed, same as held
+// logs above — no automated business-registry verification exists.
+moderationRouter.get("/venue-claims", async (req, res) => {
+  const status = typeof req.query.status === "string" ? req.query.status : undefined;
+  const claims = await db.listVenueClaims(status as any);
+  res.json({ ok: true, claims });
+});
+
+moderationRouter.post("/venue-claims/:id/approve", async (req, res) => {
+  const claim = await db.setVenueClaimStatus(req.params.id as string, "approved");
+  if (!claim) return res.status(404).json({ ok: false, error: "Not found." });
+  res.json({ ok: true, claim });
+});
+
+moderationRouter.post("/venue-claims/:id/reject", async (req, res) => {
+  const claim = await db.setVenueClaimStatus(req.params.id as string, "rejected");
+  if (!claim) return res.status(404).json({ ok: false, error: "Not found." });
+  res.json({ ok: true, claim });
+});

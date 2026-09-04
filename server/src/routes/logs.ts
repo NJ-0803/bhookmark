@@ -133,11 +133,12 @@ logsRouter.post("/", requireAuth, async (req, res) => {
   // one firing is enough; they're deliberately not weighted/combined so
   // each stays individually inspectable in security_events.
   const userId = req.user!.sub;
-  const [burstHeld, networkHeld, deleteRepostHeld, travelHeld] = await Promise.all([
+  const [burstHeld, networkHeld, deleteRepostHeld, travelHeld, ownerDisclosed] = await Promise.all([
     isBurst(data.deviceId, data.venue),
     isMultiAccountNetwork(req.ip),
     isRepeatedDeleteRepost(userId, data.venue),
     liveLocationMatch ? isImpossibleTravel(userId, data.venue, now) : Promise.resolve(false),
+    db.isApprovedOwnerOfVenue(userId, data.venue),
   ]);
   const held = burstHeld || networkHeld || deleteRepostHeld || travelHeld;
 
@@ -167,6 +168,7 @@ logsRouter.post("/", requireAuth, async (req, res) => {
     deviceId: data.deviceId,
     createdAt: now,
     locationVerified: liveLocationMatch,
+    ownerDisclosed,
   };
   await db.createLog(log);
 

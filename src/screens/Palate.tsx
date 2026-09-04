@@ -110,6 +110,7 @@ export default function Palate({
                       {reorder && <Chip label="🔁 running it back" tone="accent" />}
                       <Chip label={`${VERDICT_COPY[log.verdict].emoji} ${VERDICT_COPY[log.verdict].label}`} tone={VERDICT_COPY[log.verdict].tone} />
                       {log.status === "held" && <Chip label="Pending review" tone="warn" />}
+                      {log.ownerDisclosed && <Chip label="🏷️ Restaurant representative" tone="warn" />}
                     </div>
                     <div className="flex items-center gap-1.5 mt-2">
                       {REACTIONS.map((r) => (
