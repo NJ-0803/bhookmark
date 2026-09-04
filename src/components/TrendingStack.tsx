@@ -52,11 +52,11 @@ export default function TrendingStack({ cards, onSelect }: { cards: StackCard[];
                 opacity: 1 - stackPos * 0.18,
               }}
               whileHover={isFront ? { rotate: 2, y: -4, transition: LIQUID_SPRING } : undefined}
-              whileTap={isFront ? { scale: 0.98 } : undefined}
+              whileTap={isFront ? { rotate: 2, scale: 0.98, transition: LIQUID_SPRING } : undefined}
               transition={LIQUID_SPRING}
               style={{ zIndex: 10 - stackPos, touchAction: isFront ? "pan-y" : undefined }}
-              className={`absolute inset-x-0 aspect-[16/10] rounded-card overflow-hidden text-left border border-line cursor-grab active:cursor-grabbing ${
-                isFront ? `shadow-lift ${CATEGORY_SHADOW[dish.category] ?? ""}` : ""
+              className={`absolute inset-x-0 aspect-[16/10] rounded-card overflow-hidden text-left border cursor-grab active:cursor-grabbing ${
+                isFront ? `border-accent/40 ${CATEGORY_SHADOW[dish.category] ?? "shadow-lift"}` : "border-line"
               }`}
             >
               {dish.photo ? (

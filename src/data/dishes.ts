@@ -437,6 +437,18 @@ export const CATEGORY_SHADOW: Record<Category, string> = {
   Momos: "shadow-accentGlow",
 };
 
+/** Same three-color assignment as CATEGORY_SHADOW, as a visible border
+ * instead of (or alongside) the shadow — a shadow alone reads as too subtle
+ * on a real phone screen in daylight, a colored border reads immediately. */
+export const CATEGORY_BORDER: Record<Category, string> = {
+  "Dosa & Idli": "border-saffron/50",
+  Biryani: "border-coral/50",
+  "Filter Coffee": "border-saffron/50",
+  Burger: "border-coral/50",
+  Pizza: "border-coral/50",
+  Momos: "border-accent/50",
+};
+
 /** Matches a backend log (category/subtype/name/venue only, no photo) back
  * to the static catalog so real photography can be reused where it exists. */
 export function findDishPhoto(category: string, subtype: string, name: string, venue: string): string | undefined {

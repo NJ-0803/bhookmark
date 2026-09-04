@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { LIQUID_SPRING, TAP_SCALE } from "../motion";
-import { CATEGORIES, CATEGORY_ACCENT, CATEGORY_SHADOW, DISHES, categoryVisual, dishById, dishesForSubtype } from "../data/dishes";
+import { CATEGORIES, CATEGORY_ACCENT, CATEGORY_BORDER, CATEGORY_SHADOW, DISHES, categoryVisual, dishById, dishesForSubtype } from "../data/dishes";
 import type { Category, DishEntry } from "../types";
 import DishThumb from "../components/DishThumb";
 import ScoreBadge from "../components/ScoreBadge";
@@ -356,7 +356,8 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
                     <motion.div
                       key={p.id}
                       whileHover={{ rotate: 2, y: -4, transition: LIQUID_SPRING }}
-                      className={`shrink-0 w-64 bg-surface border border-line rounded-card overflow-hidden ${CATEGORY_SHADOW[p.category as Category] ?? ""}`}
+                      whileTap={{ rotate: 2, y: -2, scale: 0.98, transition: LIQUID_SPRING }}
+                      className={`shrink-0 w-64 bg-surface border rounded-card overflow-hidden ${CATEGORY_BORDER[p.category as Category] ?? "border-line"} ${CATEGORY_SHADOW[p.category as Category] ?? ""}`}
                     >
                       <button
                         onClick={() => {

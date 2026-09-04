@@ -1,4 +1,7 @@
-@import url("https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Hanken+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
+/* Fonts are loaded via <link> tags in index.html, not @import here — an
+   @import inside a bundled stylesheet is discovered late (after the whole
+   CSS file parses) and can lose the race on a real network, silently
+   leaving the page on its system-font fallback. */
 
 @tailwind base;
 @tailwind components;
@@ -42,7 +45,7 @@ body {
   width: 140%;
   aspect-ratio: 1;
   max-width: 700px;
-  background: radial-gradient(circle, rgba(49, 226, 209, 0.13) 0%, rgba(49, 226, 209, 0.045) 35%, transparent 65%);
+  background: radial-gradient(circle, rgba(49, 226, 209, 0.32) 0%, rgba(49, 226, 209, 0.12) 35%, transparent 65%);
   pointer-events: none;
   z-index: 0;
 }
@@ -56,7 +59,7 @@ body {
   width: 120%;
   aspect-ratio: 1;
   max-width: 600px;
-  background: radial-gradient(circle, rgba(255, 181, 71, 0.05) 0%, transparent 60%);
+  background: radial-gradient(circle, rgba(255, 181, 71, 0.16) 0%, transparent 60%);
   pointer-events: none;
   z-index: 0;
 }
