@@ -405,7 +405,7 @@ export default function LogFlow({
           )}
         </div>
       </div>
-      <style>{`.input { background: #1B211F; border: 1px solid #242B29; border-radius: 10px; padding: 10px 14px; font-size: 14px; color: #F2F6F4; outline: none; } .input:focus { border-color: #2FD6C4; }`}</style>
+      <style>{`.input { background: #171E1B; border: 1px solid #202826; border-radius: 10px; padding: 10px 14px; font-size: 14px; color: #F5F1E8; outline: none; } .input:focus { border-color: #E879F9; }`}</style>
     </motion.div>
   );
 }

@@ -26,9 +26,11 @@ export default function RemixableLists() {
         {SEED_LISTS.map((l, i) => (
           <motion.div
             key={l.id}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ ...LIQUID_SPRING, delay: i * 0.05 }}
+            initial={{ opacity: 0, y: 20, scale: 0.97 }}
+            whileInView={{ opacity: 1, y: 0, scale: 1 }}
+            viewport={{ once: true, margin: "-40px" }}
+            whileTap={{ scale: 0.98 }}
+            transition={{ ...LIQUID_SPRING, delay: Math.min(i, 4) * 0.05 }}
             className="relative bg-surface border border-line rounded-card p-4 pl-5 overflow-hidden"
           >
             <span className={`absolute left-0 top-0 bottom-0 w-1.5 ${l.accent}`} />

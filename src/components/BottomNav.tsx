@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { LIQUID_SPRING, TAP_SCALE } from "../motion";
+import { haptic } from "../haptics";
 
 export type Tab = "home" | "bhookmarks" | "circles" | "profile";
 
@@ -28,11 +29,14 @@ export default function BottomNav({
 
         <motion.button
           layoutId="bitelog-fab"
-          onClick={onBite}
+          onClick={() => {
+            haptic("medium");
+            onBite();
+          }}
           whileHover={{ scale: 1.04 }}
           whileTap={TAP_SCALE}
           transition={LIQUID_SPRING}
-          className="relative -top-5 w-14 h-14 rounded-full bg-accent text-accentInk text-2xl font-bold flex items-center justify-center shadow-[0_0_24px_rgba(47,214,196,0.45)]"
+          className="gradient-primary relative -top-5 w-14 h-14 rounded-full text-white text-2xl font-bold flex items-center justify-center shadow-[0_0_28px_rgba(192,38,211,0.55)]"
           aria-label="Log a bite"
         >
           +
@@ -57,7 +61,10 @@ function NavItem({
 }) {
   return (
     <motion.button
-      onClick={onClick}
+      onClick={() => {
+        haptic("light");
+        onClick();
+      }}
       whileTap={TAP_SCALE}
       transition={LIQUID_SPRING}
       className="relative flex flex-col items-center gap-1 w-14 py-1 text-[11px] font-medium"

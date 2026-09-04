@@ -42,7 +42,7 @@ export default function Bhookmarks({
           </button>
         )}
       </div>
-      <h1 className="font-display font-extrabold text-2xl mb-6">Never forget a bite.</h1>
+      <h1 className="font-display font-extrabold text-2xl mb-6 text-gradient">Never forget a bite.</h1>
 
       {logsError && (
         <div className="bg-badDim border border-bad/30 rounded-xl px-4 py-3 text-sm text-bad mb-5">{logsError}</div>
@@ -95,9 +95,11 @@ export default function Bhookmarks({
               return (
                 <motion.div
                   key={log.id}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ ...LIQUID_SPRING, delay: i * 0.03 }}
+                  initial={{ opacity: 0, y: 24, scale: 0.96 }}
+                  whileInView={{ opacity: 1, y: 0, scale: 1 }}
+                  viewport={{ once: true, margin: "-40px" }}
+                  transition={{ ...LIQUID_SPRING, delay: Math.min(i, 4) * 0.04 }}
+                  whileTap={{ scale: 0.98 }}
                   className="flex gap-3 bg-surface border border-line rounded-xl p-3"
                 >
                   <div className="relative shrink-0">

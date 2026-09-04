@@ -217,7 +217,7 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
             <p className="font-mono text-[11px] tracking-[0.14em] uppercase text-faint mb-2">Bangalore · Today</p>
           )}
           <h1 className="font-display font-extrabold text-3xl leading-tight mb-1 text-balance">
-            What are you<br />bhookmarking now? <motion.span
+            <span className="text-gradient">What are you<br />bhookmarking now?</span> <motion.span
               key={contextualEmoji(smartOrder?.weatherMood)}
               initial={{ scale: 0.5, rotate: -20, opacity: 0 }}
               animate={{ scale: 1, rotate: 0, opacity: 1 }}

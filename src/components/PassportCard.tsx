@@ -75,7 +75,7 @@ export default function PassportCard({
       <div className="relative flex items-start justify-between mb-4">
         <div>
           <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-accent/80 mb-0.5">Bhookmark Passport</p>
-          <h1 className="font-display font-bold text-xl leading-tight">{name}</h1>
+          <h1 className="font-display font-bold text-xl leading-tight text-gradient">{name}</h1>
           <p className="text-faint text-xs mt-0.5">{city}</p>
         </div>
         {/* Verification stamp — a rotated badge, the "holographic" beat the

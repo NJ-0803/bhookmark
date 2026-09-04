@@ -33,9 +33,9 @@ body {
   overflow: hidden;
 }
 
-/* Ambient night-market glow — turquoise up top where actions live, a much
-   fainter saffron warmth low down (discovery/trending territory). Both stay
-   subtle: food photography is still the loudest color on any screen. */
+/* Ambient night-market glow — the purple/pink/magenta action gradient up
+   top, a much fainter saffron warmth low down (discovery/trending
+   territory). Both stay perceptible without drowning out food photography. */
 #root::before {
   content: "";
   position: fixed;
@@ -45,7 +45,7 @@ body {
   width: 140%;
   aspect-ratio: 1;
   max-width: 700px;
-  background: radial-gradient(circle, rgba(49, 226, 209, 0.32) 0%, rgba(49, 226, 209, 0.12) 35%, transparent 65%);
+  background: radial-gradient(circle, rgba(192, 38, 211, 0.34) 0%, rgba(124, 58, 237, 0.14) 35%, transparent 65%);
   pointer-events: none;
   z-index: 0;
 }
@@ -72,6 +72,41 @@ body {
 ::-webkit-scrollbar { display: none; }
 
 .tabular { font-variant-numeric: tabular-nums; }
+
+/* Glassmorphism / "Liquid Glass" — every real card gets a frosted,
+   translucent surface instead of a flat opaque one. Placed after
+   @tailwind utilities so it wins the cascade at equal specificity,
+   retroactively applying everywhere bg-surface already is (every screen)
+   without touching each component file individually. Scoped to bg-surface
+   only, not bg-surface2 (small chips/pills use that) — a backdrop-filter
+   per element is real GPU cost, and this app can have dozens of small
+   surface2 chips on one screen; cards are far fewer per screen. */
+.bg-surface {
+  background-color: rgba(16, 21, 19, 0.55) !important;
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+}
+
+/* Floating — every card gets a real lift shadow by default ("every card
+   should float"), not just the few that opted into shadow-lift by hand. */
+.rounded-card {
+  box-shadow: 0 12px 36px -14px rgba(0, 0, 0, 0.65);
+}
+
+/* Purple/pink/magenta gradient identity for primary actions — replaces the
+   flat turquoise bg-accent on buttons/FABs that want the full gradient. */
+.gradient-primary {
+  background: linear-gradient(135deg, #7c3aed 0%, #c026d3 55%, #a21caf 100%);
+}
+
+/* Gradient-clipped headline text — a plain white/cream heading read as flat;
+   this is the "not boring" treatment for the app's primary H1s. */
+.text-gradient {
+  background: linear-gradient(135deg, #c4b5fd 0%, #e879f9 55%, #f9a8d4 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

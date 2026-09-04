@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { LIQUID_SPRING } from "../motion";
+import { haptic } from "../haptics";
 
 const STAR_PATH =
   "M12 2.5l2.9 6.4 6.9.8-5.1 4.8 1.4 6.9L12 17.9l-6.1 3.5 1.4-6.9-5.1-4.8 6.9-.8L12 2.5z";
@@ -16,6 +17,7 @@ export default function StarRating({ value, onChange }: Props) {
   const glow = Math.max(0, Math.min(1, shown / 10));
 
   function pick(star: number, half: boolean) {
+    haptic("light");
     onChange(half ? star * 2 - 1 : star * 2);
   }
 
@@ -23,7 +25,7 @@ export default function StarRating({ value, onChange }: Props) {
     <div className="flex flex-col items-center">
       <motion.div
         animate={{
-          filter: `drop-shadow(0 0 ${4 + glow * 26}px rgba(47,214,196,${0.25 + glow * 0.65})) drop-shadow(0 0 ${2 + glow * 10}px rgba(47,214,196,${0.4 + glow * 0.5}))`,
+          filter: `drop-shadow(0 0 ${4 + glow * 26}px rgba(232,121,249,${0.25 + glow * 0.65})) drop-shadow(0 0 ${2 + glow * 10}px rgba(232,121,249,${0.4 + glow * 0.5}))`,
         }}
         transition={LIQUID_SPRING}
         className="flex items-center gap-1.5"

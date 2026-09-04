@@ -6,6 +6,7 @@ import StarRating from "../components/StarRating";
 import SwipeCard from "../components/SwipeCard";
 import { LIQUID_SPRING, TAP_SCALE, HOVER_SCALE } from "../motion";
 import { scoreEmoji } from "../verdictCopy";
+import { haptic } from "../haptics";
 
 interface Challenger {
   name: string;
@@ -35,6 +36,7 @@ export default function Duel({
   const maxRounds = Math.min(3, Math.max(1, Math.ceil(Math.log2(Math.max(opponents.length, 2)))));
 
   function startCompare(v: Verdict) {
+    haptic(v === "loved" ? "success" : "light");
     setVerdict(v);
     if (opponents.length === 0) {
       const seed = v === "loved" ? 8.6 : v === "fine" ? 7.2 : 5.4;
@@ -49,6 +51,7 @@ export default function Duel({
   const opponent = opponents[Math.min(mid, opponents.length - 1)];
 
   function choose(preferChallenger: boolean) {
+    haptic("light");
     const nextRound = round + 1;
     let nextLo = lo;
     let nextHi = hi;

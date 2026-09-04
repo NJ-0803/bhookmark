@@ -4,6 +4,7 @@ import { DISHES, categoryVisual } from "../data/dishes";
 import type { Category } from "../types";
 import DishThumb from "../components/DishThumb";
 import { LIQUID_SPRING, TAP_SCALE } from "../motion";
+import { haptic } from "../haptics";
 
 // Real category mapping, not a decorative label — the match count below is
 // a genuine count of real catalog dishes, never a fabricated placeholder.
@@ -40,7 +41,7 @@ function RadiusRing({ radius, onChange }: { radius: number; onChange: (v: number
             cy="40"
             r="34"
             fill="none"
-            stroke="#31E2D1"
+            stroke="#E879F9"
             strokeWidth="7"
             strokeLinecap="round"
             strokeDasharray={circumference}
@@ -91,6 +92,7 @@ export default function CravingRoom() {
   );
 
   function swipe(like: boolean) {
+    haptic(like ? "success" : "light");
     const dish = candidates[idx];
     const next = like ? [...liked, dish.id] : liked;
     setLiked(next);
@@ -195,6 +197,11 @@ export default function CravingRoom() {
   }
 
   const winner = overlap[0];
+
+  useEffect(() => {
+    if (winner) haptic("success");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [winner?.id]);
 
   return (
     <div className="px-5 pt-8 pb-32">

@@ -21,7 +21,7 @@ function MatchRing({ score }: { score: number }) {
   return (
     <div
       className="relative w-9 h-9 rounded-full shrink-0"
-      style={{ background: `conic-gradient(#2FD6C4 ${score * 3.6}deg, #242B29 0deg)` }}
+      style={{ background: `conic-gradient(#E879F9 ${score * 3.6}deg, #202826 0deg)` }}
     >
       <div className="absolute inset-[3px] rounded-full bg-surface flex items-center justify-center">
         <span className="font-mono text-[9px] font-semibold text-accent tabular">{score}</span>
@@ -102,9 +102,11 @@ export default function FoodCircles() {
           return (
             <motion.button
               key={c.name}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ ...LIQUID_SPRING, delay: i * 0.05 }}
+              initial={{ opacity: 0, y: 20, scale: 0.97 }}
+              whileInView={{ opacity: 1, y: 0, scale: 1 }}
+              viewport={{ once: true, margin: "-40px" }}
+              whileTap={{ scale: 0.98 }}
+              transition={{ ...LIQUID_SPRING, delay: Math.min(i, 4) * 0.05 }}
               className="text-left bg-surface border border-line rounded-card p-4 hover:border-accent/50 transition-colors flex items-center gap-3"
             >
               <MatchRing score={c.matchScore} />
