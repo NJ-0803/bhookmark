@@ -21,7 +21,7 @@ export default function Login({ onSignedIn }: { onSignedIn: () => void }) {
       setDevOtp(res.devOtp ?? null);
       setStep("otp");
     } catch {
-      setError("Can't reach the Palate API — is the backend running on :4001?");
+      setError("Can't reach the Bhookmark API — is the backend running on :4001?");
     } finally {
       setLoading(false);
     }
@@ -38,7 +38,7 @@ export default function Login({ onSignedIn }: { onSignedIn: () => void }) {
       }
       onSignedIn();
     } catch {
-      setError("Can't reach the Palate API — is the backend running on :4001?");
+      setError("Can't reach the Bhookmark API — is the backend running on :4001?");
     } finally {
       setLoading(false);
     }
@@ -48,7 +48,7 @@ export default function Login({ onSignedIn }: { onSignedIn: () => void }) {
     <div className="px-5 pt-16 pb-10 flex flex-col min-h-dvh">
       <p className="font-mono text-[11px] tracking-[0.14em] uppercase text-faint mb-2">Bangalore</p>
       <h1 className="font-display font-extrabold text-3xl leading-tight mb-2">
-        {step === "phone" ? "Sign in to Palate" : "Enter the code"}
+        {step === "phone" ? "Sign in to Bhookmark" : "Enter the code"}
       </h1>
       <p className="text-muted text-sm mb-8 max-w-[32ch]">
         {step === "phone"

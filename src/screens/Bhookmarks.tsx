@@ -10,7 +10,7 @@ import { signatureCraving } from "../evidenceThresholds";
 
 const REACTIONS = ["🫡 ordering this", "🧢 cap", "📍 take me"];
 
-export default function Palate({
+export default function Bhookmarks({
   logs,
   logsError,
   onLogFirst,
@@ -34,7 +34,7 @@ export default function Palate({
   return (
     <div className="px-5 pt-8 pb-32">
       <div className="flex items-center justify-between mb-1">
-        <p className="font-mono text-[11px] tracking-[0.14em] uppercase text-faint">Your Palate</p>
+        <p className="font-mono text-[11px] tracking-[0.14em] uppercase text-faint">Your Bhookmarks</p>
         {!loading && (
           <button onClick={() => setPreviewEmpty((v) => !v)} className="text-[11px] font-mono text-faint underline underline-offset-2">
             {previewEmpty ? "show my journal" : "preview: new account"}
@@ -48,13 +48,13 @@ export default function Palate({
       )}
 
       {loading ? (
-        <div className="border border-line rounded-card px-6 py-10 text-center text-faint text-sm">Loading your Palate…</div>
+        <div className="border border-line rounded-card px-6 py-10 text-center text-faint text-sm">Loading your Bhookmarks…</div>
       ) : empty ? (
         <div className="border border-dashed border-line rounded-card px-6 py-10 text-center">
           <div className="text-3xl mb-3">📓💀</div>
-          <h3 className="font-display font-bold text-lg mb-1.5">Your Palate is embarrassingly empty</h3>
+          <h3 className="font-display font-bold text-lg mb-1.5">Your Bhookmarks are embarrassingly empty</h3>
           <p className="text-muted text-sm mb-6 max-w-[28ch] mx-auto">
-            Log your first bite and this becomes the fastest way to remember whether something's worth ordering again.
+            Log your first bite and this becomes the fastest way to remember whether something's worth bhookmarking again.
           </p>
           <button onClick={onLogFirst} className="bg-accent text-accentInk font-semibold rounded-xl px-6 py-3 text-sm active:scale-[0.98] transition-transform">
             Fix that — log your first dish

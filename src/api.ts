@@ -12,7 +12,7 @@ interface Session {
   user: { id: string; phone: string; role: string };
 }
 
-const STORAGE_KEY = "palate.session";
+const STORAGE_KEY = "bhookmark.session";
 
 export function getSession(): Session | null {
   const raw = localStorage.getItem(STORAGE_KEY);

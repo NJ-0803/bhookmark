@@ -1,5 +1,5 @@
 self.addEventListener("push", (event) => {
-  let data = { title: "Palate", body: "Something's happening nearby." };
+  let data = { title: "Bhookmark", body: "Something's happening nearby." };
   try {
     data = event.data.json();
   } catch {
@@ -9,7 +9,7 @@ self.addEventListener("push", (event) => {
     self.registration.showNotification(data.title, {
       body: data.body,
       icon: "/vite.svg",
-      tag: data.tag ?? "palate",
+      tag: data.tag ?? "bhookmark",
       badge: "/vite.svg",
     })
   );

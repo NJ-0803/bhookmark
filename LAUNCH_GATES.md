@@ -5,7 +5,7 @@ needs a real decision, a paid vendor, or legal review before it can move
 past "designed" to "executed." Updated by hand — this is not generated from CI.
 
 ## Gate 0A — Concept prototype
-**Status: built.** Duel, BiteLog, Palate journal (with empty state), Craving
+**Status: built.** Duel, BiteLog, Bhookmarks journal (with empty state), Craving
 Room, category→subtype funnel, dish profile. Client-side only when this gate
 was first built; now backed by the real API below.
 **Not yet done:** the 20-user phone test from the doc's exit criteria. Nothing

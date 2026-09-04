@@ -24,8 +24,8 @@ const CATEGORY_ACCENT: Record<Category, string> = {
   Momos: "bg-teal-500 text-teal-950",
 };
 
-const SMART_ORDER_CACHE_KEY = "palate.smartOrder";
-const SMART_ORDER_DISMISSED_KEY = "palate.smartOrderDismissed";
+const SMART_ORDER_CACHE_KEY = "bhookmark.smartOrder";
+const SMART_ORDER_DISMISSED_KEY = "bhookmark.smartOrderDismissed";
 const SMART_ORDER_MAX_AGE_MS = 3 * 60 * 60 * 1000; // weather goes stale fast
 
 interface Pick {
@@ -191,7 +191,7 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
       <motion.div key="search" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={LIQUID_SPRING} className="px-5 pt-8 pb-32">
         <p className="font-mono text-[11px] tracking-[0.14em] uppercase text-faint mb-2">Bangalore · Today</p>
         <h1 className="font-display font-extrabold text-3xl leading-tight mb-1 text-balance">
-          What's your foodgasm<br />today? 🤤
+          What are you<br />bhookmarking now? 😏🤤😂
         </h1>
         <p className="text-muted text-sm mb-4">Pick a craving. We'll do the rest.</p>
 
@@ -309,7 +309,7 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
               </p>
             ) : (
               <p className="text-sm text-ink/90">
-                {digest.daysSinceLastLog === null ? "You haven't logged a single dish yet — Palate's judging you a little. 👀" : `It's been ${digest.daysSinceLastLog} day${digest.daysSinceLastLog === 1 ? "" : "s"} since your last log. Life happens, come back.`}
+                {digest.daysSinceLastLog === null ? "You haven't logged a single dish yet — Bhookmark's judging you a little. 👀" : `It's been ${digest.daysSinceLastLog} day${digest.daysSinceLastLog === 1 ? "" : "s"} since your last log. Life happens, come back.`}
               </p>
             )}
           </div>
@@ -395,7 +395,7 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
               Not one of our categories, and not a subtype or dish name either.
             </p>
             <p className="text-faint text-xs max-w-[32ch] mx-auto">
-              Tap the <span className="text-accent font-semibold">+</span> below, and choose "Other — not listed" as the category — Palate learns new categories from real logs.
+              Tap the <span className="text-accent font-semibold">+</span> below, and choose "Other — not listed" as the category — Bhookmark learns new categories from real logs.
             </p>
           </div>
         ) : (
@@ -572,7 +572,7 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
             ) : (
               <>
                 <div className="font-mono text-2xl font-semibold text-faint tabular">—</div>
-                <div className="text-faint text-[11px]">no Palate logs yet</div>
+                <div className="text-faint text-[11px]">no Bhookmark logs yet</div>
               </>
             )}
           </div>
@@ -592,7 +592,7 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
             <ScoreRow label="Verified-only" score={dishScore.verifiedOnly.score} count={dishScore.verifiedOnly.count} />
             {dishScore.yours && <ScoreRow label="Your rating" score={dishScore.yours.score} count={1} highlight />}
             <WhyThis
-              body={`Community averages every published log for this exact dish at this venue. Verified-only counts just the logs Palate could confirm with a live photo or a matched location. Confidence is "${dishScore.confidenceBand}" because it's based on ${dishScore.community.count} log${dishScore.community.count === 1 ? "" : "s"} so far — not a fixed decimal Palate is fully sure of.`}
+              body={`Community averages every published log for this exact dish at this venue. Verified-only counts just the logs Bhookmark could confirm with a live photo or a matched location. Confidence is "${dishScore.confidenceBand}" because it's based on ${dishScore.community.count} log${dishScore.community.count === 1 ? "" : "s"} so far — not a fixed decimal Bhookmark is fully sure of.`}
             />
           </div>
         )}

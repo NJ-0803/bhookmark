@@ -142,7 +142,7 @@ export default function LogFlow({
         setServerStatus(res.ok && body.ok ? body.log.status : "local-only");
       }
     } catch {
-      // Backend unreachable — the log still lands in the local Palate
+      // Backend unreachable — the log still lands in the local Bhookmarks
       // journal (F-10: manual/local flow always works even if enrichment
       // or the network doesn't).
       setServerStatus("local-only");
@@ -154,7 +154,7 @@ export default function LogFlow({
   }
 
   function shareText() {
-    return `${workingDish.name} — ${revealScore.toFixed(1)}/10 on Palate. ${workingDish.venue}, Bangalore.`;
+    return `${workingDish.name} — ${revealScore.toFixed(1)}/10 on Bhookmark. ${workingDish.venue}, Bangalore.`;
   }
 
   function handleSave() {
@@ -192,7 +192,7 @@ export default function LogFlow({
           {step === "capture" && (
             <div className="px-5">
               <h3 className="font-display font-bold text-xl mb-1">Snap the dish</h3>
-              <p className="text-muted text-sm mb-5">Optional, for your own Taste Receipt — Palate doesn't analyze it, so you'll fill in the details next either way.</p>
+              <p className="text-muted text-sm mb-5">Optional, for your own Taste Receipt — Bhookmark doesn't analyze it, so you'll fill in the details next either way.</p>
               <label className="block aspect-[4/3] rounded-card border-2 border-dashed border-line overflow-hidden relative cursor-pointer hover:border-accent/50 transition-colors">
                 <input type="file" accept="image/*" capture="environment" onChange={attachPhoto} className="sr-only" />
                 {photoUrl ? (
@@ -273,7 +273,7 @@ export default function LogFlow({
               </div>
               <h3 className="font-display font-bold text-xl mb-1">Verify this log?</h3>
               <p className="text-muted text-sm mb-5">
-                Optional. Sharing your location for a moment lets Palate confirm you were actually near{" "}
+                Optional. Sharing your location for a moment lets Bhookmark confirm you were actually near{" "}
                 {workingDish.venue === "Unnamed venue" ? "this venue" : workingDish.venue} — verified logs carry full weight in the
                 public score. Unverified logs still post, just at a lower weight.
               </p>
@@ -311,7 +311,7 @@ export default function LogFlow({
               </div>
               <WhyThis
                 title="What does this badge mean?"
-                body="Palate never calls a log “verified” from a client-side toggle. The server checks your evidence itself: a matched location plus a photo counts as full live-capture, either one alone counts as visit-consistent, and a manual-only log is recorded honestly as declared. All of them post — verified evidence just carries more weight in the public score."
+                body="Bhookmark never calls a log “verified” from a client-side toggle. The server checks your evidence itself: a matched location plus a photo counts as full live-capture, either one alone counts as visit-consistent, and a manual-only log is recorded honestly as declared. All of them post — verified evidence just carries more weight in the public score."
               />
 
               <div className="mb-4" />
@@ -329,7 +329,7 @@ export default function LogFlow({
 
               <ToggleRow
                 label="Keep this private"
-                sub="Never counts toward any public score or shows to anyone else — still saved to your own Palate"
+                sub="Never counts toward any public score or shows to anyone else — still saved to your own Bhookmarks"
                 value={isPrivate}
                 onChange={setIsPrivate}
               />
@@ -365,15 +365,15 @@ export default function LogFlow({
           {step === "done" && (
             <div className="px-5 text-center pt-6">
               <div className="text-4xl mb-3">✓</div>
-              <h3 className="font-display font-bold text-xl mb-1">Added to your Palate</h3>
+              <h3 className="font-display font-bold text-xl mb-1">Added to your Bhookmarks</h3>
               {serverStatus === "held" ? (
                 <p className="text-gold text-xs mb-5">Held for a quick review before it counts publicly — logging bursts on one venue trigger this automatically.</p>
               ) : serverStatus === "local-only" ? (
-                <p className="text-faint text-xs mb-5">Saved locally — the Palate API wasn't reachable, so it'll sync once it is.</p>
+                <p className="text-faint text-xs mb-5">Saved locally — the Bhookmark API wasn't reachable, so it'll sync once it is.</p>
               ) : serverStatus === "session-expired" ? (
                 <p className="text-bad text-xs mb-5">Saved locally, but your session expired — sign in again from your profile so it syncs and shows up publicly.</p>
               ) : (
-                <p className="text-muted text-sm mb-5">You'll see this instantly when you're deciding whether to reorder.</p>
+                <p className="text-muted text-sm mb-5">You'll see this instantly when you're deciding whether to bhookmark it again.</p>
               )}
 
               <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-faint mb-2 text-left">Taste Receipt</p>
@@ -387,7 +387,7 @@ export default function LogFlow({
                 <div className="text-faint text-xs mt-0.5">{workingDish.venue}</div>
                 <div className="flex items-center justify-between mt-3">
                   <span className="font-mono text-2xl font-semibold text-accent tabular">{revealScore.toFixed(1)}</span>
-                  <span className="text-xs text-muted">via Palate</span>
+                  <span className="text-xs text-muted">via Bhookmark</span>
                 </div>
               </div>
 

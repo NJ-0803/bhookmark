@@ -32,14 +32,14 @@ export default function NearMe({ onBack }: { onBack: () => void }) {
           }
           setStage({ name: "results", venues: res.results, category });
         } catch {
-          setStage({ name: "error", message: "Can't reach the Palate API — is the backend running on :4001?" });
+          setStage({ name: "error", message: "Can't reach the Bhookmark API — is the backend running on :4001?" });
         }
       },
       (err) => {
         setStage({
           name: "error",
           message: err.code === err.PERMISSION_DENIED
-            ? "Location access was denied. Palate never sees or stores your exact location otherwise — it's only sent for this one search."
+            ? "Location access was denied. Bhookmark never sees or stores your exact location otherwise — it's only sent for this one search."
             : "Couldn't get your location. Try again.",
         });
       },
@@ -56,7 +56,7 @@ export default function NearMe({ onBack }: { onBack: () => void }) {
 
       {stage.name === "pick" && (
         <>
-          <p className="text-muted text-sm mb-6">Pick a craving, share your location for a moment, and see every joint serving it nearby — ranked, with real reviews from Palate members.</p>
+          <p className="text-muted text-sm mb-6">Pick a craving, share your location for a moment, and see every joint serving it nearby — ranked, with real reviews from Bhookmark members.</p>
 
           <p className="font-mono text-[11px] tracking-[0.1em] uppercase text-faint mb-3">Craving</p>
           <div className="grid grid-cols-2 gap-2.5 mb-6">
@@ -151,7 +151,7 @@ function VenueCard({ venue, index }: { venue: NearbyVenue; index: number }) {
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-medium">{venue.dishName}</span>
           <span className="text-[10px] font-mono uppercase text-faint">
-            {venue.ratingSource === "community" ? `${venue.reviewCount} Palate review${venue.reviewCount === 1 ? "" : "s"}` : "starting score"}
+            {venue.ratingSource === "community" ? `${venue.reviewCount} Bhookmark review${venue.reviewCount === 1 ? "" : "s"}` : "starting score"}
           </span>
         </div>
 
@@ -175,7 +175,7 @@ function VenueCard({ venue, index }: { venue: NearbyVenue; index: number }) {
             )}
           </>
         ) : (
-          <p className="text-faint text-xs">No Palate reviews yet — be the first to log this one.</p>
+          <p className="text-faint text-xs">No Bhookmark reviews yet — be the first to log this one.</p>
         )}
       </div>
     </motion.div>

@@ -1,13 +1,13 @@
-# Project Status — Bhookmark (formerly "Project Palate")
+# Project Status — Bhookmark
 
 Last updated: 2026-09-04
 
-> Note on naming: the app was built under the name "Project Palate" / "Palate" and the user has decided to rename it to **Bhookmark** (Bhook + Bookmark). The rename has **not** been applied to the codebase yet — this doc uses "Palate" for anything already built, and flags the rename as the next real task.
+> Note on naming: the app was built under the name "Project Palate" / "Palate" and has been renamed to **Bhookmark** (Bhook + Bookmark). **The rename is complete** in the codebase: every user-facing string, the page title, `package.json`, the journal screen/tab (renamed `Palate.tsx` → `Bhookmarks.tsx`, tab id `palate` → `bhookmarks`), localStorage keys, service worker copy, and backend log/comment references all say Bhookmark now. The GitHub repo and Vercel project slug are being renamed next (approved by the user — GitHub auto-redirects the old URL, Vercel just changes the default `*.vercel.app` subdomain). Copy was also reworked to lean into the "bhookmark" verb: the Home headline ("What are you bhookmarking now? 😏🤤😂"), the "would reorder" stat ("Would bhookmark again"), and the verified-badge/empty-state copy that used to say "worth ordering again" / "whether to reorder."
 
 ## What has been completed
 
 ### Phase 1 — Trust and data correctness (from the implementation brief) — closed
-- Evidence-aware taste intelligence: 3-tier gating (early hint at 3 logs, signature craving at 5 logs/3 venues, confidence bands) — `src/evidenceThresholds.ts`, wired into `Profile.tsx` and `Palate.tsx`.
+- Evidence-aware taste intelligence: 3-tier gating (early hint at 3 logs, signature craving at 5 logs/3 venues, confidence bands) — `src/evidenceThresholds.ts`, wired into `Profile.tsx` and `Bhookmarks.tsx`.
 - Score separation: Your / Community / Verified-only ratings, each with real sample sizes and a confidence band, no blended number — `server/src/routes/dishes.ts` (`GET /dishes/score`), `server/src/evidence.ts`.
 - Real geolocation verification: BiteLog calls `navigator.geolocation` for real; server cross-checks against known venue coordinates (haversine) — `server/src/routes/logs.ts` (`computeLocationMatch`).
 - Ranking-manipulation controls, all real, all tested, all **hold for review** (never auto-block):
@@ -30,13 +30,13 @@ A complete real-vision backend (Claude vision via tool-use, honest failure modes
 ### Privacy visibility (Phase 2 item, just completed)
 Per-log `visibility: "private" | "public"` (public is the default — deliberate, since this app's core loop is a shared community score, not a private-first diary). A private log:
 - Still posts, still goes through all the same evidence/ranking checks
-- Still shows in the owner's own Palate journal (labeled 🔒 Private)
+- Still shows in the owner's own Bhookmarks journal (labeled 🔒 Private)
 - Is excluded from all four public read paths: `listPublishedLogs`, `listPublishedLogsByCategorySubtype`, `listPublishedLogsForDish`, `getTrendingDish`
 
 UI: a toggle in BiteLog's confirm step (`src/screens/LogFlow.tsx`). "Circle-only" visibility is explicitly not built — Circles has no real backend to be visible *to* yet.
 
 ### Visual redesign (Phase 5, partial)
-Home/Crave screen only: circular real-photo category rail, a "Trending"/"Top rated" spotlight card, photo-forward "Recommended for you" cards, category-accent colors, page-transition motion. **Not yet applied to Palate, Profile, or Circles screens.**
+Home/Crave screen only: circular real-photo category rail, a "Trending"/"Top rated" spotlight card, photo-forward "Recommended for you" cards, category-accent colors, page-transition motion. **Not yet applied to Bhookmarks, Profile, or Circles screens.**
 
 ### Also fixed this session
 - Horizontal swipeable results deck (Tinder-style) replacing a bland vertical list capped at ~2 static demo dishes; expanded the Pizza catalog to 10 real Bangalore chains.
@@ -50,30 +50,30 @@ Home/Crave screen only: circular real-photo category rail, a "Trending"/"Top rat
 3. **Public-by-default logging**, not private-by-default — a deliberate departure from the brief's generic guidance, made because this app's product is a shared community score.
 4. **Minimum-age / parental-consent policy: not needed** — the user's explicit call, not to be second-guessed or re-raised.
 5. **Domain**: recommended `.com` via Porkbun or Cloudflare Registrar (flat $11.08/year, no renewal bait-and-switch) over `.in` (cheaper but reads as India-only) or `.app` (real 70% renewal price jump). User has not yet purchased a domain.
-6. **Rename to "Bhookmark"** — decided, not yet implemented anywhere in the codebase.
+6. **Rename to "Bhookmark"** — done in-app; GitHub repo + Vercel slug rename in progress (user approved renaming both).
 7. **1M-user-scale performance/load testing**: permanently out of scope, per explicit user instruction.
 8. Reliability tests (network-drop mid-upload, background-job idempotency) beyond what's already covered: deferred, not urgent.
 
 ## Current problems (known, unresolved)
 1. **Test data pollution in the production DB.** Many `QA `-prefixed and similarly-named test fixtures exist in the live Neon database from this session's own test runs (some of which cleared the "real trending" evidence floor and briefly surfaced as a live trending claim). Not currently harmful — there are no real users yet — but should be cleaned up before real beta users arrive. No cleanup script has been written; this needs explicit confirmation before running any deletes against production data.
 2. **The orphaned `ai_corrections` table** still exists in production Postgres (schema.sql no longer creates it on fresh deploys, but the existing table wasn't dropped). Harmless, just dead weight.
-3. **The rename to "Bhookmark" is decided but not started.** Every user-facing string, the `<title>`, possibly the GitHub repo name (`project-palate`) and Vercel project slug (`project-palate.vercel.app`), all still say Palate.
-4. **No custom domain yet** — still on `project-palate.vercel.app`.
+3. **The `llm.ts` optional AI recommendation-blurb layer still exists** (`server/src/llm.ts`, wired into `recommend.ts`) — inert and zero-cost since `ANTHROPIC_API_KEY` isn't set (template fallback runs instead), but it's a live paid-API integration point sitting in the code, not fully removed like `vision.ts` was. Flagged for the user to decide: remove it too, or leave it as a harmless unconfigured optional.
+4. **No custom domain yet** — still on `project-palate.vercel.app` pending the GitHub/Vercel rename below. Domain pricing verified: `.com` $11.08/yr flat (recommended); `.ai` $82.70/yr with a mandatory 2-year minimum term (~$165.40 upfront) — no bait-and-switch renewal on either, but `.ai` costs ~7.5x more.
 
 ## Future tasks (not started, in rough priority order per the user's own stated interest)
 - **The Bhookmark rename** (see "Exact next step" below) — explicitly requested, not yet begun.
 - Custom domain purchase (user's action) + DNS wiring (my action, once they have a domain name).
-- Phase 3: You-page progressive-disclosure redesign (`Profile.tsx` is still one flat scroll), Palate redesign (calendar, taste fingerprint, notes search), Bite Buddy / Taste Pulse (not built at all).
+- Phase 3: You-page progressive-disclosure redesign (`Profile.tsx` is still one flat scroll), Bhookmarks redesign (calendar, taste fingerprint, notes search), Bite Buddy / Taste Pulse (not built at all).
 - Phase 4: Craving Rooms / Food Circles / Lists — all still fully mocked, zero real backend (push notifications are the one real piece already built).
-- Phase 5 remainder: same visual-redesign treatment applied to Palate/Profile/Circles; a full accessibility audit (44×44 targets, screen-reader pass, contrast).
+- Phase 5 remainder: same visual-redesign treatment applied to Bhookmarks/Profile/Circles; a full accessibility audit (44×44 targets, screen-reader pass, contrast).
 - The formal manual QA click-through promised early in the project — done piecemeal via ad hoc testing across this whole session, never once as a single formal pass.
 - Data export + account deletion workflow (Phase 2) — explicitly deferred by the user ("not needed for now, will see afterwards").
 
 ## Exact next step
-The user's last message mid-session was naming the app **Bhookmark**, before this status doc was requested. The next concrete action is: **scope and execute the rename** — search the codebase for every "Palate"/"palate" occurrence (UI copy, `index.html` title, `BottomNav` tab label, `Profile.tsx`'s "Palate Passport", the README, etc.), decide with the user whether the GitHub repo name and Vercel project slug should also change (both are safe to rename — GitHub auto-redirects the old repo URL, Vercel just changes the `*.vercel.app` default subdomain — but both are real, visible changes worth a quick confirmation before doing), then execute, test, deploy, and commit.
+The in-app rename is done and all 89 backend + 4 IP-isolation + 15 frontend tests pass against it. Remaining: rename the GitHub repo (`project-palate` → `bhookmark`) and the Vercel project slug, redeploy, and commit — then the custom domain purchase is next in line.
 
 ## Relevant files
-- **Frontend core**: `src/screens/Home.tsx` (Crave/search, redesigned), `src/screens/LogFlow.tsx` (BiteLog, AI removed, privacy toggle added), `src/screens/Palate.tsx`, `src/screens/Profile.tsx` (venue-claim UI added), `src/screens/Duel.tsx`, `src/components/BrowseCard.tsx`, `src/smartPicks.ts`, `src/evidenceThresholds.ts`, `src/api.ts`
+- **Frontend core**: `src/screens/Home.tsx` (Crave/search, redesigned), `src/screens/LogFlow.tsx` (BiteLog, AI removed, privacy toggle added), `src/screens/Bhookmarks.tsx`, `src/screens/Profile.tsx` (venue-claim UI added), `src/screens/Duel.tsx`, `src/components/BrowseCard.tsx`, `src/smartPicks.ts`, `src/evidenceThresholds.ts`, `src/api.ts`
 - **Backend core**: `server/src/app.ts` (trust proxy fix), `server/src/db.ts`, `server/src/routes/logs.ts` (ranking-manipulation signals, visibility), `server/src/routes/dishes.ts` (score separation, trending), `server/src/routes/venues.ts` (claims), `server/src/routes/moderation.ts` (claim review), `server/schema.sql`
 - **Test suites** (all in `server/scripts/`, run against a real Neon DB): `redteam-smoke.mjs`, `recommendations-test.mjs`, `nearby-test.mjs`, `notifications-test.mjs`, `qa-brief-tests.mjs`, `venue-claims-test.mjs`, `privacy-visibility-test.mjs`, `ip-isolation-test.ts`, `concurrency-100.mjs`; frontend unit test: `scripts/evidence-thresholds-test.mjs` (repo root)
 

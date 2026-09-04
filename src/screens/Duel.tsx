@@ -133,7 +133,7 @@ export default function Duel({
           transition={LIQUID_SPRING}
           className="w-full bg-accent text-accentInk font-semibold rounded-xl py-3.5"
         >
-          Add to Palate
+          Add to Bhookmarks
         </motion.button>
         <button onClick={() => setStep("bucket")} className="text-faint text-xs underline underline-offset-2 mt-4">
           Actually, let me duel it
@@ -221,7 +221,7 @@ export default function Duel({
         transition={LIQUID_SPRING}
         className="w-full bg-accent text-accentInk font-semibold rounded-xl py-3.5"
       >
-        Add to Palate
+        Add to Bhookmarks
       </motion.button>
     </div>
   );

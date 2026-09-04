@@ -32,7 +32,7 @@ export default function Profile({
   const verifiedPct = visibleLogs.length ? Math.round((verifiedCount / visibleLogs.length) * 100) : 0;
   const session = getSession();
 
-  // Palate Passport (Section 11): signature cravings, contrarian picks, repeat orders —
+  // Bhookmark Passport (Section 11): signature cravings, contrarian picks, repeat orders —
   // all derived from the real backend, the same source Home's recommenders read from.
   // Signature craving is evidence-gated (brief 1.1) — it never claims a pattern
   // from a single log, and shows real progress instead of nothing until it unlocks.
@@ -99,7 +99,7 @@ export default function Profile({
     if (!showSessions) return;
     listSessions()
       .then((res) => (res.ok ? setSessions(res.sessions) : setSessionsError(res.error ?? "Couldn't load sessions.")))
-      .catch(() => setSessionsError("Can't reach the Palate API."));
+      .catch(() => setSessionsError("Can't reach the Bhookmark API."));
   }, [showSessions]);
 
   async function handleRevoke(deviceId: string) {
@@ -109,7 +109,7 @@ export default function Profile({
 
   return (
     <div className="px-5 pt-8 pb-32">
-      <p className="font-mono text-[11px] tracking-[0.14em] uppercase text-faint mb-1">Palate Passport</p>
+      <p className="font-mono text-[11px] tracking-[0.14em] uppercase text-faint mb-1">Bhookmark Passport</p>
       <div className="flex items-center gap-3 mb-6">
         <div className="w-14 h-14 rounded-full bg-gradient-to-br from-accent/40 to-accentDim border border-accent/40 flex items-center justify-center font-display font-bold text-lg">
           N
@@ -123,14 +123,14 @@ export default function Profile({
       <div className="grid grid-cols-3 gap-2.5 mb-3">
         <Stat label="Dishes logged" value={String(visibleLogs.length)} />
         <Stat label="Verified" value={`${verifiedPct}%`} />
-        <Stat label="Would reorder" value={String(repeatOrders)} />
+        <Stat label="Would bhookmark again" value={String(repeatOrders)} />
       </div>
 
       <div className="bg-surface border border-line rounded-card p-4 mb-3">
         <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-faint mb-2">Signature craving</p>
         {cravingResult.tier === "unlocked" ? (
           <p className="text-sm text-ink/90">
-            <span className="text-accent font-semibold">{cravingResult.category}</span> shows up more than anything else in your Palate
+            <span className="text-accent font-semibold">{cravingResult.category}</span> shows up more than anything else in your Bhookmarks
             {cravingResult.band === "strong" ? " — and it's a real, repeated pattern by now." : "."}
           </p>
         ) : cravingResult.tier === "early" ? (
@@ -216,7 +216,7 @@ export default function Profile({
       {showClaim && (
         <div className="bg-surface border border-line rounded-card p-4 mb-3">
           <p className="text-muted text-xs mb-3">
-            Claim your venue so your own logs there are disclosed and never count toward its public score — Palate never lets a
+            Claim your venue so your own logs there are disclosed and never count toward its public score — Bhookmark never lets a
             restaurant quietly rate itself.
           </p>
           <div className="flex gap-2 mb-2">

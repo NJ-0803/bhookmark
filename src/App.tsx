@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import BottomNav, { type Tab } from "./components/BottomNav";
 import Home from "./screens/Home";
-import Palate from "./screens/Palate";
+import Bhookmarks from "./screens/Bhookmarks";
 import Circles from "./screens/Circles";
 import Profile from "./screens/Profile";
 import LogFlow from "./screens/LogFlow";
@@ -29,10 +29,10 @@ export default function App() {
         setRemoteLogs(res.logs);
         setLogsError(null);
       } else {
-        setLogsError(res.error ?? "Couldn't load your Palate.");
+        setLogsError(res.error ?? "Couldn't load your Bhookmarks.");
       }
     } catch {
-      setLogsError("Can't reach the Palate API — is the backend running on :4001?");
+      setLogsError("Can't reach the Bhookmark API — is the backend running on :4001?");
     }
   }
 
@@ -63,8 +63,8 @@ export default function App() {
           transition={LIQUID_SPRING}
         >
           {tab === "home" && <Home onLogDish={(dish) => setLogFlow({ open: true, prefill: dish })} />}
-          {tab === "palate" && (
-            <Palate
+          {tab === "bhookmarks" && (
+            <Bhookmarks
               logs={remoteLogs}
               logsError={logsError}
               onLogFirst={() => setLogFlow({ open: true })}

@@ -5,7 +5,7 @@ import * as db from "../db";
 import { requireAuth } from "../middleware";
 import { VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY } from "../vapid";
 
-webpush.setVapidDetails("mailto:dev@palate.local", VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+webpush.setVapidDetails("mailto:dev@bhookmark.local", VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 
 export const notificationsRouter = Router();
 
@@ -59,7 +59,7 @@ notificationsRouter.post("/simulate-friend-nearby", requireAuth, async (req, res
   const { friendName, dishName, distanceKm } = parsed.success ? parsed.data : simulateSchema.parse({});
   const result = await sendToUser(req.user!.sub, {
     title: `${friendName} just logged nearby`,
-    body: `${friendName} rated ${dishName} ${distanceKm}km from you — open Palate to see it.`,
+    body: `${friendName} rated ${dishName} ${distanceKm}km from you — open Bhookmark to see it.`,
     tag: "friend-nearby",
   });
   if (result.sent === 0) {

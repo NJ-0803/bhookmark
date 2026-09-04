@@ -7,6 +7,6 @@ const PORT = 4001;
 
 app.listen(PORT, () => {
   // eslint-disable-next-line no-console
-  console.log(`Palate API (local dev) listening on http://localhost:${PORT}`);
+  console.log(`Bhookmark API (local dev) listening on http://localhost:${PORT}`);
   console.log(`  High-level AI model (Claude) for recommendation blurbs: ${llmConfigured() ? "configured" : "NOT configured — set ANTHROPIC_API_KEY to enable, template fallback is active"}`);
 });

@@ -1,4 +1,4 @@
-// Seeds a few realistic Palate-community reviews (our own app's data model —
+// Seeds a few realistic Bhookmark-community reviews (our own app's data model —
 // not scraped from Google/Zomato) so the /venues/nearby feature has real
 // content to render instead of empty states. Run with the backend up:
 // node scripts/seed-venues-demo.mjs

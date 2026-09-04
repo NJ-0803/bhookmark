@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { LIQUID_SPRING, TAP_SCALE } from "../motion";
 
-export const ONBOARDING_KEY = "palate.onboarded";
+export const ONBOARDING_KEY = "bhookmark.onboarded";
 
 export default function Onboarding({ onDone }: { onDone: () => void }) {
   return (

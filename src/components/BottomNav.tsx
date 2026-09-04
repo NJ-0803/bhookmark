@@ -1,11 +1,11 @@
 import { motion } from "framer-motion";
 import { LIQUID_SPRING, TAP_SCALE } from "../motion";
 
-export type Tab = "home" | "palate" | "circles" | "profile";
+export type Tab = "home" | "bhookmarks" | "circles" | "profile";
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "home", label: "Crave", icon: "🔍" },
-  { id: "palate", label: "Palate", icon: "📓" },
+  { id: "bhookmarks", label: "Bhookmarks", icon: "📓" },
   { id: "circles", label: "Circles", icon: "👥" },
   { id: "profile", label: "You", icon: "◎" },
 ];

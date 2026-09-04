@@ -272,7 +272,7 @@ export async function listLogsForUser(userId: string): Promise<DishLog[]> {
 // All three public aggregates below exclude owner_disclosed logs (brief
 // 1.5: restaurant staff self-rating their own venue must not silently
 // influence organic rankings) — an owner's own log still exists and shows
-// up on their personal Palate, it just never counts toward what other
+// up on their personal Bhookmarks, it just never counts toward what other
 // people see as "the" score.
 // All public reads exclude both owner-disclosed logs (above) AND private
 // logs (brief Phase 2: granular visibility) — a private log still exists

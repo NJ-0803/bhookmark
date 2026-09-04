@@ -1,4 +1,4 @@
--- Palate production schema (Neon Postgres). Run once via scripts/migrate.mjs.
+-- Bhookmark production schema (Neon Postgres). Run once via scripts/migrate.mjs.
 
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
