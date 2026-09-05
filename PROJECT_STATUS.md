@@ -1,6 +1,6 @@
 # Project Status — Bhookmark
 
-Last updated: 2026-09-04
+Last updated: 2026-09-05
 
 > Note on naming: the app was built under the name "Project Palate" / "Palate" and has been renamed to **Bhookmark** (Bhook + Bookmark). **The rename is complete** in the codebase: every user-facing string, the page title, `package.json`, the journal screen/tab (renamed `Palate.tsx` → `Bhookmarks.tsx`, tab id `palate` → `bhookmarks`), localStorage keys, service worker copy, and backend log/comment references all say Bhookmark now. The GitHub repo and Vercel project slug are being renamed next (approved by the user — GitHub auto-redirects the old URL, Vercel just changes the default `*.vercel.app` subdomain). Copy was also reworked to lean into the "bhookmark" verb: the Home headline ("What are you bhookmarking now? 😏🤤😂"), the "would reorder" stat ("Would bhookmark again"), and the verified-badge/empty-state copy that used to say "worth ordering again" / "whether to reorder."
 
@@ -79,6 +79,16 @@ User watched a reference video of trending app UIs and pushed for a more tactile
 - **Scroll-triggered reveals**: Bhookmarks' journal cards, `RemixableLists`, and `FoodCircles` switched from mount-based `animate` to `whileInView` (fires as each card scrolls into the viewport, not just once on page load) — matters once these lists grow longer than one screen.
 - **Not done**: a full sweep of every remaining flat `bg-accent` button to the literal 3-stop gradient (13 files use it) — the color token itself already carries the new magenta everywhere, so the palette shift landed globally regardless; only the handful of most-visible CTAs got the full gradient treatment for now.
 
+### Phase 4 — Craving Rooms / Food Circles / Lists (2026-09-05, real backend built and shipped)
+Previously fully mocked. Now a real backend, zero paid APIs (polling instead of WebSockets, code/link invites instead of SMS):
+- **Friends**: every user gets a permanent, unique friend code (`GET /friends/code`); adding someone by code (`POST /friends/add`) creates a mutual friendship in one call. Circles are built from this real friends list, not invented contacts.
+- **Food Circles**: `POST /circles` validates every member against the creator's real friends list (silently drops non-friends); `computeCircleMatchScore` is a genuine Jaccard-style intersection/union of members' real loved-categories from the `logs` table — an honest 0% when there's no real overlap yet, never a placeholder number.
+- **Craving Rooms**: disposable code-based sessions. The creator's client computes real candidate dish IDs from the mood/category the group picked; that exact candidate list is stored server-side (`candidate_ids`) so every participant swipes on the identical set. Reveal (`GET /rooms/:id/reveal`, polled every 2.5s) computes real unanimous (liked by everyone) and partial (liked by some) matches from actual recorded swipes — no simulated "waiting for others."
+- **Lists**: real creation, a real cross-user feed, real clone lineage (`parent_list_id`) and real clone counts.
+- New tables: `friendships`, `circles`, `circle_members`, `craving_rooms`, `craving_room_participants`, `craving_room_swipes`, `lists`, `list_items`, plus a `friend_code` column on `users` — all migrated live against the production Neon DB. 30 new backend tests (`server/scripts/phase4-test.mjs`), all passing; zero regressions across the existing 89 backend + 4 IP-isolation tests.
+- **A real bug found in live QA after shipping, same day**: `AnimatePresence mode="wait"` (and, it turned out, even its default non-"wait" mode) would intermittently hang on exit-completion in this app — the visible screen would freeze on the previous tab/card while React's own state had already moved on, with no error thrown. First caught as the Circles tab not rendering after a click; a second instance surfaced independently in the Craving Room's swipe card after the first fix was already live. Fixed by removing `AnimatePresence` from every key-based screen/card transition (top-level tabs, Circles' sub-tabs, Home's result carousel, Duel's swipe cards, Craving Room's swipe card, TrendingStack's card cycler) in favor of plain mount-in-only animation — transitions lost the exit-fade flourish but are now both correct and faster. Deployed as a same-day follow-up fix after the first Phase 4 deploy.
+- **QA note**: the earlier automated `phase4-test.mjs` runs (and this session's live click-through QA) write into the same production Neon database the live app reads from — there's no separate dev/staging DB. All synthetic test accounts and their lists/circles/rooms created this session were identified and deleted afterward (cascades cleanly via `ON DELETE CASCADE`). Worth remembering next time an automated test suite runs: it's writing to prod, and its rows are visible in shared surfaces like the Lists feed until cleaned up.
+
 ## Important decisions (so future work doesn't re-litigate these)
 1. **No paid APIs, period**, until there's a revenue model. This closed AI vision recognition entirely (see above) — don't propose it again unassisted.
 2. **No photo persistence.** No object storage exists; nothing is stored beyond the duration of a request. This also closes off photo-reuse/receipt-reuse detection (Phase 1 item 5) until this changes.
@@ -90,29 +100,29 @@ User watched a reference video of trending app UIs and pushed for a more tactile
 8. Reliability tests (network-drop mid-upload, background-job idempotency) beyond what's already covered: deferred, not urgent.
 
 ## Current problems (known, unresolved)
-1. **Test data pollution in the production DB.** Many `QA `-prefixed and similarly-named test fixtures exist in the live Neon database from this session's own test runs (some of which cleared the "real trending" evidence floor and briefly surfaced as a live trending claim). Not currently harmful — there are no real users yet — but should be cleaned up before real beta users arrive. No cleanup script has been written; this needs explicit confirmation before running any deletes against production data.
+1. ~~Test data pollution in the production DB~~ — **cleaned up** (2026-09-05), for the Phase 4 tables specifically: deleted all synthetic accounts from `phase4-test.mjs` runs and this session's live QA (cascaded their lists/circles/rooms). The general lesson stands — this project has no separate dev/staging DB, so any automated test run or manual API-based QA writes directly into the same database the live app reads from, and anything landing in a cross-user surface (the Lists feed, mainly) is visible to real users until cleaned up. Other, older test fixtures from earlier phases (pre-dating this cleanup) haven't been specifically re-audited.
 2. **The orphaned `ai_corrections` table** still exists in production Postgres (schema.sql no longer creates it on fresh deploys, but the existing table wasn't dropped). Harmless, just dead weight.
 3. ~~The `llm.ts` optional AI recommendation-blurb layer~~ — **removed** (2026-09-04). It was a second, separate paid-API integration point from the already-removed vision code — inert (no `ANTHROPIC_API_KEY` set) but still live in the code. Deleted `server/src/llm.ts`, its wiring in `routes/recommendations.ts` (now just returns the deterministic template `reason` directly, no `reasonSource`/`llmConfigured` fields), the `@anthropic-ai/sdk` dependency, and the matching frontend/test references. All 93 tests still pass.
-4. **No custom domain yet.** User is mid-purchase of `bhookmark.com` via Porkbun ($11.08/yr flat, verified pricing) — GitHub repo and code are already renamed; DNS + Vercel wiring is next once the purchase completes.
+4. ~~No custom domain yet~~ — **resolved**. `bhookmark.com` is purchased, DNS-wired, and live in production (verified serving the latest deploy as of 2026-09-05).
 
 ## Future tasks (not started, in rough priority order per the user's own stated interest)
-- **The Bhookmark rename** (see "Exact next step" below) — explicitly requested, not yet begun.
-- Custom domain purchase (user's action) + DNS wiring (my action, once they have a domain name).
 - Phase 3: You-page progressive-disclosure redesign (`Profile.tsx` is still one flat scroll), Bhookmarks redesign (calendar, taste fingerprint, notes search), Bite Buddy / Taste Pulse (not built at all).
-- Phase 4: Craving Rooms / Food Circles / Lists — all still fully mocked, zero real backend (push notifications are the one real piece already built).
+- ~~Phase 4: Craving Rooms / Food Circles / Lists~~ — **built and shipped** (2026-09-05). See the Phase 4 section above.
 - ~~Phase 5 remainder: accessibility audit~~ — **done** (2026-09-04). Phase 5 is now fully closed.
-- The formal manual QA click-through promised early in the project — done piecemeal via ad hoc testing across this whole session, never once as a single formal pass.
+- The formal manual QA click-through promised early in the project — Phase 4's flows (add friend, create circle, create/join a room, swipe, reveal, create/clone a list) got a real click-through pass this session; earlier phases are still only ad hoc.
 - Data export + account deletion workflow (Phase 2) — explicitly deferred by the user ("not needed for now, will see afterwards").
 
 ## Exact next step
-The in-app rename is done and all 89 backend + 4 IP-isolation + 15 frontend tests pass against it. Remaining: rename the GitHub repo (`project-palate` → `bhookmark`) and the Vercel project slug, redeploy, and commit — then the custom domain purchase is next in line.
+Phase 4 is shipped and QA'd. No specific next task has been requested yet — Phase 3 (You-page redesign, Bhookmarks calendar/search) is the next item on the user's own priority list above, but nothing has been started on it.
 
 ## Relevant files
 - **Frontend core**: `src/screens/Home.tsx` (Crave/search, redesigned), `src/screens/LogFlow.tsx` (BiteLog, AI removed, privacy toggle added), `src/screens/Bhookmarks.tsx`, `src/screens/Profile.tsx` (venue-claim UI added), `src/screens/Duel.tsx`, `src/components/BrowseCard.tsx`, `src/smartPicks.ts`, `src/evidenceThresholds.ts`, `src/api.ts`
+- **Phase 4 frontend**: `src/screens/Circles.tsx` (sub-tab shell), `src/screens/FoodCircles.tsx`, `src/screens/CravingRoom.tsx`, `src/screens/RemixableLists.tsx`
 - **Backend core**: `server/src/app.ts` (trust proxy fix), `server/src/db.ts`, `server/src/routes/logs.ts` (ranking-manipulation signals, visibility), `server/src/routes/dishes.ts` (score separation, trending), `server/src/routes/venues.ts` (claims), `server/src/routes/moderation.ts` (claim review), `server/schema.sql`
-- **Test suites** (all in `server/scripts/`, run against a real Neon DB): `redteam-smoke.mjs`, `recommendations-test.mjs`, `nearby-test.mjs`, `notifications-test.mjs`, `qa-brief-tests.mjs`, `venue-claims-test.mjs`, `privacy-visibility-test.mjs`, `ip-isolation-test.ts`, `concurrency-100.mjs`; frontend unit test: `scripts/evidence-thresholds-test.mjs` (repo root)
+- **Phase 4 backend**: `server/src/routes/friends.ts`, `server/src/routes/circles.ts`, `server/src/routes/rooms.ts`, `server/src/routes/lists.ts`
+- **Test suites** (all in `server/scripts/`, run against a real Neon DB): `redteam-smoke.mjs`, `recommendations-test.mjs`, `nearby-test.mjs`, `notifications-test.mjs`, `qa-brief-tests.mjs`, `venue-claims-test.mjs`, `privacy-visibility-test.mjs`, `ip-isolation-test.ts`, `concurrency-100.mjs`, `phase4-test.mjs`; frontend unit test: `scripts/evidence-thresholds-test.mjs` (repo root)
 
 ## Test status (as of last full run, this session)
-**89 backend tests passing, 0 failing**, across 7 suites (13 + 11 + 7 + 7 + 24 + 16 + 11), plus 15 frontend unit tests and a 4-test IP-isolation suite — all green. Both frontend (`npx tsc -b`) and backend (`npx tsc --noEmit`) typecheck clean. Production deployed and verified healthy after every change this session.
+**89 backend tests + 30 Phase 4 tests + 4 IP-isolation tests, 0 failing**, plus 15 frontend unit tests — all green. Both frontend (`npx tsc -b`) and backend (`npx tsc --noEmit`) typecheck clean. Production deployed and verified healthy after every change this session, including a same-day follow-up deploy for the Craving Room swipe-freeze fix found in live QA.
 
 **Known test-infra fragility, now fixed**: three test files previously drew fake IPs from small (250-address) reserved ranges for `X-Forwarded-For` spoofing; repeated same-day runs eventually accumulated enough history that a random draw would collide with itself and trip the real multi-account-network detector, producing false test failures. All three now draw from `10.0.0.0/8` (~16.7M addresses), where this is no longer practically possible.
