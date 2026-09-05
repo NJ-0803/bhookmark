@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import CravingRoom from "./CravingRoom";
 import FoodCircles from "./FoodCircles";
 import RemixableLists from "./RemixableLists";
@@ -36,19 +36,16 @@ export default function Circles() {
           </motion.button>
         ))}
       </div>
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={sub}
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -6 }}
-          transition={LIQUID_SPRING}
-        >
-          {sub === "room" && <CravingRoom />}
-          {sub === "circles" && <FoodCircles />}
-          {sub === "lists" && <RemixableLists />}
-        </motion.div>
-      </AnimatePresence>
+      <motion.div
+        key={sub}
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={LIQUID_SPRING}
+      >
+        {sub === "room" && <CravingRoom />}
+        {sub === "circles" && <FoodCircles />}
+        {sub === "lists" && <RemixableLists />}
+      </motion.div>
     </div>
   );
 }

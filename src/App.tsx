@@ -54,28 +54,25 @@ export default function App() {
 
   return (
     <div className="min-h-dvh">
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={tab}
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -6 }}
-          transition={LIQUID_SPRING}
-        >
-          {tab === "home" && <Home onLogDish={(dish) => setLogFlow({ open: true, prefill: dish })} />}
-          {tab === "bhookmarks" && (
-            <Bhookmarks
-              logs={remoteLogs}
-              logsError={logsError}
-              onLogFirst={() => setLogFlow({ open: true })}
-            />
-          )}
-          {tab === "circles" && <Circles />}
-          {tab === "profile" && (
-            <Profile logs={remoteLogs ?? []} onSignOut={() => setAuthed(false)} />
-          )}
-        </motion.div>
-      </AnimatePresence>
+      <motion.div
+        key={tab}
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={LIQUID_SPRING}
+      >
+        {tab === "home" && <Home onLogDish={(dish) => setLogFlow({ open: true, prefill: dish })} />}
+        {tab === "bhookmarks" && (
+          <Bhookmarks
+            logs={remoteLogs}
+            logsError={logsError}
+            onLogFirst={() => setLogFlow({ open: true })}
+          />
+        )}
+        {tab === "circles" && <Circles />}
+        {tab === "profile" && (
+          <Profile logs={remoteLogs ?? []} onSignOut={() => setAuthed(false)} />
+        )}
+      </motion.div>
 
       <BottomNav active={tab} onChange={setTab} onBite={() => setLogFlow({ open: true })} />
 

@@ -11,6 +11,10 @@ import { profileRouter } from "./routes/profile";
 import { recommendationsRouter } from "./routes/recommendations";
 import { venuesRouter } from "./routes/venues";
 import { notificationsRouter } from "./routes/notifications";
+import { friendsRouter } from "./routes/friends";
+import { circlesRouter } from "./routes/circles";
+import { roomsRouter } from "./routes/rooms";
+import { listsRouter } from "./routes/lists";
 
 const app = express();
 const isProd = process.env.NODE_ENV === "production";
@@ -61,6 +65,10 @@ app.use("/profile", profileRouter);
 app.use("/recommendations", recommendationsRouter);
 app.use("/venues", venuesRouter);
 app.use("/notifications", notificationsRouter);
+app.use("/friends", friendsRouter);
+app.use("/circles", circlesRouter);
+app.use("/rooms", roomsRouter);
+app.use("/lists", listsRouter);
 if (!isProd) app.use("/dev", devRouter);
 
 export default app;

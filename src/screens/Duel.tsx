@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import type { DishEntry, Verdict } from "../types";
 import DishThumb from "../components/DishThumb";
 import StarRating from "../components/StarRating";
@@ -154,21 +154,19 @@ export default function Duel({
         <h3 className="font-display font-bold text-xl mb-1">Does this beat</h3>
         <p className="text-muted text-sm mb-5">{opponent.name} · {opponent.venue}?</p>
 
-        <AnimatePresence mode="wait">
-          <SwipeCard
-            key={round}
-            cardKey={`round-${round}`}
-            onSwipeRight={() => choose(true)}
-            onSwipeLeft={() => choose(false)}
-            rightLabel="YEAH 🔥"
-            leftLabel="NAH 💀"
-            className="bg-surface border border-line rounded-card p-4"
-          >
-            <DishThumb emoji={challenger.emoji} tint={challenger.tint} photo={challenger.photo} size="lg" scrim />
-            <div className="mt-3 font-display font-bold text-lg leading-tight">{challenger.name}</div>
-            <div className="text-faint text-xs mt-0.5">{challenger.venue}</div>
-          </SwipeCard>
-        </AnimatePresence>
+        <SwipeCard
+          key={round}
+          cardKey={`round-${round}`}
+          onSwipeRight={() => choose(true)}
+          onSwipeLeft={() => choose(false)}
+          rightLabel="YEAH 🔥"
+          leftLabel="NAH 💀"
+          className="bg-surface border border-line rounded-card p-4"
+        >
+          <DishThumb emoji={challenger.emoji} tint={challenger.tint} photo={challenger.photo} size="lg" scrim />
+          <div className="mt-3 font-display font-bold text-lg leading-tight">{challenger.name}</div>
+          <div className="text-faint text-xs mt-0.5">{challenger.venue}</div>
+        </SwipeCard>
 
         <div className="grid grid-cols-2 gap-3 mt-4">
           <motion.button onClick={() => choose(false)} whileTap={TAP_SCALE} transition={LIQUID_SPRING} className="bg-surface2 border border-line rounded-xl py-3.5 text-xs font-medium">

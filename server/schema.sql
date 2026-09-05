@@ -127,3 +127,91 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
   auth TEXT NOT NULL,
   PRIMARY KEY (user_id, endpoint)
 );
+
+-- Phase 4: real Circles backend (Craving Rooms, Food Circles, Lists),
+-- replacing what was previously 100% hardcoded mock data in the frontend.
+
+-- A permanent, personal code (like a game friend code) — the base identity
+-- layer everything else builds on. Backfilled lazily on first request for
+-- existing users rather than in this migration (a bulk ALTER can't assign a
+-- distinct random value per existing row in one statement).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS friend_code TEXT UNIQUE;
+
+-- Adding a friend by code is instant and mutual (no pending-request step,
+-- matching "just like adding a friend in a game") — both directions are
+-- inserted so a lookup never needs an OR across two columns.
+CREATE TABLE IF NOT EXISTS friendships (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  friend_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at BIGINT NOT NULL,
+  PRIMARY KEY (user_id, friend_id)
+);
+
+-- Food Circles: a standing group, built from a user's existing friends
+-- (not a separate invite code) since the group is meant to persist.
+CREATE TABLE IF NOT EXISTS circles (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  creator_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at BIGINT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS circle_members (
+  circle_id TEXT NOT NULL REFERENCES circles(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  joined_at BIGINT NOT NULL,
+  PRIMARY KEY (circle_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_circle_members_user ON circle_members(user_id);
+
+-- Craving Rooms: a disposable, short-lived session (not built from friends
+-- — the point is being able to loop in anyone with the room's own code,
+-- e.g. people you're physically with who aren't in your friends list yet).
+CREATE TABLE IF NOT EXISTS craving_rooms (
+  id TEXT PRIMARY KEY,
+  code TEXT UNIQUE NOT NULL,
+  creator_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  mood TEXT NOT NULL,
+  radius_km INT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'setup',
+  candidate_ids TEXT[] NOT NULL DEFAULT '{}',
+  created_at BIGINT NOT NULL,
+  expires_at BIGINT NOT NULL
+);
+-- Every participant must swipe on the exact same dish list for "everyone
+-- agreed" to mean anything — set once by the creator, fetched by joiners
+-- rather than each client independently guessing the same candidates.
+ALTER TABLE craving_rooms ADD COLUMN IF NOT EXISTS candidate_ids TEXT[] NOT NULL DEFAULT '{}';
+CREATE TABLE IF NOT EXISTS craving_room_participants (
+  room_id TEXT NOT NULL REFERENCES craving_rooms(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  joined_at BIGINT NOT NULL,
+  PRIMARY KEY (room_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS craving_room_swipes (
+  room_id TEXT NOT NULL REFERENCES craving_rooms(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  dish_id TEXT NOT NULL,
+  liked BOOLEAN NOT NULL,
+  created_at BIGINT NOT NULL,
+  PRIMARY KEY (room_id, user_id, dish_id)
+);
+CREATE INDEX IF NOT EXISTS idx_craving_rooms_code ON craving_rooms(code);
+
+-- Lists: user-curated, clonable/remixable — parent_list_id links a clone
+-- back to the original so a real clone count is just a COUNT(*) query.
+CREATE TABLE IF NOT EXISTS lists (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  author_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  parent_list_id TEXT REFERENCES lists(id) ON DELETE SET NULL,
+  created_at BIGINT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS list_items (
+  id SERIAL PRIMARY KEY,
+  list_id TEXT NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
+  dish_name TEXT NOT NULL,
+  venue TEXT NOT NULL,
+  position INT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_list_items_list ON list_items(list_id);
+CREATE INDEX IF NOT EXISTS idx_lists_parent ON lists(parent_list_id);

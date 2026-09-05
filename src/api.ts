@@ -234,3 +234,82 @@ export async function getNearbyVenues(category: string, lat: number, lng: number
   const res = await fetch(`/venues/nearby?${params}`);
   return res.json() as Promise<{ ok: boolean; category: string; radiusKm: number; count: number; results: NearbyVenue[]; error?: string }>;
 }
+
+// ---------- Phase 4: Friends, Circles, Craving Rooms, Lists ----------
+
+export interface PublicUser { id: string; phone: string; createdAt: number }
+
+export async function getMyFriendCode(): Promise<{ ok: boolean; code: string }> {
+  return (await api("/friends/code")).json();
+}
+
+export async function addFriend(code: string): Promise<{ ok: boolean; friend?: PublicUser; error?: string }> {
+  const res = await api("/friends/add", { method: "POST", body: JSON.stringify({ code }) });
+  return res.json();
+}
+
+export async function getFriends(): Promise<{ ok: boolean; friends: PublicUser[] }> {
+  return (await api("/friends")).json();
+}
+
+export interface Circle { id: string; name: string; creatorId: string; createdAt: number; memberCount: number; matchScore: number }
+
+export async function createCircle(name: string, memberIds: string[]): Promise<{ ok: boolean; circle?: Circle; error?: string }> {
+  const res = await api("/circles", { method: "POST", body: JSON.stringify({ name, memberIds }) });
+  return res.json();
+}
+
+export async function getCircles(): Promise<{ ok: boolean; circles: Circle[] }> {
+  return (await api("/circles")).json();
+}
+
+export async function getCircleDetail(id: string): Promise<{ ok: boolean; members: PublicUser[]; matchScore: number; error?: string }> {
+  return (await api(`/circles/${id}`)).json();
+}
+
+export interface CravingRoomInfo {
+  id: string; code: string; creatorId: string; mood: string; radiusKm: number;
+  status: "setup" | "swiping" | "revealed"; candidateIds: string[]; createdAt: number; expiresAt: number;
+}
+
+export async function createRoom(mood: string, radiusKm: number, candidateIds: string[]): Promise<{ ok: boolean; room?: CravingRoomInfo; error?: string }> {
+  const res = await api("/rooms", { method: "POST", body: JSON.stringify({ mood, radiusKm, candidateIds }) });
+  return res.json();
+}
+
+export async function joinRoom(code: string): Promise<{ ok: boolean; room?: CravingRoomInfo; error?: string }> {
+  const res = await api("/rooms/join", { method: "POST", body: JSON.stringify({ code }) });
+  return res.json();
+}
+
+export interface RoomParticipant { id: string; swipeCount: number; done: boolean }
+
+export async function getRoom(id: string): Promise<{ ok: boolean; room?: CravingRoomInfo; participants?: RoomParticipant[]; everyoneDone?: boolean; error?: string }> {
+  return (await api(`/rooms/${id}`)).json();
+}
+
+export async function swipeInRoom(id: string, dishId: string, liked: boolean): Promise<{ ok: boolean; everyoneDone?: boolean; error?: string }> {
+  const res = await api(`/rooms/${id}/swipe`, { method: "POST", body: JSON.stringify({ dishId, liked }) });
+  return res.json();
+}
+
+export async function getRoomReveal(id: string): Promise<{ ok: boolean; ready: boolean; unanimous?: string[]; partial?: string[]; doneCount?: number; totalCount?: number }> {
+  return (await api(`/rooms/${id}/reveal`)).json();
+}
+
+export interface DishListItem { dishName: string; venue: string }
+export interface DishList { id: string; title: string; authorId: string; parentListId: string | null; createdAt: number; items: DishListItem[]; clones: number }
+
+export async function createList(title: string, items: DishListItem[]): Promise<{ ok: boolean; list?: DishList; error?: string }> {
+  const res = await api("/lists", { method: "POST", body: JSON.stringify({ title, items }) });
+  return res.json();
+}
+
+export async function getListsFeed(): Promise<{ ok: boolean; lists: DishList[] }> {
+  return (await api("/lists")).json();
+}
+
+export async function cloneList(id: string, title?: string): Promise<{ ok: boolean; list?: DishList; error?: string }> {
+  const res = await api(`/lists/${id}/clone`, { method: "POST", body: JSON.stringify(title ? { title } : {}) });
+  return res.json();
+}

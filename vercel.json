@@ -8,6 +8,10 @@
     { "source": "/recommendations/:path*", "destination": "/api" },
     { "source": "/moderation/:path*", "destination": "/api" },
     { "source": "/notifications/:path*", "destination": "/api" },
+    { "source": "/friends/:path*", "destination": "/api" },
+    { "source": "/circles/:path*", "destination": "/api" },
+    { "source": "/rooms/:path*", "destination": "/api" },
+    { "source": "/lists/:path*", "destination": "/api" },
     { "source": "/health", "destination": "/api" }
   ]
 }

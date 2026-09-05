@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { LIQUID_SPRING, TAP_SCALE } from "../motion";
 import { CATEGORIES, CATEGORY_ACCENT, CATEGORY_BORDER, CATEGORY_SHADOW, DISHES, categoryVisual, dishById, dishesForSubtype } from "../data/dishes";
 import type { Category, DishEntry } from "../types";
@@ -496,30 +496,28 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
           </div>
         ) : (
           <>
-            <AnimatePresence mode="wait">
-              <BrowseCard
-                key={current.id}
-                cardKey={current.id}
-                canNext={canNext}
-                canPrev={canPrev}
-                onSwipeNext={() => setResultIndex((i) => Math.min(i + 1, dishes.length - 1))}
-                onSwipePrev={() => setResultIndex((i) => Math.max(i - 1, 0))}
-                className="bg-surface border border-line rounded-card overflow-hidden"
-              >
-                <button onClick={() => setView({ name: "profile", dish: current })} className="block w-full text-left">
-                  <DishThumb emoji={current.emoji} tint={current.tint} photo={current.photo} size="lg" scrim />
-                  <div className="p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="font-display font-bold text-lg leading-tight truncate">{current.name}</div>
-                        <div className="text-faint text-sm mt-0.5 truncate">{current.venue} · {current.area}</div>
-                      </div>
-                      <ScoreBadge score={current.score} />
+            <BrowseCard
+              key={current.id}
+              cardKey={current.id}
+              canNext={canNext}
+              canPrev={canPrev}
+              onSwipeNext={() => setResultIndex((i) => Math.min(i + 1, dishes.length - 1))}
+              onSwipePrev={() => setResultIndex((i) => Math.max(i - 1, 0))}
+              className="bg-surface border border-line rounded-card overflow-hidden"
+            >
+              <button onClick={() => setView({ name: "profile", dish: current })} className="block w-full text-left">
+                <DishThumb emoji={current.emoji} tint={current.tint} photo={current.photo} size="lg" scrim />
+                <div className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-display font-bold text-lg leading-tight truncate">{current.name}</div>
+                      <div className="text-faint text-sm mt-0.5 truncate">{current.venue} · {current.area}</div>
                     </div>
+                    <ScoreBadge score={current.score} />
                   </div>
-                </button>
-              </BrowseCard>
-            </AnimatePresence>
+                </div>
+              </button>
+            </BrowseCard>
 
             {dishes.length > 1 ? (
               <>

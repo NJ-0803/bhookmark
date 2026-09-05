@@ -22,6 +22,7 @@ export interface User {
   dietaryProfile: DietaryProfile;
   allergens: string[];
   createdAt: number;
+  friendCode: string | null;
 }
 
 export interface Device {
@@ -94,6 +95,7 @@ function userFromRow(r: any): User {
     dietaryProfile: r.dietary_profile,
     allergens: r.allergens ?? [],
     createdAt: Number(r.created_at),
+    friendCode: r.friend_code ?? null,
   };
 }
 
@@ -451,4 +453,305 @@ export async function replacePushSubscriptions(userId: string, subs: PushSubscri
 
 export async function deleteAllPushSubscriptions(userId: string): Promise<void> {
   await sql()`DELETE FROM push_subscriptions WHERE user_id = ${userId}`;
+}
+
+// ---------- Phase 4: Friends, Circles, Craving Rooms, Lists ----------
+// Real backend for what was previously 100% hardcoded mock data in the
+// frontend (FoodCircles.tsx's 3 fake circles, CravingRoom.tsx's fake
+// friends, RemixableLists.tsx's 3 seed lists).
+
+export interface PublicUser {
+  id: string;
+  phone: string;
+  createdAt: number;
+}
+
+function publicUserFromRow(r: any): PublicUser {
+  return { id: r.id, phone: r.phone, createdAt: Number(r.created_at) };
+}
+
+// Unambiguous alphabet — no 0/O, 1/I/L — so a code is easy to read aloud or
+// type in, matching the "friend code" ask (a real permanent per-user code,
+// not a one-off room code).
+const FRIEND_CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
+function randomFriendCode(): string {
+  let out = "";
+  for (let i = 0; i < 7; i++) out += FRIEND_CODE_ALPHABET[Math.floor(Math.random() * FRIEND_CODE_ALPHABET.length)];
+  return out;
+}
+
+// Lazily backfilled on first request rather than in the schema migration —
+// a bulk ALTER can't assign a distinct random value per existing row in one
+// statement. Retries on the (very unlikely) unique-constraint collision.
+export async function getOrCreateFriendCode(userId: string): Promise<string> {
+  const existing = await sql()`SELECT friend_code FROM users WHERE id = ${userId}`;
+  if (existing[0]?.friend_code) return existing[0].friend_code;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const code = randomFriendCode();
+    try {
+      await sql()`UPDATE users SET friend_code = ${code} WHERE id = ${userId} AND friend_code IS NULL`;
+      const check = await sql()`SELECT friend_code FROM users WHERE id = ${userId}`;
+      if (check[0]?.friend_code) return check[0].friend_code;
+    } catch {
+      // unique collision — retry with a new code
+    }
+  }
+  throw new Error("Could not allocate a friend code.");
+}
+
+export async function findUserByFriendCode(code: string): Promise<User | undefined> {
+  const rows = await sql()`SELECT * FROM users WHERE friend_code = ${code.toUpperCase()}`;
+  return rows[0] ? userFromRow(rows[0]) : undefined;
+}
+
+// Instant and mutual — no pending-request step, matching "just like adding
+// a friend in a game." Both directions inserted so a lookup is a plain
+// WHERE user_id = X, never an OR across two columns.
+export async function addFriendship(userId: string, friendId: string): Promise<void> {
+  const db = sql();
+  const now = Date.now();
+  await db`INSERT INTO friendships (user_id, friend_id, created_at) VALUES (${userId}, ${friendId}, ${now}) ON CONFLICT DO NOTHING`;
+  await db`INSERT INTO friendships (user_id, friend_id, created_at) VALUES (${friendId}, ${userId}, ${now}) ON CONFLICT DO NOTHING`;
+}
+
+export async function areFriends(userId: string, otherId: string): Promise<boolean> {
+  const rows = await sql()`SELECT 1 FROM friendships WHERE user_id = ${userId} AND friend_id = ${otherId} LIMIT 1`;
+  return rows.length > 0;
+}
+
+export async function listFriends(userId: string): Promise<PublicUser[]> {
+  const rows = await sql()`
+    SELECT u.* FROM friendships f JOIN users u ON u.id = f.friend_id
+    WHERE f.user_id = ${userId} ORDER BY f.created_at DESC`;
+  return rows.map(publicUserFromRow);
+}
+
+// ---------- Food Circles ----------
+
+export interface Circle {
+  id: string;
+  name: string;
+  creatorId: string;
+  createdAt: number;
+}
+
+function circleFromRow(r: any): Circle {
+  return { id: r.id, name: r.name, creatorId: r.creator_id, createdAt: Number(r.created_at) };
+}
+
+export async function createCircle(id: string, name: string, creatorId: string, memberIds: string[]): Promise<Circle> {
+  const db = sql();
+  const now = Date.now();
+  const rows = await db`INSERT INTO circles (id, name, creator_id, created_at) VALUES (${id}, ${name}, ${creatorId}, ${now}) RETURNING *`;
+  const allMembers = [...new Set([creatorId, ...memberIds])];
+  for (const uid of allMembers) {
+    await db`INSERT INTO circle_members (circle_id, user_id, joined_at) VALUES (${id}, ${uid}, ${now}) ON CONFLICT DO NOTHING`;
+  }
+  return circleFromRow(rows[0]);
+}
+
+export async function listCirclesForUser(userId: string): Promise<Circle[]> {
+  const rows = await sql()`
+    SELECT c.* FROM circle_members cm JOIN circles c ON c.id = cm.circle_id
+    WHERE cm.user_id = ${userId} ORDER BY c.created_at DESC`;
+  return rows.map(circleFromRow);
+}
+
+export async function listCircleMembers(circleId: string): Promise<PublicUser[]> {
+  const rows = await sql()`
+    SELECT u.* FROM circle_members cm JOIN users u ON u.id = cm.user_id
+    WHERE cm.circle_id = ${circleId}`;
+  return rows.map(publicUserFromRow);
+}
+
+export async function isCircleMember(circleId: string, userId: string): Promise<boolean> {
+  const rows = await sql()`SELECT 1 FROM circle_members WHERE circle_id = ${circleId} AND user_id = ${userId} LIMIT 1`;
+  return rows.length > 0;
+}
+
+// Real match score: the fraction of the circle's combined loved categories
+// that every single member has in common (Jaccard-style intersection over
+// union) — derived from each member's actual published logs, never a
+// placeholder number like the old hardcoded 78%/91%/64%.
+export async function computeCircleMatchScore(memberIds: string[]): Promise<number> {
+  if (memberIds.length < 2) return 0;
+  const perMember: Set<string>[] = [];
+  for (const uid of memberIds) {
+    const rows = await sql()`
+      SELECT DISTINCT category FROM logs WHERE user_id = ${uid} AND verdict = 'loved' AND status != 'removed'`;
+    perMember.push(new Set(rows.map((r: any) => r.category)));
+  }
+  const union = new Set<string>();
+  perMember.forEach((s) => s.forEach((c) => union.add(c)));
+  if (union.size === 0) return 0;
+  let intersectionCount = 0;
+  union.forEach((cat) => {
+    if (perMember.every((s) => s.has(cat))) intersectionCount++;
+  });
+  return Math.round((intersectionCount / union.size) * 100);
+}
+
+// ---------- Craving Rooms ----------
+
+export type RoomStatus = "setup" | "swiping" | "revealed";
+
+export interface CravingRoom {
+  id: string;
+  code: string;
+  creatorId: string;
+  mood: string;
+  radiusKm: number;
+  status: RoomStatus;
+  candidateIds: string[];
+  createdAt: number;
+  expiresAt: number;
+}
+
+function roomFromRow(r: any): CravingRoom {
+  return {
+    id: r.id,
+    code: r.code,
+    creatorId: r.creator_id,
+    mood: r.mood,
+    radiusKm: r.radius_km,
+    status: r.status,
+    candidateIds: r.candidate_ids ?? [],
+    createdAt: Number(r.created_at),
+    expiresAt: Number(r.expires_at),
+  };
+}
+
+const ROOM_CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
+function randomRoomCode(): string {
+  let out = "";
+  for (let i = 0; i < 5; i++) out += ROOM_CODE_ALPHABET[Math.floor(Math.random() * ROOM_CODE_ALPHABET.length)];
+  return out;
+}
+
+// candidateIds is fixed by the creator at room creation — every participant
+// swipes on this exact same list (fetched, never independently recomputed)
+// so "everyone agreed on X" is actually true, not a coincidence of two
+// clients happening to pick the same default slice.
+export async function createCravingRoom(
+  id: string,
+  creatorId: string,
+  mood: string,
+  radiusKm: number,
+  candidateIds: string[],
+  ttlMs: number
+): Promise<CravingRoom> {
+  const db = sql();
+  const now = Date.now();
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const code = randomRoomCode();
+    try {
+      const rows = await db`
+        INSERT INTO craving_rooms (id, code, creator_id, mood, radius_km, status, candidate_ids, created_at, expires_at)
+        VALUES (${id}, ${code}, ${creatorId}, ${mood}, ${radiusKm}, 'setup', ${candidateIds}, ${now}, ${now + ttlMs})
+        RETURNING *`;
+      await db`INSERT INTO craving_room_participants (room_id, user_id, joined_at) VALUES (${id}, ${creatorId}, ${now})`;
+      return roomFromRow(rows[0]);
+    } catch {
+      // code collision — retry
+    }
+  }
+  throw new Error("Could not allocate a room code.");
+}
+
+export async function getRoomByCode(code: string): Promise<CravingRoom | undefined> {
+  const rows = await sql()`SELECT * FROM craving_rooms WHERE code = ${code.toUpperCase()} AND expires_at > ${Date.now()}`;
+  return rows[0] ? roomFromRow(rows[0]) : undefined;
+}
+
+export async function getRoomById(id: string): Promise<CravingRoom | undefined> {
+  const rows = await sql()`SELECT * FROM craving_rooms WHERE id = ${id}`;
+  return rows[0] ? roomFromRow(rows[0]) : undefined;
+}
+
+export async function joinRoom(roomId: string, userId: string): Promise<void> {
+  await sql()`INSERT INTO craving_room_participants (room_id, user_id, joined_at) VALUES (${roomId}, ${userId}, ${Date.now()}) ON CONFLICT DO NOTHING`;
+}
+
+export async function listRoomParticipants(roomId: string): Promise<PublicUser[]> {
+  const rows = await sql()`
+    SELECT u.* FROM craving_room_participants p JOIN users u ON u.id = p.user_id
+    WHERE p.room_id = ${roomId} ORDER BY p.joined_at ASC`;
+  return rows.map(publicUserFromRow);
+}
+
+export async function setRoomStatus(roomId: string, status: RoomStatus): Promise<void> {
+  await sql()`UPDATE craving_rooms SET status = ${status} WHERE id = ${roomId}`;
+}
+
+export async function recordRoomSwipe(roomId: string, userId: string, dishId: string, liked: boolean): Promise<void> {
+  await sql()`
+    INSERT INTO craving_room_swipes (room_id, user_id, dish_id, liked, created_at) VALUES (${roomId}, ${userId}, ${dishId}, ${liked}, ${Date.now()})
+    ON CONFLICT (room_id, user_id, dish_id) DO UPDATE SET liked = ${liked}`;
+}
+
+export interface RoomSwipe {
+  userId: string;
+  dishId: string;
+  liked: boolean;
+}
+
+export async function listRoomSwipes(roomId: string): Promise<RoomSwipe[]> {
+  const rows = await sql()`SELECT user_id, dish_id, liked FROM craving_room_swipes WHERE room_id = ${roomId}`;
+  return rows.map((r: any) => ({ userId: r.user_id, dishId: r.dish_id, liked: r.liked }));
+}
+
+export async function countUserSwipesInRoom(roomId: string, userId: string): Promise<number> {
+  const rows = await sql()`SELECT COUNT(*)::int AS n FROM craving_room_swipes WHERE room_id = ${roomId} AND user_id = ${userId}`;
+  return rows[0]?.n ?? 0;
+}
+
+// ---------- Lists ----------
+
+export interface ListItem {
+  dishName: string;
+  venue: string;
+}
+
+export interface DishList {
+  id: string;
+  title: string;
+  authorId: string;
+  parentListId: string | null;
+  createdAt: number;
+}
+
+function listFromRow(r: any): DishList {
+  return { id: r.id, title: r.title, authorId: r.author_id, parentListId: r.parent_list_id ?? null, createdAt: Number(r.created_at) };
+}
+
+export async function createList(id: string, title: string, authorId: string, items: ListItem[], parentListId?: string): Promise<DishList> {
+  const db = sql();
+  const now = Date.now();
+  const rows = await db`
+    INSERT INTO lists (id, title, author_id, parent_list_id, created_at) VALUES (${id}, ${title}, ${authorId}, ${parentListId ?? null}, ${now})
+    RETURNING *`;
+  for (let i = 0; i < items.length; i++) {
+    await db`INSERT INTO list_items (list_id, dish_name, venue, position) VALUES (${id}, ${items[i].dishName}, ${items[i].venue}, ${i})`;
+  }
+  return listFromRow(rows[0]);
+}
+
+export async function listListsFeed(limit = 30): Promise<DishList[]> {
+  const rows = await sql()`SELECT * FROM lists ORDER BY created_at DESC LIMIT ${limit}`;
+  return rows.map(listFromRow);
+}
+
+export async function getListById(id: string): Promise<DishList | undefined> {
+  const rows = await sql()`SELECT * FROM lists WHERE id = ${id}`;
+  return rows[0] ? listFromRow(rows[0]) : undefined;
+}
+
+export async function getListItems(listId: string): Promise<ListItem[]> {
+  const rows = await sql()`SELECT dish_name, venue FROM list_items WHERE list_id = ${listId} ORDER BY position ASC`;
+  return rows.map((r: any) => ({ dishName: r.dish_name, venue: r.venue }));
+}
+
+export async function countClones(listId: string): Promise<number> {
+  const rows = await sql()`SELECT COUNT(*)::int AS n FROM lists WHERE parent_list_id = ${listId}`;
+  return rows[0]?.n ?? 0;
 }
