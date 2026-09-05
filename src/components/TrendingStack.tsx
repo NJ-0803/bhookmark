@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import type { DishEntry } from "../types";
 import { CATEGORY_ACCENT, CATEGORY_SHADOW } from "../data/dishes";
 import ScoreBadge from "../components/ScoreBadge";
@@ -30,8 +30,7 @@ export default function TrendingStack({ cards, onSelect }: { cards: StackCard[];
     // whatever came next. paddingBottom scales with the actual rendered
     // width instead, plus room for the peek offset and the caption below.
     <div className="relative mb-9" style={{ paddingBottom: "calc(62.5% + 20px)" }}>
-      <AnimatePresence>
-        {visible.map((cardIndex, stackPos) => {
+      {visible.map((cardIndex, stackPos) => {
           const { dish, badge } = cards[cardIndex];
           const isFront = stackPos === 0;
           return (
@@ -76,7 +75,6 @@ export default function TrendingStack({ cards, onSelect }: { cards: StackCard[];
             </motion.div>
           );
         })}
-      </AnimatePresence>
       {cards.length > 1 && (
         <p className="absolute bottom-0 inset-x-0 text-center text-faint text-[11px]">Drag to see what else is hot</p>
       )}

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { motion, useMotionValue, useTransform, animate, AnimatePresence } from "framer-motion";
+import { motion, useMotionValue, useTransform, animate } from "framer-motion";
 import { DISHES, categoryVisual, dishById } from "../data/dishes";
 import type { Category, DishEntry } from "../types";
 import DishThumb from "../components/DishThumb";
@@ -255,9 +255,7 @@ export default function CravingRoom() {
           Dish {idx + 1} of {candidates.length}
         </p>
         <div className="relative h-[420px]">
-          <AnimatePresence>
-            <SwipeCard key={candidates[idx].id} dish={candidates[idx]} onSwipe={swipe} />
-          </AnimatePresence>
+          <SwipeCard key={candidates[idx].id} dish={candidates[idx]} onSwipe={swipe} />
         </div>
         <p className="text-center text-faint text-xs mt-3">Drag the card, or use the buttons below. Share code {room.code} with anyone still joining.</p>
       </div>
