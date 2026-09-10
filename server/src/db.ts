@@ -348,7 +348,12 @@ export async function getTrendingDish(windowMs: number, minCount: number, minUse
       AND visibility = 'public'
       AND created_at > ${cutoff}
       AND venue NOT ILIKE 'QA %' AND venue NOT ILIKE '%test%'
-      AND name NOT ILIKE '%test%' AND name NOT ILIKE 'ghost%'
+      -- 2026-09-10: a real fixture ("QA Travel Dosa", logged against the
+      -- real venue "CTR (Shri Sagar)" by server/scripts/qa-brief-tests.mjs's
+      -- impossible-travel check) surfaced as the live "trending" pick in
+      -- production — the QA-prefix exclusion only ever checked venue, not
+      -- the dish name that actually carried the tell here.
+      AND name NOT ILIKE '%test%' AND name NOT ILIKE 'ghost%' AND name NOT ILIKE 'QA %'
     GROUP BY venue, category, subtype, name
     HAVING COUNT(*) >= ${minCount} AND COUNT(DISTINCT user_id) >= ${minUsers}
     ORDER BY cnt DESC
