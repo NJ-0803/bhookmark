@@ -38,9 +38,18 @@ roomsRouter.post("/join", requireAuth, async (req, res) => {
   res.json({ ok: true, room });
 });
 
+// F04 (implementation brief, 2026-09-08): getRoomById never checked
+// expiry — unlike getRoomByCode (used only for joining), so an expired
+// room stayed fully readable and voteable forever through its direct ID.
+// Every route below goes through this one helper so the check can't be
+// forgotten on a new route later.
+function isExpired(room: db.CravingRoom): boolean {
+  return room.expiresAt < Date.now();
+}
+
 async function loadRoomDetail(roomId: string) {
   const room = await db.getRoomById(roomId);
-  if (!room) return null;
+  if (!room || isExpired(room)) return null;
   const [participants, swipes] = await Promise.all([db.listRoomParticipants(roomId), db.listRoomSwipes(roomId)]);
   const swipesByUser = new Map<string, number>();
   swipes.forEach((s) => swipesByUser.set(s.userId, (swipesByUser.get(s.userId) ?? 0) + 1));
@@ -65,7 +74,17 @@ const swipeSchema = z.object({ dishId: z.string().min(1), liked: z.boolean() });
 
 roomsRouter.post("/:id/swipe", requireAuth, async (req, res) => {
   const room = await db.getRoomById(req.params.id as string);
-  if (!room) return res.status(404).json({ ok: false, error: "Room not found." });
+  if (!room || isExpired(room)) return res.status(404).json({ ok: false, error: "Room not found or expired." });
+
+  // F03: this previously recorded any authenticated user's swipe against
+  // any room ID, with no check that the caller had actually joined it —
+  // membership was enforced on the read routes (GET /:id, /reveal) but not
+  // here, the one write route that matters most.
+  const participants = await db.listRoomParticipants(room.id);
+  if (!participants.some((p) => p.id === req.user!.sub)) {
+    return res.status(403).json({ ok: false, error: "Join this room before swiping." });
+  }
+
   const parsed = swipeSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ ok: false, error: "Missing dish or verdict." });
   if (!room.candidateIds.includes(parsed.data.dishId)) {

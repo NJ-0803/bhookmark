@@ -37,6 +37,13 @@ export default function PassportCard({
   const rotateY = useTransform(springX, [0, 1], [-8, 8]);
   const sheenX = useTransform(springX, [0, 1], ["0%", "100%"]);
   const sheenY = useTransform(springY, [0, 1], ["0%", "100%"]);
+  // Was called only inside the `{!reduceMotion && ...}` JSX branch below —
+  // a real rules-of-hooks violation, since useReducedMotion() can change at
+  // runtime (the OS-level setting can toggle while this screen is open),
+  // which would change how many hooks this component calls between
+  // renders and crash React. Hooks must always run unconditionally; only
+  // the JSX that *uses* the result is conditional.
+  const sheenBackground = useTransform([sheenX, sheenY], ([x, y]) => `radial-gradient(circle at ${x} ${y}, rgba(255,255,255,0.35), transparent 45%)`);
 
   function handlePointerMove(e: React.PointerEvent<HTMLDivElement>) {
     if (reduceMotion || !ref.current) return;
@@ -66,9 +73,7 @@ export default function PassportCard({
       {!reduceMotion && (
         <motion.div
           className="absolute inset-0 pointer-events-none mix-blend-overlay"
-          style={{
-            background: useTransform([sheenX, sheenY], ([x, y]) => `radial-gradient(circle at ${x} ${y}, rgba(255,255,255,0.35), transparent 45%)`),
-          }}
+          style={{ background: sheenBackground }}
         />
       )}
 

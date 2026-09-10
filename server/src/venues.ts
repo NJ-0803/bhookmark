@@ -33,7 +33,7 @@ export const VENUES: Venue[] = [
     photoIsVerified: true,
     serves: [
       { category: "Dosa & Idli", subtype: "Plain / Set Dosa", dishName: "Set Dosa (3pc)", baseScore: 8.8 },
-      { category: "Filter Coffee", subtype: "Strong / Degree", dishName: "Degree Coffee", baseScore: 9.0 },
+      { category: "Coffee", subtype: "Strong / Degree", dishName: "Degree Coffee", baseScore: 9.0 },
     ],
   },
   {
@@ -84,7 +84,7 @@ export const VENUES: Venue[] = [
     lng: 77.6412,
     photo: "/venues/generic-bangalore.jpg",
     photoIsVerified: false,
-    serves: [{ category: "Filter Coffee", subtype: "Cold Filter Coffee", dishName: "Cold Filter Coffee", baseScore: 8.1 }],
+    serves: [{ category: "Coffee", subtype: "Cold Filter Coffee", dishName: "Cold Filter Coffee", baseScore: 8.1 }],
   },
   {
     id: "v-truffles",

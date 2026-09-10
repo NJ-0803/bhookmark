@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import type { DishEntry } from "../types";
 import { CATEGORY_ACCENT, CATEGORY_SHADOW } from "../data/dishes";
-import ScoreBadge from "../components/ScoreBadge";
+import EvidenceScoreBadge from "./EvidenceScoreBadge";
+import type { DishScoreResponse } from "../api";
 import { LIQUID_SPRING } from "../motion";
 
 export interface StackCard {
@@ -13,15 +14,54 @@ export interface StackCard {
 /** A fanned, draggable card stack instead of one flat rectangle — brief:
  * trending should feel discoverable, not like a single static banner.
  * Drag (or tap the peek behind) cycles the front card to the back. */
-export default function TrendingStack({ cards, onSelect }: { cards: StackCard[]; onSelect: (dish: DishEntry) => void }) {
-  const [order, setOrder] = useState(() => cards.map((_, i) => i));
+export default function TrendingStack({
+  cards,
+  scores,
+  onSelect,
+}: {
+  cards: StackCard[];
+  scores: Record<string, DishScoreResponse>;
+  onSelect: (dish: DishEntry) => void;
+}) {
+  // V06 (implementation brief, 2026-09-08): this used to be a fixed
+  // permutation of array INDICES, computed once at mount from whatever
+  // `cards.length` happened to be that first render. In this app that's a
+  // real, reproducible bug, not a hypothetical: Home's trending/recommended
+  // picks load asynchronously, so this often mounts with just 1 fallback
+  // card, then `cards` grows to 3 once real data arrives — but the frozen
+  // order state stayed `[0]` forever, so the stack silently never showed
+  // more than the first card even when more were available. Keying by the
+  // dish's own stable id (not its position) and reconciling in an effect
+  // whenever the real set of ids changes fixes both that and the crash/
+  // stale-selection risk if a card disappears entirely (id no longer in
+  // `cards` at all).
+  const idsKey = cards.map((c) => c.dish.id).join("|");
+  const [order, setOrder] = useState<string[]>(() => cards.map((c) => c.dish.id));
+
+  useEffect(() => {
+    setOrder((prevOrder) => {
+      const currentIds = idsKey ? idsKey.split("|") : [];
+      const currentSet = new Set(currentIds);
+      // Keep the existing relative order for ids still present — so an
+      // in-progress drag/cycle isn't reset by an unrelated re-render —
+      // then append newly-arrived ids and drop ones no longer present.
+      const kept = prevOrder.filter((id) => currentSet.has(id));
+      const keptSet = new Set(kept);
+      const added = currentIds.filter((id) => !keptSet.has(id));
+      return [...kept, ...added];
+    });
+    // idsKey is the real dependency (a stable string derived from the ids);
+    // `cards` itself gets a new array identity on every parent re-render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idsKey]);
 
   function cycle() {
-    setOrder((prev) => [...prev.slice(1), prev[0]]);
+    setOrder((prev) => (prev.length > 1 ? [...prev.slice(1), prev[0]] : prev));
   }
 
   if (cards.length === 0) return null;
-  const visible = order.slice(0, 3);
+  const byId = new Map(cards.map((c) => [c.dish.id, c]));
+  const visible = order.map((id) => byId.get(id)).filter((c): c is StackCard => !!c).slice(0, 3);
 
   return (
     // Responsive aspect-ratio height (not a hardcoded pixel value) — a fixed
@@ -30,8 +70,7 @@ export default function TrendingStack({ cards, onSelect }: { cards: StackCard[];
     // whatever came next. paddingBottom scales with the actual rendered
     // width instead, plus room for the peek offset and the caption below.
     <div className="relative mb-9" style={{ paddingBottom: "calc(62.5% + 20px)" }}>
-      {visible.map((cardIndex, stackPos) => {
-          const { dish, badge } = cards[cardIndex];
+      {visible.map(({ dish, badge }, stackPos) => {
           const isFront = stackPos === 0;
           return (
             <motion.div
@@ -67,7 +106,10 @@ export default function TrendingStack({ cards, onSelect }: { cards: StackCard[];
               <span className={`absolute top-3 left-3 text-[10px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-full ${CATEGORY_ACCENT[dish.category]}`}>
                 {badge}
               </span>
-              {dish.score > 0 && <ScoreBadge score={dish.score} size="sm" className="absolute top-3 right-3" />}
+              {/* Phase 1 honesty fix (2026-09-10): was `dish.score` — the
+                  static seed value — rendered unconditionally as a real
+                  score. Now only shows a number once real logs back it. */}
+              <EvidenceScoreBadge community={scores[dish.id]?.community} size="sm" className="absolute top-3 right-3" />
               <div className="relative h-full flex flex-col justify-end p-4">
                 <div className="font-display font-extrabold text-xl text-white leading-tight drop-shadow">{dish.name}</div>
                 <div className="text-white/70 text-sm mt-0.5">{dish.venue} · {dish.area}</div>

@@ -17,7 +17,7 @@ type Step = "capture" | "details" | "verify" | "confirm" | "duel" | "done";
 type ServerStatus = "published" | "held" | "local-only" | "session-expired";
 
 const TINTS = ["from-amber-500/30 to-amber-900/40", "from-rose-500/30 to-rose-900/40", "from-cyan-600/30 to-slate-900/40", "from-emerald-500/30 to-emerald-900/40"];
-const EMOJI: Record<Category, string> = { "Dosa & Idli": "🥞", Biryani: "🍛", "Filter Coffee": "☕", Burger: "🍔", Pizza: "🍕", Momos: "🥟" };
+const EMOJI: Record<Category, string> = { "Dosa & Idli": "🥞", Biryani: "🍛", Coffee: "☕", Burger: "🍔", Pizza: "🍕", Momos: "🥟", "Ice Cream": "🍨" };
 
 export default function LogFlow({
   prefillDish,
@@ -193,23 +193,30 @@ export default function LogFlow({
           {step === "capture" && (
             <div className="px-5">
               <h3 className="font-display font-bold text-xl mb-1">Snap the dish</h3>
-              <p className="text-muted text-sm mb-5">Optional, for your own Taste Receipt — Bhookmark doesn't analyze it, so you'll fill in the details next either way.</p>
-              <label className="block aspect-[4/3] rounded-card border-2 border-dashed border-line overflow-hidden relative cursor-pointer hover:border-accent/50 transition-colors">
-                <input type="file" accept="image/*" capture="environment" onChange={attachPhoto} className="sr-only" />
+              <p className="text-muted text-sm mb-5">Optional, for your own Taste Receipt — Bhookmark doesn't analyze it, so you'll fill in the details next either way. Not eating right now? Pick one from your gallery instead — a log doesn't have to happen at the table.</p>
+              <div className="aspect-[4/3] rounded-card border-2 border-dashed border-line overflow-hidden relative">
                 {photoUrl ? (
                   <img src={photoUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
                 ) : (
                   <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
                     <span className="text-3xl">📸</span>
-                    <span className="text-muted text-sm font-medium">Tap to add a photo</span>
+                    <span className="text-muted text-sm font-medium">No photo yet</span>
                   </div>
                 )}
-              </label>
-              <div className="flex gap-2.5 mt-4">
-                <button onClick={() => setStep("details")} className="flex-1 bg-surface border border-line rounded-xl py-3 text-sm font-medium">
-                  {photoUrl ? "Continue without changes" : "Skip photo"}
-                </button>
               </div>
+              <div className="flex gap-2.5 mt-4">
+                <label className="flex-1 flex items-center justify-center gap-2 bg-surface border border-line rounded-xl py-3 text-sm font-medium cursor-pointer hover:border-accent/50 transition-colors">
+                  <input type="file" accept="image/*" capture="environment" onChange={attachPhoto} className="sr-only" />
+                  📷 Take photo
+                </label>
+                <label className="flex-1 flex items-center justify-center gap-2 bg-surface border border-line rounded-xl py-3 text-sm font-medium cursor-pointer hover:border-accent/50 transition-colors">
+                  <input type="file" accept="image/*" onChange={attachPhoto} className="sr-only" />
+                  🖼️ Choose from gallery
+                </label>
+              </div>
+              <button onClick={() => setStep("details")} className="w-full mt-2.5 bg-transparent text-faint py-2.5 text-sm font-medium">
+                {photoUrl ? "Continue" : "Skip photo"}
+              </button>
             </div>
           )}
 
@@ -306,13 +313,13 @@ export default function LogFlow({
                   <div className="font-semibold text-sm truncate">{workingDish.name}</div>
                   <div className="text-faint text-xs truncate">{workingDish.venue || "Venue not set"}</div>
                 </div>
-                <span className={`text-xs font-mono px-2 py-1 rounded ${locationCoords || photoUrl ? "bg-accentDim text-accent" : "bg-surface2 text-faint"}`}>
-                  {locationCoords || photoUrl ? "adds evidence" : "manual only"}
+                <span className={`text-xs font-mono px-2 py-1 rounded ${locationCoords ? "bg-accentDim text-accent" : "bg-surface2 text-faint"}`}>
+                  {locationCoords ? "location shared" : "manual only"}
                 </span>
               </div>
               <WhyThis
                 title="What does this badge mean?"
-                body="Bhookmark never calls a log “verified” from a client-side toggle. The server checks your evidence itself: a matched location plus a photo counts as full live-capture, either one alone counts as visit-consistent, and a manual-only log is recorded honestly as declared. All of them post — verified evidence just carries more weight in the public score."
+                body="Bhookmark never calls a log “verified” from a client-side toggle — including a photo. A photo is only ever for your own Taste Receipt; it's never checked or used as evidence, since there's no way to confirm where or when it was taken. The one real signal is location: if your shared coordinates match this venue's known location, the log posts as “location-consistent.” Everything else posts as “declared.” Both post — matched location just carries a little more weight in the public score, and neither is “proof you ate this,” since even real GPS can be spoofed."
               />
 
               <div className="mb-4" />

@@ -2,15 +2,29 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { LIQUID_SPRING, TAP_SCALE } from "../motion";
 import { disablePushNotifications, enablePushNotifications, getPushSubscriptionState, simulateFriendNearby } from "../push";
-import { addFriend, createCircle, getCircleDetail, getCircles, getFriends, getMyFriendCode, type Circle, type PublicUser } from "../api";
+import {
+  addFriend,
+  createCircle,
+  getCircleDetail,
+  getCircles,
+  getFriends,
+  getIncomingFriendRequests,
+  getMyFriendCode,
+  respondToFriendRequest,
+  type Circle,
+  type IncomingFriendRequest,
+  type PublicUser,
+} from "../api";
 import { haptic } from "../haptics";
 import BottomSheet from "../components/BottomSheet";
 
-function initialsFor(phone: string) {
-  // No display names exist yet (phone-only accounts) — last 2 digits reads
-  // better than a blank avatar and is already what the masked-phone UI
-  // elsewhere in the app treats as identifying enough to show at a glance.
-  return phone.replace(/\D/g, "").slice(-2);
+// No display names exist yet, and — since F02 in the 2026-09-08 brief —
+// no phone number ever reaches the client for a friend/member either, so
+// this can no longer read real digits from someone's number. A stable tag
+// derived from their opaque account id is identifying-enough-at-a-glance
+// without exposing anything real about them.
+function initialsFor(userId: string) {
+  return userId.replace(/[^a-zA-Z0-9]/g, "").slice(-2).toUpperCase();
 }
 
 function MatchRing({ score }: { score: number }) {
@@ -33,9 +47,12 @@ export default function FoodCircles() {
   const [myCode, setMyCode] = useState<string | null>(null);
   const [friends, setFriends] = useState<PublicUser[] | null>(null);
   const [circles, setCircles] = useState<Circle[] | null>(null);
+  const [incomingRequests, setIncomingRequests] = useState<IncomingFriendRequest[]>([]);
+  const [respondingTo, setRespondingTo] = useState<string | null>(null);
 
   const [addCodeInput, setAddCodeInput] = useState("");
   const [addFriendError, setAddFriendError] = useState<string | null>(null);
+  const [addFriendNotice, setAddFriendNotice] = useState<string | null>(null);
   const [addingFriend, setAddingFriend] = useState(false);
 
   const [sheet, setSheet] = useState<"create" | "detail" | null>(null);
@@ -49,11 +66,27 @@ export default function FoodCircles() {
     getPushSubscriptionState().then(setPushState);
     getMyFriendCode().then((r) => r.ok && setMyCode(r.code));
     refreshFriendsAndCircles();
+    refreshIncomingRequests();
   }, []);
 
   function refreshFriendsAndCircles() {
     getFriends().then((r) => r.ok && setFriends(r.friends));
     getCircles().then((r) => r.ok && setCircles(r.circles));
+  }
+
+  function refreshIncomingRequests() {
+    getIncomingFriendRequests().then((r) => r.ok && setIncomingRequests(r.requests));
+  }
+
+  async function respond(requestId: string, accept: boolean) {
+    setRespondingTo(requestId);
+    const res = await respondToFriendRequest(requestId, accept);
+    setRespondingTo(null);
+    if (res.ok) {
+      haptic(accept ? "success" : "light");
+      setIncomingRequests((prev) => prev.filter((r) => r.id !== requestId));
+      if (accept) refreshFriendsAndCircles();
+    }
   }
 
   async function togglePush() {
@@ -77,11 +110,19 @@ export default function FoodCircles() {
     if (!addCodeInput.trim()) return;
     setAddingFriend(true);
     setAddFriendError(null);
+    setAddFriendNotice(null);
     const res = await addFriend(addCodeInput.trim());
     setAddingFriend(false);
     if (res.ok) {
-      haptic("success");
+      haptic(res.status === "pending" ? "light" : "success");
       setAddCodeInput("");
+      setAddFriendNotice(
+        res.status === "pending"
+          ? "Request sent — you'll be friends once they accept."
+          : res.status === "already-friends"
+          ? "You're already friends."
+          : "You're friends now — they'd already sent you a request."
+      );
       refreshFriendsAndCircles();
     } else {
       setAddFriendError(res.error ?? "Couldn't add that code.");
@@ -145,10 +186,42 @@ export default function FoodCircles() {
           </motion.button>
         </div>
         {addFriendError && <p className="text-bad text-xs mt-2">{addFriendError}</p>}
+        {addFriendNotice && <p className="text-accent text-xs mt-2">{addFriendNotice}</p>}
         {friends && friends.length > 0 && (
           <p className="text-faint text-[11px] mt-2">{friends.length} friend{friends.length === 1 ? "" : "s"} added</p>
         )}
       </div>
+
+      {incomingRequests.length > 0 && (
+        <div className="bg-surface border border-accent/30 rounded-card p-4 mb-5">
+          <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-saffron mb-3">
+            {incomingRequests.length} friend request{incomingRequests.length === 1 ? "" : "s"}
+          </p>
+          <div className="flex flex-col gap-2">
+            {incomingRequests.map((r) => (
+              <div key={r.id} className="flex items-center justify-between bg-surface2 rounded-lg px-3 py-2.5">
+                <span className="text-sm">👤 Friend {initialsFor(r.sender.id)} wants to connect</span>
+                <div className="flex gap-1.5 shrink-0">
+                  <button
+                    onClick={() => respond(r.id, true)}
+                    disabled={respondingTo === r.id}
+                    className="text-xs font-semibold text-accent px-2.5 py-1.5 rounded-lg bg-accentDim disabled:opacity-40"
+                  >
+                    Accept
+                  </button>
+                  <button
+                    onClick={() => respond(r.id, false)}
+                    disabled={respondingTo === r.id}
+                    className="text-xs font-medium text-faint px-2.5 py-1.5 rounded-lg disabled:opacity-40"
+                  >
+                    Decline
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="bg-surface border border-line rounded-card p-4 mb-5">
         <div className="flex items-center justify-between mb-1.5">
@@ -242,7 +315,7 @@ export default function FoodCircles() {
                 selectedMemberIds.has(f.id) ? "bg-accentDim border-accent/40" : "bg-surface2 border-line"
               }`}
             >
-              <span className="text-sm">•••• {initialsFor(f.phone)}</span>
+              <span className="text-sm">👤 Friend {initialsFor(f.id)}</span>
               <span className={`text-xs ${selectedMemberIds.has(f.id) ? "text-accent" : "text-faint"}`}>
                 {selectedMemberIds.has(f.id) ? "added" : "add"}
               </span>
@@ -273,7 +346,7 @@ export default function FoodCircles() {
             <p className="font-mono text-[10px] tracking-[0.08em] uppercase text-faint mb-2">{detailCircle.members.length} members</p>
             <div className="flex flex-col gap-2">
               {detailCircle.members.map((m) => (
-                <div key={m.id} className="bg-surface2 rounded-lg px-3 py-2.5 text-sm">•••• {initialsFor(m.phone)}</div>
+                <div key={m.id} className="bg-surface2 rounded-lg px-3 py-2.5 text-sm">👤 Friend {initialsFor(m.id)}</div>
               ))}
             </div>
           </>

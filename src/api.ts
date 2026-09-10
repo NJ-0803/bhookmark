@@ -9,7 +9,7 @@ interface Session {
   accessToken: string;
   refreshToken: string;
   deviceId: string;
-  user: { id: string; phone: string; role: string };
+  user: { id: string; phone: string | null; email?: string | null; role: string };
 }
 
 const STORAGE_KEY = "bhookmark.session";
@@ -41,6 +41,23 @@ export async function verifyOtp(phone: string, otp: string) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ phone, otp, deviceLabel: navigator.userAgent.split(" ")[0] }),
+  });
+  const body = await res.json();
+  if (body.ok) {
+    saveSession({ accessToken: body.accessToken, refreshToken: body.refreshToken, deviceId: body.deviceId, user: body.user });
+  }
+  return body;
+}
+
+// The real, free login path (no SMS provider is wired up — see F01 in the
+// 2026-09-08 brief). idToken is the credential Google Identity Services
+// hands back to the button's callback; verified server-side before any
+// session is issued.
+export async function signInWithGoogle(idToken: string) {
+  const res = await fetch(`${BASE}/auth/google`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ idToken, deviceLabel: navigator.userAgent.split(" ")[0] }),
   });
   const body = await res.json();
   if (body.ok) {
@@ -200,6 +217,7 @@ export interface DishScoreResponse {
   verifiedOnly: { score: number | null; count: number };
   yours: { score: number; verdict: string } | null;
   confidenceBand: "insufficient" | "early" | "developing" | "strong";
+  notes: { verdict: string; note: string; score: number; createdAt: number }[];
   error?: string;
 }
 
@@ -237,14 +255,32 @@ export async function getNearbyVenues(category: string, lat: number, lng: number
 
 // ---------- Phase 4: Friends, Circles, Craving Rooms, Lists ----------
 
-export interface PublicUser { id: string; phone: string; createdAt: number }
+// No phone here (see F02 in the 2026-09-08 implementation brief) — a
+// friend/circle-member/room-participant object never carries anything
+// sensitive, just an opaque id.
+export interface PublicUser { id: string; createdAt: number }
 
 export async function getMyFriendCode(): Promise<{ ok: boolean; code: string }> {
   return (await api("/friends/code")).json();
 }
 
-export async function addFriend(code: string): Promise<{ ok: boolean; friend?: PublicUser; error?: string }> {
+// Adding by code now goes through a pending-request step instead of
+// friending instantly — status is "pending" (request sent, or already
+// pending from earlier), "accepted" (the other person had already
+// requested you, so this completed it), or "already-friends".
+export async function addFriend(code: string): Promise<{ ok: boolean; status?: "pending" | "accepted" | "already-friends"; error?: string }> {
   const res = await api("/friends/add", { method: "POST", body: JSON.stringify({ code }) });
+  return res.json();
+}
+
+export interface IncomingFriendRequest { id: string; sender: { id: string }; createdAt: number }
+
+export async function getIncomingFriendRequests(): Promise<{ ok: boolean; requests: IncomingFriendRequest[] }> {
+  return (await api("/friends/requests")).json();
+}
+
+export async function respondToFriendRequest(id: string, accept: boolean): Promise<{ ok: boolean; status?: string; error?: string }> {
+  const res = await api(`/friends/requests/${id}/respond`, { method: "POST", body: JSON.stringify({ accept }) });
   return res.json();
 }
 

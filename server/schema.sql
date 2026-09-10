@@ -8,6 +8,14 @@ CREATE TABLE IF NOT EXISTS users (
   allergens TEXT[] NOT NULL DEFAULT '{}',
   created_at BIGINT NOT NULL
 );
+-- Google Sign-In (real, free identity provider — added because phone OTP
+-- has no SMS vendor wired up, and this project has a standing "no paid
+-- APIs" rule). phone can no longer be required: a Google-only account has
+-- none. google_sub is Google's own stable per-account identifier — the
+-- correct join key, never the (changeable) email address.
+ALTER TABLE users ALTER COLUMN phone DROP NOT NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS google_sub TEXT UNIQUE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT;
 
 CREATE TABLE IF NOT EXISTS otps (
   phone TEXT PRIMARY KEY,
@@ -137,15 +145,36 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
 -- distinct random value per existing row in one statement).
 ALTER TABLE users ADD COLUMN IF NOT EXISTS friend_code TEXT UNIQUE;
 
--- Adding a friend by code is instant and mutual (no pending-request step,
--- matching "just like adding a friend in a game") — both directions are
--- inserted so a lookup never needs an OR across two columns.
+-- Both directions are inserted on acceptance so a lookup never needs an OR
+-- across two columns. (Originally instant/no-consent on entering a code —
+-- F02 in the 2026-09-08 brief flagged that as a real problem once phone
+-- numbers were in the response too. friend_requests below is the fix:
+-- entering a code now creates a pending request instead.)
 CREATE TABLE IF NOT EXISTS friendships (
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   friend_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   created_at BIGINT NOT NULL,
   PRIMARY KEY (user_id, friend_id)
 );
+
+-- F02: consent step before two accounts become friends. One row per
+-- request; the partial unique index below allows only one *pending*
+-- request per unordered pair at a time (so concurrent/duplicate requests
+-- from either side can't pile up — RED-03 in the brief), but still lets a
+-- new request be sent later after a decline.
+CREATE TABLE IF NOT EXISTS friend_requests (
+  id TEXT PRIMARY KEY,
+  sender_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  recipient_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'pending', -- pending | accepted | declined
+  created_at BIGINT NOT NULL,
+  responded_at BIGINT
+);
+CREATE INDEX IF NOT EXISTS idx_friend_requests_recipient ON friend_requests(recipient_id, status);
+CREATE INDEX IF NOT EXISTS idx_friend_requests_sender ON friend_requests(sender_id, status);
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_friend_request_pending ON friend_requests (
+  LEAST(sender_id, recipient_id), GREATEST(sender_id, recipient_id)
+) WHERE status = 'pending';
 
 -- Food Circles: a standing group, built from a user's existing friends
 -- (not a separate invite code) since the group is meant to persist.

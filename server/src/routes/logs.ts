@@ -8,6 +8,12 @@ import { VENUES, haversineKm } from "../venues";
 
 export const logsRouter = Router();
 
+// F05 (implementation brief, 2026-09-08): deviceId used to come straight
+// from the request body — any caller could claim any string, which
+// defeats isBurst below (just send a fresh deviceId each time) and any
+// audit trail that trusts it. It's still accepted here for backward
+// compatibility with old clients, but is never used for anything; the
+// route below reads it from the authenticated session token instead.
 const createSchema = z.object({
   category: z.string(),
   subtype: z.string(),
@@ -16,38 +22,47 @@ const createSchema = z.object({
   verdict: z.enum(["loved", "fine", "not-for-me"]),
   score: z.number().min(0).max(10),
   note: z.string().max(300).default(""),
-  deviceId: z.string(),
+  deviceId: z.string().optional(),
   // Public by default (this app's core loop is a shared community score,
   // not a private-first diary) — private is an explicit per-log opt-in,
   // never silently applied.
   visibility: z.enum(["private", "public"]).default("public"),
   evidence: z.object({
+    // F05: these two used to be trusted as real verification signals —
+    // livePhoto just meant "some image file is attached" (including one
+    // picked from the gallery, of anything), and receipt is a bare
+    // client-asserted boolean with no receipt actually inspected. Neither
+    // is server-verifiable without a real photo pipeline (which this app
+    // deliberately doesn't have — see project notes), so they're now kept
+    // only for the user's own optional Taste Receipt UI and never feed
+    // evidenceLevel/verified below.
     livePhoto: z.boolean(),
     receipt: z.boolean().default(false),
     // Real coordinates from navigator.geolocation, or null if the browser
-    // permission was denied/skipped — this replaces a client-asserted
-    // "liveLocationMatch" boolean, which was pure trust-me UI state.
+    // permission was denied/skipped.
     location: z.object({ lat: z.number(), lng: z.number() }).nullable().default(null),
   }),
 });
 
 // A real position was captured, cross-checked against this app's own known
-// venue coordinates where possible. An unrecognized (freeform, user-typed)
-// venue can't be cross-checked, so a captured position still counts as
-// best-effort evidence — weaker than a confirmed match, but still a real
-// browser-granted permission, not a client-side toggle switch.
+// venue coordinates. F05: an unrecognized (freeform, user-typed) venue
+// used to count any captured position as a match by default — meaning a
+// spoofed or simply irrelevant lat/lng, at a venue this app can't verify,
+// still upgraded a log's evidence level. Unverifiable now correctly means
+// "not a match," not "assume yes."
 function computeLocationMatch(venueName: string, location: { lat: number; lng: number } | null): boolean {
   if (!location) return false;
   const known = VENUES.find((v) => v.name.toLowerCase() === venueName.trim().toLowerCase());
-  if (!known) return true;
+  if (!known) return false;
   return haversineKm(location.lat, location.lng, known.lat, known.lng) < 1;
 }
 
-function evidenceLevel(livePhoto: boolean, liveLocationMatch: boolean, receipt: boolean): EvidenceLevel {
-  if (receipt) return "transaction-supported";
-  if (livePhoto && liveLocationMatch) return "live-capture";
-  if (livePhoto || liveLocationMatch) return "visit-consistent";
-  return "declared";
+// F05: the only input here is a server-computed fact (GPS matched against
+// a known venue's real coordinates) — never a client-asserted boolean.
+// GPS itself can still be spoofed even when it matches, which is exactly
+// why this is labeled "location-consistent," not "verified" or "proof."
+function evidenceLevel(liveLocationMatch: boolean): EvidenceLevel {
+  return liveLocationMatch ? "location-consistent" : "declared";
 }
 
 // T-01/T-04-style velocity guard: too many logs for the same venue from the
@@ -129,7 +144,10 @@ logsRouter.post("/", requireAuth, async (req, res) => {
   const now = Date.now();
 
   const liveLocationMatch = computeLocationMatch(data.venue, data.evidence.location);
-  const level = evidenceLevel(data.evidence.livePhoto, liveLocationMatch, data.evidence.receipt);
+  const level = evidenceLevel(liveLocationMatch);
+  // F05: the authenticated session's own device id, not whatever string
+  // the client put in the body — see the AccessPayload.deviceId comment.
+  const deviceId = req.user!.deviceId;
 
   // Four independent ranking-manipulation signals (brief 1.5), each with
   // its own auditable record — held for review, never auto-blocked. Any
@@ -137,7 +155,7 @@ logsRouter.post("/", requireAuth, async (req, res) => {
   // each stays individually inspectable in security_events.
   const userId = req.user!.sub;
   const [burstHeld, networkHeld, deleteRepostHeld, travelHeld, ownerDisclosed] = await Promise.all([
-    isBurst(data.deviceId, data.venue),
+    isBurst(deviceId, data.venue),
     isMultiAccountNetwork(req.ip),
     isRepeatedDeleteRepost(userId, data.venue),
     liveLocationMatch ? isImpossibleTravel(userId, data.venue, now) : Promise.resolve(false),
@@ -166,9 +184,12 @@ logsRouter.post("/", requireAuth, async (req, res) => {
     score: data.score,
     note: data.note,
     evidenceLevel: level,
-    verified: level !== "declared",
+    // F05: verified now reflects only the one real, server-checked signal
+    // (GPS matched a known venue) — never a client-asserted photo/receipt
+    // flag, which is what let anyone self-certify as "verified" before.
+    verified: liveLocationMatch,
     status: held ? "held" : "published",
-    deviceId: data.deviceId,
+    deviceId,
     createdAt: now,
     locationVerified: liveLocationMatch,
     ownerDisclosed,

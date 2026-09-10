@@ -12,6 +12,10 @@
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;600;700;800;900&family=Hanken+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
     />
+    <!-- Google Identity Services (free) — see src/screens/Login.tsx. Loaded
+         globally so it's ready before the login screen renders; harmless
+         no-op if VITE_GOOGLE_CLIENT_ID isn't configured. -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
   </head>
   <body>
     <div id="root"></div>

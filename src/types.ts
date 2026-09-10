@@ -1,4 +1,4 @@
-export type Category = "Dosa & Idli" | "Biryani" | "Filter Coffee" | "Burger" | "Pizza" | "Momos";
+export type Category = "Dosa & Idli" | "Biryani" | "Coffee" | "Burger" | "Pizza" | "Momos" | "Ice Cream";
 
 export type Verdict = "loved" | "fine" | "not-for-me";
 

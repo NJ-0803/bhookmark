@@ -3,6 +3,7 @@
 // data on every restart and couldn't share state across serverless
 // invocations; this is the actual production data layer.
 import { neon } from "@neondatabase/serverless";
+import { nanoid } from "nanoid";
 
 function sql() {
   const url = process.env.DATABASE_URL;
@@ -11,18 +12,24 @@ function sql() {
 }
 
 export type Role = "user" | "restaurant_owner" | "moderator" | "trust_analyst" | "admin";
-export type EvidenceLevel = "declared" | "live-capture" | "visit-consistent" | "transaction-supported";
+// "live-capture"/"transaction-supported" are retained only so historical
+// rows (written before F05's fix, 2026-09-08) still read back correctly —
+// no code path assigns them to a new log anymore, since neither was ever
+// server-verifiable. See routes/logs.ts's evidenceLevel().
+export type EvidenceLevel = "declared" | "live-capture" | "visit-consistent" | "transaction-supported" | "location-consistent";
 export type LogStatus = "published" | "held" | "removed";
 export type DietaryProfile = "no-restriction" | "vegetarian" | "vegan" | "jain" | "eggetarian";
 
 export interface User {
   id: string;
-  phone: string;
+  phone: string | null;
   role: Role;
   dietaryProfile: DietaryProfile;
   allergens: string[];
   createdAt: number;
   friendCode: string | null;
+  googleSub: string | null;
+  email: string | null;
 }
 
 export interface Device {
@@ -90,12 +97,14 @@ export interface PushSubscriptionJSON {
 function userFromRow(r: any): User {
   return {
     id: r.id,
-    phone: r.phone,
+    phone: r.phone ?? null,
     role: r.role,
     dietaryProfile: r.dietary_profile,
     allergens: r.allergens ?? [],
     createdAt: Number(r.created_at),
     friendCode: r.friend_code ?? null,
+    googleSub: r.google_sub ?? null,
+    email: r.email ?? null,
   };
 }
 
@@ -139,6 +148,20 @@ export async function findOrCreateUser(phone: string, newId: string): Promise<Us
   const rows = await db`
     INSERT INTO users (id, phone, role, dietary_profile, allergens, created_at)
     VALUES (${newId}, ${phone}, 'user', 'no-restriction', '{}', ${now})
+    RETURNING *`;
+  return userFromRow(rows[0]);
+}
+
+// Keyed by Google's stable per-account subject id, not the email (an email
+// can move between accounts on Google's side; the sub never does).
+export async function findOrCreateUserByGoogle(googleSub: string, email: string, newId: string): Promise<User> {
+  const db = sql();
+  const existing = await db`SELECT * FROM users WHERE google_sub = ${googleSub}`;
+  if (existing.length) return userFromRow(existing[0]);
+  const now = Date.now();
+  const rows = await db`
+    INSERT INTO users (id, phone, role, dietary_profile, allergens, created_at, google_sub, email)
+    VALUES (${newId}, NULL, 'user', 'no-restriction', '{}', ${now}, ${googleSub}, ${email})
     RETURNING *`;
   return userFromRow(rows[0]);
 }
@@ -460,14 +483,17 @@ export async function deleteAllPushSubscriptions(userId: string): Promise<void> 
 // frontend (FoodCircles.tsx's 3 fake circles, CravingRoom.tsx's fake
 // friends, RemixableLists.tsx's 3 seed lists).
 
+// F02 (implementation brief, 2026-09-08): this used to include the real
+// phone number — "PublicUser" in name only. Nothing here should ever be
+// sensitive: it's exactly what a friend, circle member or room
+// participant is allowed to see about someone else.
 export interface PublicUser {
   id: string;
-  phone: string;
   createdAt: number;
 }
 
 function publicUserFromRow(r: any): PublicUser {
-  return { id: r.id, phone: r.phone, createdAt: Number(r.created_at) };
+  return { id: r.id, createdAt: Number(r.created_at) };
 }
 
 // Unambiguous alphabet — no 0/O, 1/I/L — so a code is easy to read aloud or
@@ -526,6 +552,82 @@ export async function listFriends(userId: string): Promise<PublicUser[]> {
   return rows.map(publicUserFromRow);
 }
 
+// ---------- Friend requests (F02) ----------
+
+export type FriendRequestStatus = "pending" | "accepted" | "declined";
+
+export interface FriendRequest {
+  id: string;
+  senderId: string;
+  recipientId: string;
+  status: FriendRequestStatus;
+  createdAt: number;
+  respondedAt: number | null;
+}
+
+function friendRequestFromRow(r: any): FriendRequest {
+  return {
+    id: r.id,
+    senderId: r.sender_id,
+    recipientId: r.recipient_id,
+    status: r.status,
+    createdAt: Number(r.created_at),
+    respondedAt: r.responded_at ? Number(r.responded_at) : null,
+  };
+}
+
+// The partial unique index on (LEAST, GREATEST) of the two ids means a
+// second pending request between the same pair fails at the DB level —
+// this just turns that into a clean "already pending" result instead of
+// a raw constraint-violation error.
+export async function createFriendRequest(senderId: string, recipientId: string): Promise<FriendRequest | { alreadyPending: true }> {
+  try {
+    const rows = await sql()`
+      INSERT INTO friend_requests (id, sender_id, recipient_id, status, created_at)
+      VALUES (${nanoid()}, ${senderId}, ${recipientId}, 'pending', ${Date.now()})
+      RETURNING *`;
+    return friendRequestFromRow(rows[0]);
+  } catch {
+    return { alreadyPending: true };
+  }
+}
+
+// The one already-pending request between these two people, regardless of
+// who sent it — used to detect "they already asked me" so entering a
+// code when the other side already requested you accepts immediately
+// instead of creating a second, redundant request.
+export async function getPendingRequestBetween(a: string, b: string): Promise<FriendRequest | undefined> {
+  const rows = await sql()`
+    SELECT * FROM friend_requests
+    WHERE status = 'pending' AND ((sender_id = ${a} AND recipient_id = ${b}) OR (sender_id = ${b} AND recipient_id = ${a}))
+    LIMIT 1`;
+  return rows[0] ? friendRequestFromRow(rows[0]) : undefined;
+}
+
+export async function listIncomingFriendRequests(userId: string): Promise<FriendRequest[]> {
+  const rows = await sql()`SELECT * FROM friend_requests WHERE recipient_id = ${userId} AND status = 'pending' ORDER BY created_at DESC`;
+  return rows.map(friendRequestFromRow);
+}
+
+export async function getFriendRequestById(id: string): Promise<FriendRequest | undefined> {
+  const rows = await sql()`SELECT * FROM friend_requests WHERE id = ${id}`;
+  return rows[0] ? friendRequestFromRow(rows[0]) : undefined;
+}
+
+// Recipient-only, and only while still pending — guards against a stale
+// double-tap or a replayed request id trying to accept twice.
+export async function respondToFriendRequest(id: string, recipientId: string, accept: boolean): Promise<FriendRequest | undefined> {
+  const status = accept ? "accepted" : "declined";
+  const rows = await sql()`
+    UPDATE friend_requests SET status = ${status}, responded_at = ${Date.now()}
+    WHERE id = ${id} AND recipient_id = ${recipientId} AND status = 'pending'
+    RETURNING *`;
+  if (!rows[0]) return undefined;
+  const request = friendRequestFromRow(rows[0]);
+  if (accept) await addFriendship(request.senderId, request.recipientId);
+  return request;
+}
+
 // ---------- Food Circles ----------
 
 export interface Circle {
@@ -577,8 +679,14 @@ export async function computeCircleMatchScore(memberIds: string[]): Promise<numb
   if (memberIds.length < 2) return 0;
   const perMember: Set<string>[] = [];
   for (const uid of memberIds) {
+    // F06 (implementation brief, 2026-09-08): this only excluded removed
+    // logs — a private or held log still contributed to another member's
+    // match score. Matches the same eligibility filter already used for
+    // every *public* aggregate elsewhere (dish scores, trending): only
+    // published, publicly-visible, non-self-promotional logs count.
     const rows = await sql()`
-      SELECT DISTINCT category FROM logs WHERE user_id = ${uid} AND verdict = 'loved' AND status != 'removed'`;
+      SELECT DISTINCT category FROM logs
+      WHERE user_id = ${uid} AND verdict = 'loved' AND status = 'published' AND visibility = 'public' AND owner_disclosed = false`;
     perMember.push(new Set(rows.map((r: any) => r.category)));
   }
   const union = new Set<string>();

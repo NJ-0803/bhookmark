@@ -26,11 +26,13 @@ body {
   max-width: 460px;
   margin: 0 auto;
   min-height: 100dvh;
+  height: auto;
   position: relative;
   background: #070908;
   border-left: 1px solid #171E1B;
   border-right: 1px solid #171E1B;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: visible;
 }
 
 /* Ambient night-market glow — the purple/pink/magenta action gradient up
@@ -81,10 +83,20 @@ body {
    only, not bg-surface2 (small chips/pills use that) — a backdrop-filter
    per element is real GPU cost, and this app can have dozens of small
    surface2 chips on one screen; cards are far fewer per screen. */
+/* V03 (implementation brief, 2026-09-08): this was blur(24px) with no
+   `contain`, applied to every card on screen. A 24px backdrop-filter forces
+   the browser to resample and blur the pixels behind each card on every
+   scroll frame, and without `contain: paint` the browser also has to
+   consider each card's effect on a potentially larger repaint region than
+   its own box — real, measurable scroll jank once more than a couple of
+   these are on screen at once (which is normal here: card lists, stacks,
+   grids). Cut to 14px (still reads as glass at this app's card sizes) and
+   scoped the paint/compositing work to each card's own box. */
 .bg-surface {
   background-color: rgba(16, 21, 19, 0.55) !important;
-  backdrop-filter: blur(24px) saturate(160%);
-  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  contain: paint;
 }
 
 /* Floating — every card gets a real lift shadow by default ("every card

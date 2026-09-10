@@ -12,10 +12,11 @@ const ORB_COLORS: Record<string, [string, string]> = {
   default: ["#C026D3", "#FFB547"],
   "Dosa & Idli": ["#FFB547", "#C026D3"],
   Biryani: ["#FF6659", "#FFB547"],
-  "Filter Coffee": ["#FFB547", "#7B4A24"],
+  Coffee: ["#FFB547", "#7B4A24"],
   Burger: ["#FF6659", "#C026D3"],
   Pizza: ["#FF6659", "#FFB547"],
   Momos: ["#C026D3", "#FF6659"],
+  "Ice Cream": ["#38BDF8", "#C026D3"],
 };
 
 export default function CravingOrb({ activeCategory }: { activeCategory?: string | null }) {

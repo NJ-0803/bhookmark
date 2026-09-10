@@ -14,11 +14,11 @@ import { CATEGORIES } from "./data/dishes";
 // calendar API (or confirm exact dates) before building that half.
 
 const REGION_PRIORITY: { country?: string; cityIncludes?: string[]; order: Category[]; label: string }[] = [
-  { country: "Nepal", order: ["Momos", "Dosa & Idli", "Biryani", "Filter Coffee", "Burger", "Pizza"], label: "Nepal" },
-  { country: "India", cityIncludes: ["bengaluru", "bangalore"], order: ["Dosa & Idli", "Filter Coffee", "Biryani", "Momos", "Burger", "Pizza"], label: "Bengaluru" },
-  { country: "India", cityIncludes: ["hyderabad"], order: ["Biryani", "Dosa & Idli", "Filter Coffee", "Momos", "Burger", "Pizza"], label: "Hyderabad" },
-  { country: "India", cityIncludes: ["delhi"], order: ["Momos", "Burger", "Biryani", "Dosa & Idli", "Pizza", "Filter Coffee"], label: "Delhi" },
-  { country: "India", cityIncludes: ["mumbai"], order: ["Burger", "Biryani", "Pizza", "Dosa & Idli", "Momos", "Filter Coffee"], label: "Mumbai" },
+  { country: "Nepal", order: ["Momos", "Dosa & Idli", "Biryani", "Coffee", "Burger", "Pizza"], label: "Nepal" },
+  { country: "India", cityIncludes: ["bengaluru", "bangalore"], order: ["Dosa & Idli", "Coffee", "Biryani", "Momos", "Burger", "Pizza"], label: "Bengaluru" },
+  { country: "India", cityIncludes: ["hyderabad"], order: ["Biryani", "Dosa & Idli", "Coffee", "Momos", "Burger", "Pizza"], label: "Hyderabad" },
+  { country: "India", cityIncludes: ["delhi"], order: ["Momos", "Burger", "Biryani", "Dosa & Idli", "Pizza", "Coffee"], label: "Delhi" },
+  { country: "India", cityIncludes: ["mumbai"], order: ["Burger", "Biryani", "Pizza", "Dosa & Idli", "Momos", "Coffee"], label: "Mumbai" },
 ];
 
 function reorderByPriority(order: Category[]): Category[] {
@@ -66,9 +66,9 @@ async function fetchWeather(lat: number, lng: number): Promise<WeatherContext | 
 
 function weatherNudge(weather: WeatherContext): { category: Category; reason: string } | null {
   const t = Math.round(weather.tempC);
-  if (weather.isRaining) return { category: "Filter Coffee", reason: `Raining and ${t}°C right now — hot filter coffee weather.` };
+  if (weather.isRaining) return { category: "Coffee", reason: `Raining and ${t}°C right now — hot filter coffee weather.` };
   if (weather.isCold) return { category: "Biryani", reason: `A cool ${t}°C out — something hot and hearty hits different.` };
-  if (weather.isHot) return { category: "Filter Coffee", reason: `${t}°C right now — iced filter coffee, obviously.` };
+  if (weather.isHot) return { category: "Coffee", reason: `${t}°C right now — iced filter coffee, obviously.` };
   return null;
 }
 

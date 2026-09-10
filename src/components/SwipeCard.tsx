@@ -47,12 +47,14 @@ export default function SwipeCard({
       dragElastic={1}
       dragMomentum={false}
       onDragEnd={handleDragEnd}
-      style={{ x, rotate }}
       initial={{ scale: 0.94, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={LIQUID_SPRING}
-      className={`relative cursor-grab active:cursor-grabbing touch-none ${className}`}
+      // V01: see BrowseCard's comment — touch-none blocked native vertical
+      // scroll entirely on this card.
+      style={{ x, rotate, touchAction: "pan-y" }}
+      className={`relative cursor-grab active:cursor-grabbing ${className}`}
     >
       <motion.span style={{ opacity: rightOpacity }} className="absolute top-4 right-4 z-10 text-accent border-2 border-accent rounded-lg px-3 py-1 text-sm font-bold rotate-6 pointer-events-none">
         {rightLabel}

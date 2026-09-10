@@ -56,11 +56,21 @@ dishesRouter.get("/score", optionalAuth, async (req, res) => {
       )
     : undefined;
 
+  // Real log notes, not the static "Consensus notes" seed copy the frontend
+  // used to render unconditionally (Phase 1, 2026-09-10 fix) — same
+  // filter/slice pattern already used for Near Me's `reviews`, so a dish
+  // page can show actual user text instead of fabricated taste notes.
+  const notes = matches
+    .filter((l) => l.note.trim().length > 0)
+    .slice(0, 3)
+    .map((l) => ({ verdict: l.verdict, note: l.note, score: l.score, createdAt: l.createdAt }));
+
   res.json({
     ok: true,
     community: { score: avg(matches), count: matches.length },
     verifiedOnly: { score: avg(verified), count: verified.length },
     yours: yours ? { score: yours.score, verdict: yours.verdict } : null,
     confidenceBand: scoreConfidenceBand(matches.length, verified.length),
+    notes,
   });
 });

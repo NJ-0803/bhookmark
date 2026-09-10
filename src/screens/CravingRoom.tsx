@@ -12,8 +12,8 @@ import { createRoom, getRoomReveal, joinRoom, swipeInRoom, type CravingRoomInfo 
 const MOODS: { label: string; categories: Category[] }[] = [
   { label: "Quick bite", categories: ["Burger", "Momos"] },
   { label: "Sit-down", categories: ["Biryani", "Pizza"] },
-  { label: "Something new", categories: ["Momos", "Filter Coffee"] },
-  { label: "Comfort food", categories: ["Dosa & Idli", "Filter Coffee"] },
+  { label: "Something new", categories: ["Momos", "Coffee"] },
+  { label: "Comfort food", categories: ["Dosa & Idli", "Coffee"] },
 ];
 const SWIPE_THRESHOLD = 110;
 const POLL_MS = 2500;
@@ -382,12 +382,14 @@ function SwipeCard({ dish, onSwipe }: { dish: DishEntry; onSwipe: (like: boolean
       dragElastic={1}
       dragMomentum={false}
       onDragEnd={handleDragEnd}
-      style={{ x, rotate }}
       initial={{ scale: 0.94, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={LIQUID_SPRING}
-      className="absolute inset-0 bg-surface border border-line rounded-card p-4 cursor-grab active:cursor-grabbing touch-none"
+      // V01: see BrowseCard's comment — touch-none blocked native vertical
+      // scroll entirely on this card.
+      style={{ x, rotate, touchAction: "pan-y" }}
+      className="absolute inset-0 bg-surface border border-line rounded-card p-4 cursor-grab active:cursor-grabbing"
     >
       <motion.span style={{ opacity: likeOpacity }} className="absolute top-4 right-4 z-10 text-accent border-2 border-accent rounded-lg px-3 py-1 text-sm font-bold rotate-6">
         LIKE

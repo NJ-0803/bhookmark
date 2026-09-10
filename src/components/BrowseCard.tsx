@@ -54,12 +54,18 @@ export default function BrowseCard({
       dragElastic={0.6}
       dragMomentum={false}
       onDragEnd={handleDragEnd}
-      style={{ x, rotate }}
       initial={{ scale: 0.94, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={LIQUID_SPRING}
-      className={`relative cursor-grab active:cursor-grabbing touch-none ${className}`}
+      // V01 (implementation brief, 2026-09-08): touch-none disabled ALL
+      // native touch on this card, including vertical scroll — a real
+      // candidate for "scrolling doesn't work," since this card covers
+      // most of the results screen. pan-y lets the browser handle
+      // vertical scroll natively while drag="x" still owns horizontal
+      // swipes (same pattern TrendingStack already used correctly).
+      style={{ x, rotate, touchAction: "pan-y" }}
+      className={`relative cursor-grab active:cursor-grabbing ${className}`}
     >
       {canNext && (
         <motion.span style={{ opacity: nextOpacity }} className="absolute top-3 right-3 z-10 text-accent text-lg pointer-events-none">

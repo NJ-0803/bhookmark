@@ -40,6 +40,16 @@ function auth(user) {
   return { Authorization: `Bearer ${user.accessToken}` };
 }
 
+// F02 (implementation brief, 2026-09-08): entering a code now creates a
+// pending request instead of an instant friendship — the recipient has to
+// accept it. This drives that acceptance for the test's synthetic users.
+async function acceptRequestFrom(recipient, senderId) {
+  const incoming = await j("/friends/requests", { headers: auth(recipient) });
+  const req = incoming.body.requests?.find((r) => r.sender.id === senderId);
+  if (!req) return { ok: false, error: "no matching pending request", body: incoming.body };
+  return j(`/friends/requests/${req.id}/respond`, { method: "POST", headers: auth(recipient), body: JSON.stringify({ accept: true }) });
+}
+
 async function main() {
   const ip = randomTestIp();
   const p = () => `+91900030${Math.floor(Math.random() * 9000 + 1000)}`;
@@ -47,7 +57,7 @@ async function main() {
   const bob = await signUp(p(), ip);
   const carol = await signUp(p(), ip);
 
-  console.log("\nFriends — permanent per-user code, instant mutual add");
+  console.log("\nFriends — permanent per-user code, consent-gated add (F02)");
   {
     const code1 = await j("/friends/code", { headers: auth(alice) });
     check("alice gets a friend code", code1.status === 200 && typeof code1.body.code === "string", JSON.stringify(code1.body));
@@ -56,18 +66,49 @@ async function main() {
 
     const bobCode = (await j("/friends/code", { headers: auth(bob) })).body.code;
     const add = await j("/friends/add", { method: "POST", headers: auth(alice), body: JSON.stringify({ code: bobCode }) });
-    check("alice adds bob by his code", add.status === 201, JSON.stringify(add.body));
+    check("alice adding bob's code creates a pending request, not instant friendship", add.status === 201 && add.body.status === "pending", JSON.stringify(add.body));
+
+    const tooEarly = await j("/friends", { headers: auth(alice) });
+    check("bob does NOT show up in alice's friend list yet (unaccepted)", !tooEarly.body.friends.some((f) => f.id === bob.user.id), JSON.stringify(tooEarly.body));
+
+    const dupeAdd = await j("/friends/add", { method: "POST", headers: auth(alice), body: JSON.stringify({ code: bobCode }) });
+    check("re-adding the same code while pending doesn't duplicate the request", dupeAdd.status === 200 && dupeAdd.body.status === "pending", JSON.stringify(dupeAdd.body));
+
+    const bobRequests = await j("/friends/requests", { headers: auth(bob) });
+    check("bob sees alice's request, with no phone number in the payload", bobRequests.body.requests.some((r) => r.sender.id === alice.user.id) && !JSON.stringify(bobRequests.body).includes("phone"), JSON.stringify(bobRequests.body));
+
+    const aliceCantRespond = await j(`/friends/requests/${bobRequests.body.requests[0].id}/respond`, { method: "POST", headers: auth(alice), body: JSON.stringify({ accept: true }) });
+    check("only the recipient can respond, not the sender", aliceCantRespond.status === 404, JSON.stringify(aliceCantRespond.body));
+
+    const accept = await acceptRequestFrom(bob, alice.user.id);
+    check("bob accepts alice's request", accept.status === 200 && accept.body.status === "accepted", JSON.stringify(accept.body));
+
+    const acceptAgain = await acceptRequestFrom(bob, alice.user.id);
+    check("responding to an already-handled request fails cleanly (no double-accept)", acceptAgain.ok === false, JSON.stringify(acceptAgain));
 
     const aliceFriends = await j("/friends", { headers: auth(alice) });
-    check("bob shows up in alice's friend list", aliceFriends.body.friends.some((f) => f.id === bob.user.id), JSON.stringify(aliceFriends.body));
+    check("bob now shows up in alice's friend list", aliceFriends.body.friends.some((f) => f.id === bob.user.id), JSON.stringify(aliceFriends.body));
+    check("no phone number leaks into the friend list", !JSON.stringify(aliceFriends.body).includes("phone"), JSON.stringify(aliceFriends.body));
     const bobFriends = await j("/friends", { headers: auth(bob) });
-    check("the add is mutual — alice shows up in bob's list too", bobFriends.body.friends.some((f) => f.id === alice.user.id), JSON.stringify(bobFriends.body));
+    check("acceptance is mutual — alice shows up in bob's list too", bobFriends.body.friends.some((f) => f.id === alice.user.id), JSON.stringify(bobFriends.body));
 
     const selfAdd = await j("/friends/add", { method: "POST", headers: auth(alice), body: JSON.stringify({ code: code1.body.code }) });
     check("can't add your own code", selfAdd.status === 400, JSON.stringify(selfAdd.body));
 
     const badAdd = await j("/friends/add", { method: "POST", headers: auth(alice), body: JSON.stringify({ code: "ZZZZZZZ" }) });
     check("an unknown code is rejected cleanly", badAdd.status === 404, JSON.stringify(badAdd.body));
+
+    // Reciprocal add: if the recipient enters the sender's code back before
+    // responding, that should complete the friendship immediately (both
+    // sides already consented) rather than creating a second request.
+    const daveIp = randomTestIp();
+    const dave = await signUp(p(), daveIp);
+    const eve = await signUp(p(), daveIp);
+    const daveCode = (await j("/friends/code", { headers: auth(dave) })).body.code;
+    const eveCode = (await j("/friends/code", { headers: auth(eve) })).body.code;
+    await j("/friends/add", { method: "POST", headers: auth(dave), body: JSON.stringify({ code: eveCode }) });
+    const reciprocal = await j("/friends/add", { method: "POST", headers: auth(eve), body: JSON.stringify({ code: daveCode }) });
+    check("entering each other's code both ways completes the friendship without a separate accept step", reciprocal.body.status === "accepted", JSON.stringify(reciprocal.body));
   }
 
   console.log("\nFood Circles — built from real friends, real match score");
@@ -75,6 +116,7 @@ async function main() {
   {
     const carolCode = (await j("/friends/code", { headers: auth(carol) })).body.code;
     await j("/friends/add", { method: "POST", headers: auth(alice), body: JSON.stringify({ code: carolCode }) });
+    await acceptRequestFrom(carol, alice.user.id);
 
     const notAFriendId = "not-a-real-friend-id";
     const create = await j("/circles", {

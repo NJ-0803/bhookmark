@@ -1,5 +1,6 @@
 import jwt from "jsonwebtoken";
 import { nanoid } from "nanoid";
+import { randomInt } from "node:crypto";
 import { findOrCreateUser as dbFindOrCreateUser, Role } from "./db";
 
 function requireEnv(name: string): string {
@@ -18,10 +19,16 @@ export interface AccessPayload {
   sub: string; // userId
   role: Role;
   authTime: number; // seconds since epoch when the user last completed OTP
+  // F05 (implementation brief, 2026-09-08): the device a control like the
+  // venue-burst check binds to must come from the server-issued session,
+  // never from a string the client can put in a request body — otherwise
+  // anyone can defeat per-device rate limiting just by sending a different
+  // deviceId on each call.
+  deviceId: string;
 }
 
-export function issueAccessToken(userId: string, role: Role, authTime: number) {
-  return jwt.sign({ sub: userId, role, authTime } satisfies AccessPayload, ACCESS_SECRET, {
+export function issueAccessToken(userId: string, role: Role, authTime: number, deviceId: string) {
+  return jwt.sign({ sub: userId, role, authTime, deviceId } satisfies AccessPayload, ACCESS_SECRET, {
     expiresIn: ACCESS_TTL_S,
   });
 }
@@ -38,8 +45,13 @@ export function verifyRefreshToken(token: string): { familyId: string; jti: stri
   return jwt.verify(token, REFRESH_SECRET) as { familyId: string; jti: string };
 }
 
+// F01: Math.random() is not a cryptographic RNG — its output is
+// predictable enough (a 48-bit-ish PRNG state, sometimes seeded from the
+// system clock) that an attacker who can observe a few codes can have a
+// real shot at predicting the next one. node:crypto's randomInt draws from
+// the OS CSPRNG instead.
 export function newOtp(): string {
-  return String(Math.floor(100000 + Math.random() * 900000));
+  return String(randomInt(100000, 1000000));
 }
 
 export async function findOrCreateUser(phone: string) {

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { nanoid } from "nanoid";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
+import { OAuth2Client } from "google-auth-library";
 import * as db from "../db";
 import {
   findOrCreateUser,
@@ -14,6 +15,70 @@ import {
 import { requireAuth } from "../middleware";
 
 export const authRouter = Router();
+
+// Real, free identity provider (see F01 in the 2026-09-08 implementation
+// brief) — no SMS vendor is configured, so this is the actual working
+// login path today. GOOGLE_CLIENT_ID is created for free in the Google
+// Cloud Console (APIs & Services -> Credentials -> OAuth client ID, type
+// "Web application") and set as an env var; until it's set, this route
+// honestly reports itself unavailable instead of pretending to work.
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID ?? null;
+const googleClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
+
+const googleAuthLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 20,
+  keyGenerator: (req) => `google-auth:${ipKeyGenerator(req.ip ?? "")}`,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { ok: false, error: "Too many attempts. Try again in a few minutes." },
+});
+
+const googleSchema = z.object({ idToken: z.string().min(20), deviceLabel: z.string().default("Unknown device") });
+
+authRouter.post("/google", googleAuthLimiter, async (req, res) => {
+  if (!googleClient) {
+    return res.status(503).json({ ok: false, error: "Google Sign-In isn't configured yet." });
+  }
+  const parsed = googleSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ ok: false, error: "Missing Google credential." });
+
+  let sub: string;
+  let email: string;
+  try {
+    // Verifies the token's signature against Google's own published keys
+    // and checks it was actually issued for THIS app's client ID — this is
+    // what makes it safe to trust the payload afterward, unlike decoding
+    // the JWT without verification.
+    const ticket = await googleClient.verifyIdToken({ idToken: parsed.data.idToken, audience: GOOGLE_CLIENT_ID! });
+    const payload = ticket.getPayload();
+    if (!payload?.sub || !payload.email) throw new Error("Incomplete Google payload");
+    sub = payload.sub;
+    email = payload.email;
+  } catch {
+    return res.status(401).json({ ok: false, error: "That Google sign-in couldn't be verified." });
+  }
+
+  const user = await db.findOrCreateUserByGoogle(sub, email, nanoid());
+
+  const deviceId = nanoid();
+  const familyId = nanoid();
+  const jti = nanoid();
+  const now = Date.now();
+  await db.createDeviceAndFamily(
+    { id: deviceId, userId: user.id, familyId, createdAt: now, lastSeenAt: now, label: parsed.data.deviceLabel, ip: req.ip ?? null },
+    { familyId, userId: user.id, deviceId, currentJti: jti, revoked: false }
+  );
+
+  const authTime = Math.floor(Date.now() / 1000);
+  res.json({
+    ok: true,
+    user: { id: user.id, phone: user.phone, email: user.email, role: user.role },
+    accessToken: issueAccessToken(user.id, user.role, authTime, deviceId),
+    refreshToken: issueRefreshToken(familyId, jti),
+    deviceId,
+  });
+});
 
 // A01: bound OTP requests per phone number, independent of the global
 // per-IP limiter in index.ts (a shared office/hostel network shouldn't
@@ -38,6 +103,16 @@ const otpVerifyLimiter = rateLimit({
 
 const phoneSchema = z.object({ phone: z.string().min(8).max(15) });
 
+// F01 (implementation brief, 2026-09-08): devOtp used to be returned
+// unconditionally — a production login secret handed straight back to
+// whoever called the endpoint, no SMS delivery required. Double-gated so
+// it can't be left on by accident: NODE_ENV must not be "production" AND
+// an explicit opt-in flag must be set. There is still no SMS provider
+// wired up (a real one costs money — see project notes on zero paid APIs
+// until there's revenue), so phone OTP only actually works in local dev
+// right now; Google Sign-In below is the real, free login path.
+const DEV_OTP_ENABLED = process.env.NODE_ENV !== "production" && process.env.ALLOW_DEV_OTP === "1";
+
 authRouter.post("/otp/request", otpRequestLimiter, async (req, res) => {
   const parsed = phoneSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ ok: false, error: "Enter a valid phone number." });
@@ -46,9 +121,16 @@ authRouter.post("/otp/request", otpRequestLimiter, async (req, res) => {
   const code = newOtp();
   await db.setOtp(phone, { code, expiresAt: Date.now() + 5 * 60 * 1000, attempts: 0 });
 
-  // DEV ONLY: a real deployment sends this via an SMS vendor and never
-  // returns it in the API response. We have no SMS provider wired up, so
-  // this is surfaced to the client and clearly labeled as a dev shortcut.
+  if (!DEV_OTP_ENABLED) {
+    // No SMS provider is configured, so a real code genuinely can't reach
+    // this phone yet. Say that plainly instead of silently handing back
+    // the code (which is what F01 flagged) or pretending it was sent.
+    return res.status(503).json({
+      ok: false,
+      error: "SMS delivery isn't configured yet — use Google Sign-In instead.",
+      smsUnavailable: true,
+    });
+  }
   res.json({ ok: true, devOtp: code, expiresInSeconds: 300 });
 });
 
@@ -88,7 +170,7 @@ authRouter.post("/otp/verify", otpVerifyLimiter, async (req, res) => {
   res.json({
     ok: true,
     user: { id: user.id, phone: user.phone, role: user.role },
-    accessToken: issueAccessToken(user.id, user.role, authTime),
+    accessToken: issueAccessToken(user.id, user.role, authTime, deviceId),
     refreshToken: issueRefreshToken(familyId, jti),
     deviceId,
   });
@@ -131,7 +213,7 @@ authRouter.post("/refresh", async (req, res) => {
   const authTime = Math.floor(Date.now() / 1000);
   res.json({
     ok: true,
-    accessToken: issueAccessToken(user.id, user.role, authTime),
+    accessToken: issueAccessToken(user.id, user.role, authTime, family.deviceId),
     refreshToken: issueRefreshToken(family.familyId, newJti),
   });
 });

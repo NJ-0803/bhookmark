@@ -3,10 +3,17 @@ import type { Category, DishEntry } from "../types";
 export const CATEGORIES: { name: Category; emoji: string; subtypes: string[] }[] = [
   { name: "Dosa & Idli", emoji: "🥞", subtypes: ["Plain / Set Dosa", "Masala Dosa", "Benne Dosa", "Idli-Vada"] },
   { name: "Biryani", emoji: "🍛", subtypes: ["Chicken", "Mutton", "Veg", "Egg"] },
-  { name: "Filter Coffee", emoji: "☕", subtypes: ["Strong / Degree", "Light", "Cold Filter Coffee"] },
+  // Was "Filter Coffee" with only 2 entries and no subtype for anything
+  // that isn't a South Indian filter-coffee pour — a real complaint
+  // (coffee is a general category; filter coffee is one style of it).
+  // Broadened to cover the actual range of coffee Bangalore drinks, from
+  // the degree-coffee davara-tumbler tradition to third-wave/specialty
+  // cafes, without losing filter coffee as its own real subtype.
+  { name: "Coffee", emoji: "☕", subtypes: ["Filter Coffee", "Cold Coffee", "Cappuccino / Latte", "Specialty / Third Wave"] },
   { name: "Burger", emoji: "🍔", subtypes: ["Veg", "Chicken", "Mutton / Beef"] },
   { name: "Pizza", emoji: "🍕", subtypes: ["Veg", "Non-veg"] },
   { name: "Momos", emoji: "🥟", subtypes: ["Veg", "Chicken"] },
+  { name: "Ice Cream", emoji: "🍨", subtypes: ["Classic", "Sundae / Loaded"] },
 ];
 
 export const DISHES: DishEntry[] = [
@@ -114,8 +121,8 @@ export const DISHES: DishEntry[] = [
   },
   {
     id: "d7",
-    category: "Filter Coffee",
-    subtype: "Strong / Degree",
+    category: "Coffee",
+    subtype: "Filter Coffee",
     name: "Degree Coffee",
     venue: "Vidyarthi Bhavan",
     area: "Basavanagudi",
@@ -131,8 +138,8 @@ export const DISHES: DishEntry[] = [
   },
   {
     id: "d8",
-    category: "Filter Coffee",
-    subtype: "Cold Filter Coffee",
+    category: "Coffee",
+    subtype: "Cold Coffee",
     name: "Cold Filter Coffee",
     venue: "Third Wave Coffee",
     area: "Indiranagar",
@@ -145,6 +152,92 @@ export const DISHES: DishEntry[] = [
     tasteNotes: ["balanced sweetness", "consistent chain quality"],
     allergens: ["dairy"],
     photo: "/dishes/d8.jpg",
+  },
+  // Coffee only had 2 entries, both filter coffee — the exact "why is
+  // coffee only filter coffee" complaint. These fill in the rest of what
+  // Bangalore actually drinks, including Nandan Coffee (a real local
+  // specialty-coffee brand the user pointed out was missing entirely — no
+  // curated photo exists for it yet, so it honestly falls back to the
+  // emoji placeholder rather than reusing an unrelated photo).
+  {
+    id: "d24",
+    category: "Coffee",
+    subtype: "Specialty / Third Wave",
+    name: "Signature Pour-Over",
+    venue: "Nandan Coffee",
+    area: "Multiple outlets",
+    emoji: "☕",
+    tint: "from-amber-800/30 to-stone-950/40",
+    score: 8.6,
+    verifiedPct: 0,
+    logCount: 0,
+    priceRs: 220,
+    tasteNotes: [],
+    allergens: [],
+  },
+  {
+    id: "d25",
+    category: "Coffee",
+    subtype: "Specialty / Third Wave",
+    name: "Cold Brew",
+    venue: "Blue Tokai Coffee Roasters",
+    area: "Indiranagar",
+    emoji: "☕",
+    tint: "from-stone-600/30 to-stone-950/40",
+    score: 8.5,
+    verifiedPct: 40,
+    logCount: 214,
+    priceRs: 240,
+    tasteNotes: ["single-origin beans", "roasted in-house", "no added sugar"],
+    allergens: ["dairy"],
+  },
+  {
+    id: "d26",
+    category: "Coffee",
+    subtype: "Cappuccino / Latte",
+    name: "Cappuccino",
+    venue: "Starbucks",
+    area: "Multiple outlets",
+    emoji: "☕",
+    tint: "from-green-700/30 to-stone-950/40",
+    score: 7.8,
+    verifiedPct: 55,
+    logCount: 980,
+    priceRs: 260,
+    tasteNotes: ["consistent chain quality", "familiar everywhere"],
+    allergens: ["dairy"],
+  },
+  {
+    id: "d27",
+    category: "Coffee",
+    subtype: "Cappuccino / Latte",
+    name: "Cafe Latte",
+    venue: "Kaapi Machine",
+    area: "Church Street",
+    emoji: "☕",
+    tint: "from-orange-800/30 to-stone-950/40",
+    score: 8.3,
+    verifiedPct: 36,
+    logCount: 178,
+    priceRs: 180,
+    tasteNotes: ["strong espresso base", "local specialty roaster"],
+    allergens: ["dairy"],
+  },
+  {
+    id: "d28",
+    category: "Coffee",
+    subtype: "Filter Coffee",
+    name: "Filter Coffee",
+    venue: "Café Coffee Day",
+    area: "Multiple outlets",
+    emoji: "☕",
+    tint: "from-red-800/30 to-stone-950/40",
+    score: 7.2,
+    verifiedPct: 48,
+    logCount: 1120,
+    priceRs: 90,
+    tasteNotes: ["consistent chain quality", "budget-friendly", "everywhere"],
+    allergens: ["dairy"],
   },
   {
     id: "d9",
@@ -394,6 +487,126 @@ export const DISHES: DishEntry[] = [
     tasteNotes: ["pan-fried, not steamed", "peri peri masala coating", "shareable"],
     allergens: ["gluten"],
   },
+  // More real, well-known Bangalore spots per category — the earlier
+  // catalog had exactly one venue for Dosa & Idli's benne-dosa subtype,
+  // one for burgers-veg outside a single chain, etc., which read as
+  // "only one restaurant exists" rather than a real (if still partial)
+  // city-wide picture. This is still a hand-curated set, not exhaustive
+  // coverage of every Bangalore food joint — see PROJECT_STATUS.md for
+  // why full coverage needs a paid places/maps data source this project
+  // doesn't have.
+  {
+    id: "d29",
+    category: "Dosa & Idli",
+    subtype: "Masala Dosa",
+    name: "Masala Dosa",
+    venue: "MTR (Mavalli Tiffin Room)",
+    area: "Lalbagh Road",
+    emoji: "🥞",
+    tint: "from-yellow-600/30 to-amber-950/40",
+    score: 8.9,
+    verifiedPct: 62,
+    logCount: 701,
+    priceRs: 120,
+    tasteNotes: ["heritage institution since 1924", "ghee-roasted", "expect a queue"],
+    allergens: ["dairy", "gluten"],
+  },
+  {
+    id: "d30",
+    category: "Biryani",
+    subtype: "Chicken",
+    name: "Chicken Biryani",
+    venue: "Paradise Biryani",
+    area: "Multiple outlets",
+    emoji: "🍛",
+    tint: "from-orange-600/30 to-stone-950/40",
+    score: 8.2,
+    verifiedPct: 51,
+    logCount: 690,
+    priceRs: 280,
+    tasteNotes: ["Hyderabadi-style dum", "consistent chain quality"],
+    allergens: ["dairy"],
+  },
+  {
+    id: "d31",
+    category: "Biryani",
+    subtype: "Mutton",
+    name: "Mutton Biryani",
+    venue: "Shivaji Military Hotel",
+    area: "Richmond Town",
+    emoji: "🍛",
+    tint: "from-red-700/30 to-stone-950/40",
+    score: 8.7,
+    verifiedPct: 33,
+    logCount: 340,
+    priceRs: 250,
+    tasteNotes: ["old-school military hotel", "no-frills, big flavor"],
+    allergens: ["dairy"],
+  },
+  {
+    id: "d32",
+    category: "Burger",
+    subtype: "Chicken",
+    name: "McSpicy Chicken",
+    venue: "McDonald's",
+    area: "Multiple outlets",
+    emoji: "🍔",
+    tint: "from-red-600/30 to-yellow-800/40",
+    score: 7.3,
+    verifiedPct: 58,
+    logCount: 1430,
+    priceRs: 190,
+    tasteNotes: ["consistent chain quality", "always open late"],
+    allergens: ["gluten", "dairy"],
+  },
+  {
+    id: "d33",
+    category: "Burger",
+    subtype: "Chicken",
+    name: "Chicken Whopper",
+    venue: "Burger King",
+    area: "Multiple outlets",
+    emoji: "🍔",
+    tint: "from-orange-700/30 to-red-950/40",
+    score: 7.6,
+    verifiedPct: 50,
+    logCount: 960,
+    priceRs: 210,
+    tasteNotes: ["flame-grilled", "bigger portion than most chains"],
+    allergens: ["gluten", "dairy"],
+  },
+  {
+    id: "d34",
+    category: "Ice Cream",
+    subtype: "Classic",
+    name: "Death by Chocolate",
+    venue: "Corner House Ice Cream",
+    area: "Multiple outlets",
+    emoji: "🍨",
+    tint: "from-stone-700/30 to-amber-950/40",
+    score: 8.8,
+    verifiedPct: 66,
+    logCount: 1102,
+    priceRs: 150,
+    tasteNotes: ["Bangalore institution", "hot chocolate sauce over cold ice cream", "always a queue"],
+    allergens: ["dairy", "nuts"],
+  },
+  {
+    id: "d35",
+    category: "Ice Cream",
+    subtype: "Sundae / Loaded",
+    name: "Gudpanodu Sundae",
+    venue: "Naturals Ice Cream",
+    area: "Multiple outlets",
+    emoji: "🍨",
+    tint: "from-amber-600/30 to-orange-950/40",
+    score: 8.4,
+    verifiedPct: 54,
+    logCount: 588,
+    priceRs: 140,
+    tasteNotes: ["real fruit, not flavoring", "jaggery-forward", "consistent chain quality"],
+    allergens: ["dairy"],
+  },
 ];
 
 export function dishById(id: string): DishEntry | undefined {
@@ -407,10 +620,11 @@ export function dishesForSubtype(category: Category, subtype: string): DishEntry
 const CATEGORY_TINT: Record<string, string> = {
   "Dosa & Idli": "from-amber-500/30 to-amber-900/40",
   Biryani: "from-orange-500/30 to-red-900/40",
-  "Filter Coffee": "from-amber-700/30 to-stone-900/40",
+  Coffee: "from-amber-700/30 to-stone-900/40",
   Burger: "from-rose-500/30 to-rose-900/40",
   Pizza: "from-red-500/30 to-red-950/40",
   Momos: "from-teal-500/30 to-emerald-950/40",
+  "Ice Cream": "from-sky-400/30 to-indigo-950/40",
 };
 
 /** Restrained per-category accents (brief's Phase 5 direction: "chilli red,
@@ -419,10 +633,11 @@ const CATEGORY_TINT: Record<string, string> = {
 export const CATEGORY_ACCENT: Record<Category, string> = {
   "Dosa & Idli": "bg-amber-400 text-amber-950",
   Biryani: "bg-orange-600 text-orange-50",
-  "Filter Coffee": "bg-amber-800 text-amber-50",
+  Coffee: "bg-amber-800 text-amber-50",
   Burger: "bg-rose-500 text-rose-50",
   Pizza: "bg-red-600 text-red-50",
   Momos: "bg-teal-500 text-teal-950",
+  "Ice Cream": "bg-sky-400 text-sky-950",
 };
 
 /** Which of the three palette roles (turquoise/saffron/coral) a category's
@@ -431,10 +646,11 @@ export const CATEGORY_ACCENT: Record<Category, string> = {
 export const CATEGORY_SHADOW: Record<Category, string> = {
   "Dosa & Idli": "shadow-saffronGlow",
   Biryani: "shadow-coralGlow",
-  "Filter Coffee": "shadow-saffronGlow",
+  Coffee: "shadow-saffronGlow",
   Burger: "shadow-coralGlow",
   Pizza: "shadow-coralGlow",
   Momos: "shadow-accentGlow",
+  "Ice Cream": "shadow-accentGlow",
 };
 
 /** Same three-color assignment as CATEGORY_SHADOW, as a visible border
@@ -443,10 +659,11 @@ export const CATEGORY_SHADOW: Record<Category, string> = {
 export const CATEGORY_BORDER: Record<Category, string> = {
   "Dosa & Idli": "border-saffron/50",
   Biryani: "border-coral/50",
-  "Filter Coffee": "border-saffron/50",
+  Coffee: "border-saffron/50",
   Burger: "border-coral/50",
   Pizza: "border-coral/50",
   Momos: "border-accent/50",
+  "Ice Cream": "border-accent/50",
 };
 
 /** Matches a backend log (category/subtype/name/venue only, no photo) back

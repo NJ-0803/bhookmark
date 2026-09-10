@@ -4,7 +4,7 @@ import { LIQUID_SPRING, TAP_SCALE } from "../motion";
 import { CATEGORIES, CATEGORY_ACCENT, CATEGORY_BORDER, CATEGORY_SHADOW, DISHES, categoryVisual, dishById, dishesForSubtype } from "../data/dishes";
 import type { Category, DishEntry } from "../types";
 import DishThumb from "../components/DishThumb";
-import ScoreBadge from "../components/ScoreBadge";
+import EvidenceScoreBadge from "../components/EvidenceScoreBadge";
 import WhyThis from "../components/WhyThis";
 import BrowseCard from "../components/BrowseCard";
 import CravingOrb from "../components/CravingOrb";
@@ -63,6 +63,13 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
   const [digest, setDigest] = useState<DigestData | null>(null);
   const [userAllergens, setUserAllergens] = useState<string[]>([]);
   const [dishScore, setDishScore] = useState<DishScoreResponse | null>(null);
+  // Phase 1 honesty fix (2026-09-10): real evidence-gated scores for cards
+  // that used to render the static seed `score`/`tasteNotes` fields as if
+  // they were genuine community data — keyed by dish id, fetched from the
+  // same /dishes/score endpoint the profile view already uses correctly.
+  const [pickScores, setPickScores] = useState<Record<string, DishScoreResponse>>({});
+  const [stackScores, setStackScores] = useState<Record<string, DishScoreResponse>>({});
+  const [resultScore, setResultScore] = useState<DishScoreResponse | null>(null);
   const [resultIndex, setResultIndex] = useState(0);
   const [smartOrder, setSmartOrder] = useState<SmartOrderResult | null>(null);
   const [trending, setTrending] = useState<TrendingResponse["trending"] | null>(null);
@@ -74,6 +81,32 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
   useEffect(() => {
     setResultIndex(0);
   }, [resultsKey]);
+
+  // Fetches the real evidence-gated score for each recommended pick — the
+  // recommendation ranking itself still uses the server's static catalog
+  // score internally (server/src/recommend.ts, a Phase 2 fix), but what's
+  // *displayed* here now only ever shows a number backed by real logs.
+  useEffect(() => {
+    if (!picks || picks.length === 0) return;
+    let cancelled = false;
+    Promise.all(
+      picks.map((p) =>
+        getDishScore(p.venue, p.category, p.subtype, p.name)
+          .then((res) => [p.id, res] as const)
+          .catch(() => [p.id, null] as const)
+      )
+    ).then((results) => {
+      if (cancelled) return;
+      setPickScores((prev) => {
+        const next = { ...prev };
+        for (const [id, res] of results) if (res) next[id] = res;
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [picks]);
 
   useEffect(() => {
     getNextPicks().then((res) => res.ok && setPicks(res.picks)).catch(() => setPicks([]));
@@ -129,6 +162,29 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
       .then((res) => setDishScore(res.ok ? res : null))
       .catch(() => setDishScore(null));
   }, [view]);
+
+  // Same honesty fix as the recommended carousel, for the one-at-a-time
+  // browse card in the "results" view (was showing the static seed score).
+  useEffect(() => {
+    if (view.name !== "results") {
+      setResultScore(null);
+      return;
+    }
+    const dishes = dishesForSubtype(view.category, view.subtype);
+    const safeIndex = Math.min(resultIndex, Math.max(dishes.length - 1, 0));
+    const current = dishes[safeIndex];
+    if (!current) {
+      setResultScore(null);
+      return;
+    }
+    let cancelled = false;
+    getDishScore(current.venue, current.category, current.subtype, current.name)
+      .then((res) => !cancelled && setResultScore(res.ok ? res : null))
+      .catch(() => !cancelled && setResultScore(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [view, resultIndex]);
 
   const orderedCategories = useMemo(() => {
     if (!smartOrder) return CATEGORIES;
@@ -199,6 +255,30 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
     }
     return cards;
   }, [trendingSpotlight, fallbackSpotlight, trending, picks]);
+
+  // Same honesty fix for the trending/spotlight stack, which used to render
+  // dish.score (the static seed value) directly.
+  useEffect(() => {
+    if (stackCards.length === 0) return;
+    let cancelled = false;
+    Promise.all(
+      stackCards.map(({ dish }) =>
+        getDishScore(dish.venue, dish.category, dish.subtype, dish.name)
+          .then((res) => [dish.id, res] as const)
+          .catch(() => [dish.id, null] as const)
+      )
+    ).then((results) => {
+      if (cancelled) return;
+      setStackScores((prev) => {
+        const next = { ...prev };
+        for (const [id, res] of results) if (res) next[id] = res;
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [stackCards]);
 
   if (view.name === "nearby") {
     return <NearMe onBack={() => setView({ name: "search" })} />;
@@ -297,7 +377,7 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
         )}
 
         {!query.trim() && (trendingSpotlight || fallbackSpotlight) && (
-          <TrendingStack cards={stackCards} onSelect={(dish) => setView({ name: "profile", dish })} />
+          <TrendingStack cards={stackCards} scores={stackScores} onSelect={(dish) => setView({ name: "profile", dish })} />
         )}
 
         <button
@@ -378,7 +458,7 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
                           <span className={`absolute top-2 left-2 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${CATEGORY_ACCENT[p.category as Category]}`}>
                             {p.category}
                           </span>
-                          <ScoreBadge score={p.score} size="sm" className="absolute top-2 right-2" />
+                          <EvidenceScoreBadge community={pickScores[p.id]?.community} size="sm" className="absolute top-2 right-2" />
                         </div>
                         <div className="p-3 pb-0">
                           <div className="font-semibold text-sm truncate">{p.name}</div>
@@ -513,7 +593,7 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
                       <div className="font-display font-bold text-lg leading-tight truncate">{current.name}</div>
                       <div className="text-faint text-sm mt-0.5 truncate">{current.venue} · {current.area}</div>
                     </div>
-                    <ScoreBadge score={current.score} />
+                    <EvidenceScoreBadge community={resultScore?.community} />
                   </div>
                 </div>
               </button>
@@ -618,14 +698,23 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
           </div>
         )}
 
-        <p className="font-mono text-[11px] tracking-[0.1em] uppercase text-faint mt-6 mb-2">Consensus notes</p>
-        <div className="flex flex-wrap gap-2">
-          {d.tasteNotes.map((n) => (
-            <span key={n} className="text-xs bg-surface border border-line rounded-full px-3 py-1.5 text-ink/90">
-              {n}
-            </span>
-          ))}
-        </div>
+        {/* Phase 1 honesty fix (2026-09-10): this used to render the static
+            seed `tasteNotes` array unconditionally, labeled "Consensus
+            notes" — implying real aggregated feedback that didn't exist.
+            Now it only appears once real logs with real note text exist,
+            and shows that actual text instead of hand-authored copy. */}
+        {dishScore && dishScore.community.count > 0 && dishScore.notes.length > 0 && (
+          <>
+            <p className="font-mono text-[11px] tracking-[0.1em] uppercase text-faint mt-6 mb-2">From recent logs</p>
+            <div className="flex flex-wrap gap-2">
+              {dishScore.notes.map((n, i) => (
+                <span key={i} className="text-xs bg-surface border border-line rounded-full px-3 py-1.5 text-ink/90">
+                  {n.note}
+                </span>
+              ))}
+            </div>
+          </>
+        )}
 
         <button
           onClick={() => onLogDish(d)}
