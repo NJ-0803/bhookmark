@@ -1,7 +1,19 @@
-// Phase 2 Session B: pulls real cafes/restaurants from OpenStreetMap's
-// Overpass API and inserts them into the new venues/dishes tables — this
-// is the actual fix for "why isn't a real cafe in the app," for any cafe,
-// not just one hand-added example (see PROJECT_STATUS.md's Phase 2 entry).
+// Phase 2 Session B: pulls real cafes, restaurants, pubs/bars, and
+// bakeries from OpenStreetMap's Overpass API and inserts them into the
+// new venues/dishes tables — this is the actual fix for "why isn't a
+// real cafe/bar/bakery in the app," for any real venue, not just one
+// hand-added example (see PROJECT_STATUS.md's Phase 2 entry).
+//
+// 2026-09-11 revision: the first version only queried amenity=cafe|
+// restaurant|fast_food (missing 321 real pubs/bars/nightclubs entirely)
+// and — more importantly — only ever inserted a venue when its cuisine
+// tag resolved to a category, silently dropping ~2,700 real, named
+// venues from the `venues` table itself. That's wrong for this app's
+// actual requirement: a user searching for a specific real place by name
+// should find it, whether or not we know what cuisine it serves. Every
+// real, named venue now gets a `venues` row unconditionally; a `dishes`
+// category stub is created ONLY when a category genuinely resolves —
+// category-based Near Me browsing needs that, name search doesn't.
 //
 // Free, no API key. Verified current fair-use policy: no key required,
 // ~100 queries/10MB/day for an app querying it regularly, a User-Agent
@@ -57,11 +69,21 @@ const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
 // Per Overpass's fair-use policy: identify the app, not a generic client.
 const USER_AGENT = "Bhookmark/1.0 (https://bhookmark.com; food discovery app, low-volume cached queries)";
 
+// amenity=food_court deliberately excluded — it tags a whole building
+// (a mall's food court), not a single vendor with one owner/name/cuisine,
+// which doesn't fit this schema's one-venue-one-place model. A specific
+// stall inside a food court would already be tagged its own amenity if
+// mapped separately.
+const AMENITY_TYPES = "cafe|restaurant|fast_food|pub|bar|nightclub|biergarten|ice_cream";
+const SHOP_TYPES = "bakery|confectionery|pastry";
+
 const QUERY = `
 [out:json][timeout:180];
 (
-  node["amenity"~"^(cafe|restaurant|fast_food)$"]["name"](${BBOX.south},${BBOX.west},${BBOX.north},${BBOX.east});
-  way["amenity"~"^(cafe|restaurant|fast_food)$"]["name"](${BBOX.south},${BBOX.west},${BBOX.north},${BBOX.east});
+  node["amenity"~"^(${AMENITY_TYPES})$"]["name"](${BBOX.south},${BBOX.west},${BBOX.north},${BBOX.east});
+  way["amenity"~"^(${AMENITY_TYPES})$"]["name"](${BBOX.south},${BBOX.west},${BBOX.north},${BBOX.east});
+  node["shop"~"^(${SHOP_TYPES})$"]["name"](${BBOX.south},${BBOX.west},${BBOX.north},${BBOX.east});
+  way["shop"~"^(${SHOP_TYPES})$"]["name"](${BBOX.south},${BBOX.west},${BBOX.north},${BBOX.east});
 );
 out center tags;
 `;
@@ -100,12 +122,13 @@ function elementArea(tags) {
 }
 
 async function main() {
-  console.log(`Querying Overpass for cafes/restaurants/fast_food in bbox ${JSON.stringify(BBOX)}...`);
+  console.log(`Querying Overpass for cafes/restaurants/fast_food/pubs/bars/bakeries in bbox ${JSON.stringify(BBOX)}...`);
   const data = await fetchOverpass();
   const elements = data.elements ?? [];
   console.log(`Overpass returned ${elements.length} raw elements.`);
 
-  const { aliases, canonical } = { aliases: new Map(), canonical: new Set() };
+  const aliases = new Map();
+  const canonical = new Set();
   // Inlined rather than importing server/src/aliases.ts's resolver against
   // a live DB fetch here, to keep this script runnable with zero other
   // dependencies at dry-run time — mirrors that module's logic exactly.
@@ -128,7 +151,6 @@ async function main() {
   const candidates = [];
   let noName = 0;
   let noLocation = 0;
-  let unresolved = 0;
   const unresolvedCuisines = new Map();
 
   for (const el of elements) {
@@ -144,20 +166,24 @@ async function main() {
       continue;
     }
     // cuisine values can be semicolon-separated ("indian;chinese") — try
-    // each real cuisine value before the generic amenity-based guess, so
-    // an explicit tag always outranks the fallback.
+    // each real cuisine value before the generic amenity/shop-based
+    // guess, so an explicit tag always outranks the fallback. amenity/
+    // shop values that already default cleanly to one category (cafe ->
+    // Coffee, pub/bar/nightclub/biergarten -> Bars & Pubs, ice_cream ->
+    // Ice Cream, bakery/confectionery/pastry -> Bakery & Sweets) are
+    // tried as fallback candidates via the normal alias table, not
+    // hardcoded here, so category_aliases stays the one place spellings
+    // live.
     const cuisineValues = (tags.cuisine ?? "").split(";").map((s) => s.trim()).filter(Boolean);
-    const amenityFallback = tags.amenity === "cafe" ? "cafe" : null;
+    const typeFallbacks = [tags.amenity, tags.shop].filter(Boolean);
     let category = null;
-    for (const c of [...cuisineValues, amenityFallback].filter(Boolean)) {
+    for (const c of [...cuisineValues, ...typeFallbacks]) {
       category = resolveCategory(c);
       if (category) break;
     }
     if (!category) {
-      unresolved++;
-      const key = cuisineValues.join(";") || `(no cuisine tag, amenity=${tags.amenity})`;
+      const key = cuisineValues.join(";") || `(no cuisine tag, ${tags.amenity ? `amenity=${tags.amenity}` : `shop=${tags.shop}`})`;
       unresolvedCuisines.set(key, (unresolvedCuisines.get(key) ?? 0) + 1);
-      continue;
     }
     candidates.push({
       osmId: `${el.type}/${el.id}`,
@@ -165,20 +191,23 @@ async function main() {
       area: elementArea(tags),
       lat: loc.lat,
       lng: loc.lng,
-      category,
-      amenity: tags.amenity,
+      category, // may be null — the venue is still inserted, just without a dish/category stub
     });
   }
 
-  console.log(`\nParsed: ${candidates.length} venues with a resolvable category.`);
-  console.log(`Skipped: ${noName} with no name, ${noLocation} with no usable location, ${unresolved} with an unresolvable cuisine/amenity.`);
+  const categorized = candidates.filter((c) => c.category);
+  const uncategorized = candidates.filter((c) => !c.category);
+
+  console.log(`\nParsed: ${candidates.length} real, named venues total (${categorized.length} with a resolvable category, ${uncategorized.length} without).`);
+  console.log(`Skipped entirely (never became a venue): ${noName} with no name, ${noLocation} with no usable location.`);
+  console.log(`Uncategorized venues are still inserted and name-searchable — they just won't appear in category-based Near Me browsing until a real log or submission tags them.`);
   if (unresolvedCuisines.size > 0) {
-    console.log(`\nTop unresolved cuisine/amenity values (candidates for new category_aliases entries):`);
+    console.log(`\nTop unresolved cuisine/type values among uncategorized venues (candidates for new category_aliases entries):`);
     [...unresolvedCuisines.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15).forEach(([k, n]) => console.log(`  ${n.toString().padStart(3)}  ${k}`));
   }
 
   const byCategory = new Map();
-  for (const c of candidates) byCategory.set(c.category, (byCategory.get(c.category) ?? 0) + 1);
+  for (const c of categorized) byCategory.set(c.category, (byCategory.get(c.category) ?? 0) + 1);
   console.log(`\nBy category:`);
   [...byCategory.entries()].sort((a, b) => b[1] - a[1]).forEach(([cat, n]) => console.log(`  ${n.toString().padStart(3)}  ${cat}`));
 
@@ -187,7 +216,7 @@ async function main() {
     return;
   }
 
-  console.log(`\nCommitting ${candidates.length} venues...`);
+  console.log(`\nCommitting ${candidates.length} venues (${categorized.length} categorized + ${uncategorized.length} uncategorized)...`);
   const now = Date.now();
   let venuesInserted = 0;
   let venuesSkipped = 0;
@@ -196,16 +225,22 @@ async function main() {
 
   for (const c of candidates) {
     try {
+      // ON CONFLICT ... DO UPDATE (a harmless updated_at bump) rather than
+      // DO NOTHING, specifically so this always returns the venue's id —
+      // DO NOTHING was silently skipping the dish-stub step below on every
+      // re-run for a venue that already existed, which is exactly the
+      // re-run-to-backfill-a-newly-resolved-category case this script
+      // needs to support (a venue ingested before an alias existed for
+      // its cuisine should pick up a dish stub the next time it resolves,
+      // not stay uncategorized forever).
       const venueRows = await sql`
         INSERT INTO venues (id, name, area, city, lat, lng, source, osm_id, created_at, updated_at)
         VALUES (${nanoid()}, ${c.name}, ${c.area}, 'Bengaluru', ${c.lat}, ${c.lng}, 'osm', ${c.osmId}, ${now}, ${now})
-        ON CONFLICT (osm_id) WHERE osm_id IS NOT NULL DO NOTHING
-        RETURNING id`;
-      if (venueRows.length === 0) {
-        venuesSkipped++;
-        continue;
-      }
-      venuesInserted++;
+        ON CONFLICT (osm_id) WHERE osm_id IS NOT NULL DO UPDATE SET updated_at = ${now}
+        RETURNING id, (xmax = 0) AS was_inserted`;
+      if (venueRows[0].was_inserted) venuesInserted++;
+      else venuesSkipped++;
+      if (!c.category) continue; // no resolved category — venue exists and is name-searchable, no dish stub
       const venueId = venueRows[0].id;
       // A bare category-level stub, not a fabricated specific dish — OSM
       // tells us "this place serves Coffee," never "this place serves a

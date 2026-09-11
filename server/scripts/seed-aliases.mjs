@@ -100,6 +100,22 @@ const CATEGORY_ALIASES = [
   ["cake", "Bakery & Sweets"],
   ["pastry", "Bakery & Sweets"],
   ["bakes", "Bakery & Sweets"],
+  ["confectionery", "Bakery & Sweets"],
+
+  // New (2026-09-11): Bars & Pubs — a real, sizable gap found after the
+  // first OSM ingestion only queried amenity=cafe|restaurant|fast_food
+  // and silently excluded amenity=pub|bar|nightclub entirely (321 real
+  // venues in central Bangalore alone).
+  ["pub", "Bars & Pubs"],
+  ["pubs", "Bars & Pubs"],
+  ["bar", "Bars & Pubs"],
+  ["bars", "Bars & Pubs"],
+  ["nightclub", "Bars & Pubs"],
+  ["biergarten", "Bars & Pubs"],
+  ["brewery", "Bars & Pubs"],
+  ["brewpub", "Bars & Pubs"],
+  ["taproom", "Bars & Pubs"],
+  ["cocktail bar", "Bars & Pubs"],
 ];
 
 const DISH_NAME_ALIASES = [
