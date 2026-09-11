@@ -868,3 +868,100 @@ export async function countClones(listId: string): Promise<number> {
   const rows = await sql()`SELECT COUNT(*)::int AS n FROM lists WHERE parent_list_id = ${listId}`;
   return rows[0]?.n ?? 0;
 }
+
+// ===== Phase 2: catalog (venues/dishes/aliases) =====
+
+export interface CatalogVenue {
+  id: string;
+  name: string;
+  area: string;
+  city: string;
+  lat: number;
+  lng: number;
+  photoUrl: string | null;
+  photoIsVerified: boolean;
+  source: "seed" | "osm" | "user-submitted";
+  osmId: string | null;
+  status: "active" | "pending-review" | "rejected" | "merged";
+}
+
+function catalogVenueFromRow(r: any): CatalogVenue {
+  return {
+    id: r.id,
+    name: r.name,
+    area: r.area,
+    city: r.city,
+    lat: Number(r.lat),
+    lng: Number(r.lng),
+    photoUrl: r.photo_url ?? null,
+    photoIsVerified: r.photo_is_verified,
+    source: r.source,
+    osmId: r.osm_id ?? null,
+    status: r.status,
+  };
+}
+
+// Whole alias vocabulary fetched once and cached in memory by the caller
+// (the ingestion script processes hundreds of OSM tags; the /venues/nearby
+// route resolves one term per request) — a per-lookup round trip isn't
+// worth it for a table this small.
+export async function getCategoryAliasMap(): Promise<{ aliases: Map<string, string>; canonical: Set<string> }> {
+  const rows = await sql()`SELECT alias, category FROM category_aliases`;
+  const aliases = new Map<string, string>();
+  const canonical = new Set<string>();
+  for (const r of rows as any[]) {
+    aliases.set(r.alias, r.category);
+    canonical.add(r.category);
+  }
+  return { aliases, canonical };
+}
+
+export async function getDishNameAliasMap(): Promise<Map<string, string>> {
+  const rows = await sql()`SELECT alias, canonical_token FROM dish_name_aliases`;
+  return new Map((rows as any[]).map((r) => [r.alias, r.canonical_token]));
+}
+
+export async function insertVenue(v: {
+  id: string;
+  name: string;
+  area: string;
+  city: string;
+  lat: number;
+  lng: number;
+  source: string;
+  osmId: string | null;
+  createdBy: string | null;
+  now: number;
+}): Promise<CatalogVenue | null> {
+  const rows = await sql()`
+    INSERT INTO venues (id, name, area, city, lat, lng, source, osm_id, created_by, created_at, updated_at)
+    VALUES (${v.id}, ${v.name}, ${v.area}, ${v.city}, ${v.lat}, ${v.lng}, ${v.source}, ${v.osmId}, ${v.createdBy}, ${v.now}, ${v.now})
+    ON CONFLICT (osm_id) WHERE osm_id IS NOT NULL DO NOTHING
+    RETURNING *`;
+  return rows[0] ? catalogVenueFromRow(rows[0]) : null;
+}
+
+export async function insertDish(d: {
+  id: string;
+  venueId: string;
+  category: string;
+  subtype: string;
+  name: string;
+  source: string;
+  createdBy: string | null;
+  now: number;
+}): Promise<boolean> {
+  const rows = await sql()`
+    INSERT INTO dishes (id, venue_id, category, subtype, name, source, created_by, created_at, updated_at)
+    VALUES (${d.id}, ${d.venueId}, ${d.category}, ${d.subtype}, ${d.name}, ${d.source}, ${d.createdBy}, ${d.now}, ${d.now})
+    ON CONFLICT (venue_id, category, subtype, lower(name)) WHERE status <> 'merged' DO NOTHING
+    RETURNING id`;
+  return rows.length > 0;
+}
+
+export async function countVenuesBySource(): Promise<Record<string, number>> {
+  const rows = await sql()`SELECT source, COUNT(*)::int AS n FROM venues GROUP BY source`;
+  const out: Record<string, number> = {};
+  for (const r of rows as any[]) out[r.source] = r.n;
+  return out;
+}
