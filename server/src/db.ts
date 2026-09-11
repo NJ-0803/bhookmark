@@ -308,6 +308,29 @@ export async function listPublishedLogs(venue: string, category: string): Promis
   return rows.map(logFromRow);
 }
 
+// Batched version of the above for a whole page of venues at once (e.g.
+// Near Me's result list). Phase 2 Session D found the real cost of NOT
+// having this: /venues/nearby was calling listPublishedLogs once per
+// venue inside a Promise.all, which for a common category with 100+
+// venues in range fired 100+ simultaneous connections and exhausted a
+// Neon branch's connection limit — a real scalability bug, not just a
+// small-test-branch quirk. One query, grouped by venue in JS, instead.
+export async function listPublishedLogsForVenues(venueNames: string[], category: string): Promise<Map<string, DishLog[]>> {
+  const byVenue = new Map<string, DishLog[]>();
+  if (venueNames.length === 0) return byVenue;
+  const rows = await sql()`
+    SELECT * FROM logs
+    WHERE venue = ANY(${venueNames}) AND category = ${category} AND status = 'published' AND owner_disclosed = false AND visibility = 'public'
+    ORDER BY created_at DESC`;
+  for (const row of rows) {
+    const log = logFromRow(row);
+    const list = byVenue.get(log.venue) ?? [];
+    list.push(log);
+    byVenue.set(log.venue, list);
+  }
+  return byVenue;
+}
+
 export async function listPublishedLogsByCategorySubtype(category: string, subtype: string): Promise<DishLog[]> {
   const rows = await sql()`SELECT * FROM logs WHERE category = ${category} AND subtype = ${subtype} AND status = 'published' AND owner_disclosed = false AND visibility = 'public'`;
   return rows.map(logFromRow);
@@ -964,4 +987,205 @@ export async function countVenuesBySource(): Promise<Record<string, number>> {
   const out: Record<string, number> = {};
   for (const r of rows as any[]) out[r.source] = r.n;
   return out;
+}
+
+export interface NearbyVenueRow {
+  id: string;
+  name: string;
+  area: string;
+  lat: number;
+  lng: number;
+  photoUrl: string | null;
+  photoIsVerified: boolean;
+  dishSubtype: string;
+  dishName: string;
+}
+
+// Bounding-box prefilter only (no PostGIS, per the Phase 2 plan's explicit
+// scope decision) — the route computes exact haversine distance and does
+// the final radius cut in JS, same division of labor the old hardcoded
+// VENUES array used. DISTINCT ON (v.id) so a venue with more than one
+// dish in the same category (real once seed/user data layers onto OSM
+// venues) still surfaces once, not once per dish.
+export async function listVenuesNearbyByCategory(
+  category: string,
+  bbox: { latMin: number; latMax: number; lngMin: number; lngMax: number }
+): Promise<NearbyVenueRow[]> {
+  const rows = await sql()`
+    SELECT DISTINCT ON (v.id) v.id, v.name, v.area, v.lat, v.lng, v.photo_url, v.photo_is_verified, d.subtype AS dish_subtype, d.name AS dish_name
+    FROM venues v
+    JOIN dishes d ON d.venue_id = v.id
+    WHERE d.category = ${category} AND v.status = 'active' AND d.status = 'active'
+      AND v.lat BETWEEN ${bbox.latMin} AND ${bbox.latMax}
+      AND v.lng BETWEEN ${bbox.lngMin} AND ${bbox.lngMax}
+    ORDER BY v.id`;
+  return (rows as any[]).map((r) => ({
+    id: r.id,
+    name: r.name,
+    area: r.area,
+    lat: Number(r.lat),
+    lng: Number(r.lng),
+    photoUrl: r.photo_url ?? null,
+    photoIsVerified: r.photo_is_verified,
+    dishSubtype: r.dish_subtype,
+    dishName: r.dish_name,
+  }));
+}
+
+export interface SearchVenueRow {
+  id: string;
+  name: string;
+  area: string;
+  lat: number;
+  lng: number;
+  photoUrl: string | null;
+  photoIsVerified: boolean;
+  category: string | null;
+  dishName: string | null;
+}
+
+// Name search — works whether or not a venue has a resolved category,
+// which is the whole point (see Phase 2 Session B: ~2,700 real venues
+// have no category yet, but they're real and should still be findable by
+// name). Expanded query terms (from dish_name_aliases, e.g. "dose" also
+// tries "dosa") are OR'd together at the SQL level so a single request
+// covers every spelling.
+export async function searchVenuesByName(terms: string[], limit = 20): Promise<SearchVenueRow[]> {
+  const patterns = terms.map((t) => `%${t}%`);
+  const rows = await sql()`
+    SELECT DISTINCT ON (v.id) v.id, v.name, v.area, v.lat, v.lng, v.photo_url, v.photo_is_verified, d.category, d.name AS dish_name
+    FROM venues v
+    LEFT JOIN dishes d ON d.venue_id = v.id AND d.status = 'active'
+    WHERE v.status = 'active' AND lower(v.name) LIKE ANY(${patterns})
+    ORDER BY v.id
+    LIMIT ${limit}`;
+  return (rows as any[]).map((r) => ({
+    id: r.id,
+    name: r.name,
+    area: r.area,
+    lat: Number(r.lat),
+    lng: Number(r.lng),
+    photoUrl: r.photo_url ?? null,
+    photoIsVerified: r.photo_is_verified,
+    category: r.category ?? null,
+    dishName: r.dish_name ?? null,
+  }));
+}
+
+export interface VenueSubmission {
+  id: string;
+  userId: string;
+  name: string;
+  area: string;
+  lat: number | null;
+  lng: number | null;
+  category: string;
+  subtype: string | null;
+  dishName: string | null;
+  note: string;
+  status: "pending" | "approved" | "rejected";
+  resultingVenueId: string | null;
+  createdAt: number;
+  reviewedAt: number | null;
+}
+
+function venueSubmissionFromRow(r: any): VenueSubmission {
+  return {
+    id: r.id,
+    userId: r.user_id,
+    name: r.name,
+    area: r.area,
+    lat: r.lat !== null ? Number(r.lat) : null,
+    lng: r.lng !== null ? Number(r.lng) : null,
+    category: r.category,
+    subtype: r.subtype ?? null,
+    dishName: r.dish_name ?? null,
+    note: r.note,
+    status: r.status,
+    resultingVenueId: r.resulting_venue_id ?? null,
+    createdAt: Number(r.created_at),
+    reviewedAt: r.reviewed_at !== null ? Number(r.reviewed_at) : null,
+  };
+}
+
+// Cheap submit, moderator approves — same trust boundary as venue_claims:
+// nothing here is live until a moderator acts on it.
+export async function createVenueSubmission(s: {
+  id: string;
+  userId: string;
+  name: string;
+  area: string;
+  lat: number | null;
+  lng: number | null;
+  category: string;
+  subtype: string | null;
+  dishName: string | null;
+  note: string;
+  now: number;
+}): Promise<VenueSubmission> {
+  const rows = await sql()`
+    INSERT INTO venue_submissions (id, user_id, name, area, lat, lng, category, subtype, dish_name, note, created_at)
+    VALUES (${s.id}, ${s.userId}, ${s.name}, ${s.area}, ${s.lat}, ${s.lng}, ${s.category}, ${s.subtype}, ${s.dishName}, ${s.note}, ${s.now})
+    RETURNING *`;
+  return venueSubmissionFromRow(rows[0]);
+}
+
+export async function listVenueSubmissions(status?: string): Promise<VenueSubmission[]> {
+  const rows = status
+    ? await sql()`SELECT * FROM venue_submissions WHERE status = ${status} ORDER BY created_at DESC`
+    : await sql()`SELECT * FROM venue_submissions ORDER BY created_at DESC`;
+  return rows.map(venueSubmissionFromRow);
+}
+
+export async function getVenueSubmissionById(id: string): Promise<VenueSubmission | undefined> {
+  const rows = await sql()`SELECT * FROM venue_submissions WHERE id = ${id}`;
+  return rows[0] ? venueSubmissionFromRow(rows[0]) : undefined;
+}
+
+// Approval creates the real venue (+ dish, if a category was given) and
+// links it back to the submission in one place — a submission can only
+// ever be approved once (WHERE status = 'pending' guards against a
+// double-approve race the same way respondToFriendRequest does).
+export async function approveVenueSubmission(
+  submissionId: string,
+  venue: { id: string; lat: number; lng: number; now: number },
+  dish: { id: string; category: string; subtype: string } | null
+): Promise<VenueSubmission | null> {
+  const sub = await getVenueSubmissionById(submissionId);
+  if (!sub || sub.status !== "pending") return null;
+
+  await sql()`
+    INSERT INTO venues (id, name, area, city, lat, lng, source, status, created_by, created_at, updated_at)
+    VALUES (${venue.id}, ${sub.name}, ${sub.area}, 'Bengaluru', ${venue.lat}, ${venue.lng}, 'user-submitted', 'active', ${sub.userId}, ${venue.now}, ${venue.now})`;
+
+  if (dish) {
+    await sql()`
+      INSERT INTO dishes (id, venue_id, category, subtype, name, source, created_by, created_at, updated_at)
+      VALUES (${dish.id}, ${venue.id}, ${dish.category}, ${dish.subtype}, ${sub.dishName ?? sub.name}, 'user-submitted', ${sub.userId}, ${venue.now}, ${venue.now})`;
+  }
+
+  const rows = await sql()`
+    UPDATE venue_submissions SET status = 'approved', resulting_venue_id = ${venue.id}, reviewed_at = ${venue.now}
+    WHERE id = ${submissionId} AND status = 'pending'
+    RETURNING *`;
+  return rows[0] ? venueSubmissionFromRow(rows[0]) : null;
+}
+
+// Exact-name lookup for GPS verification (see routes/logs.ts's
+// computeLocationMatch/isImpossibleTravel) — checked only after the old
+// hardcoded VENUES array misses, so the 13 originally-curated venues keep
+// using their precise hand-checked coordinates unchanged, while the
+// 4,907 Session B venues gain the same real-GPS-verification path
+// without needing Session C's careful name-matching merge first.
+export async function findActiveVenueByExactName(name: string): Promise<{ lat: number; lng: number } | undefined> {
+  const rows = await sql()`SELECT lat, lng FROM venues WHERE lower(name) = lower(${name}) AND status = 'active' LIMIT 1`;
+  return rows[0] ? { lat: Number(rows[0].lat), lng: Number(rows[0].lng) } : undefined;
+}
+
+export async function rejectVenueSubmission(submissionId: string, now: number): Promise<VenueSubmission | null> {
+  const rows = await sql()`
+    UPDATE venue_submissions SET status = 'rejected', reviewed_at = ${now}
+    WHERE id = ${submissionId} AND status = 'pending'
+    RETURNING *`;
+  return rows[0] ? venueSubmissionFromRow(rows[0]) : null;
 }

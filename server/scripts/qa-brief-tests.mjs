@@ -50,7 +50,7 @@ async function signUp(phone, ip) {
   return verify.body;
 }
 
-async function createLog(user, dish, evidence = { livePhoto: false, receipt: false, location: null }, ip) {
+async function createLog(user, dish, evidence = { livePhoto: false, receipt: false, location: null }, ip, overrides = {}) {
   return j("/logs", {
     method: "POST",
     headers: {
@@ -58,7 +58,7 @@ async function createLog(user, dish, evidence = { livePhoto: false, receipt: fal
       "Idempotency-Key": crypto.randomUUID(),
       ...(ip ? { "X-Forwarded-For": ip } : {}),
     },
-    body: JSON.stringify({ ...dish, verdict: "loved", score: 8.0, note: "private note text should never leak publicly", deviceId: user.deviceId, evidence }),
+    body: JSON.stringify({ ...dish, verdict: "loved", score: 8.0, note: "private note text should never leak publicly", deviceId: user.deviceId, evidence, ...overrides }),
   });
 }
 
@@ -93,20 +93,48 @@ async function main() {
     check("category-wide aggregate also excludes held logs", catScore.body.count <= 5, JSON.stringify(catScore.body));
   }
 
-  // ---- P0 authorization: public API never exposes another user's private note or exact location ----
-  console.log("\nP0 authorization — /dishes/score never leaks a private note or raw coordinates");
+  // ---- P0 authorization: public API never exposes exact location, and a
+  // PRIVATE log's note never leaks into the public aggregate ----
+  // 2026-09-11: this used to assert /dishes/score never returns ANY note
+  // text at all. That's no longer the product's design — Phase 1
+  // deliberately started returning real note text from public, published
+  // logs here (replacing fabricated "Consensus notes" seed copy), the
+  // same way /venues/nearby's `reviews` field already did. That's not a
+  // privacy bug: both endpoints only ever draw from
+  // listPublishedLogs*'s `visibility = 'public' AND owner_disclosed =
+  // false` filter. The real property worth testing — and the one this
+  // scenario was actually trying to protect — is that a log the OWNER
+  // marked private stays private, which the below now actually exercises
+  // instead of a already-superseded blanket "no notes ever" rule.
+  console.log("\nP0 authorization — /dishes/score never leaks raw coordinates, and a PRIVATE log's note never appears");
   {
     const ip = randomTestIp();
     const phoneA = `+91900002${Math.floor(Math.random() * 9000 + 1000)}`;
     const userA = await signUp(phoneA, ip);
-    const dish = { category: "Pizza", subtype: "Veg", name: "QA Privacy Pizza", venue: "QA Privacy Cafe" };
-    await createLog(userA, dish, { livePhoto: false, receipt: false, location: { lat: 12.9, lng: 77.6 } }, ip);
+    // Unique per run (see the isolation-comment on the burst-threshold
+    // scenario above) — otherwise this venue/dish accumulates published
+    // logs across repeated runs and the community.count === 1 assertion
+    // below breaks on any re-run, not because of a real bug.
+    const dish = { category: "Pizza", subtype: `QA-Privacy-${crypto.randomUUID().slice(0, 8)}`, name: "QA Privacy Pizza", venue: "QA Privacy Cafe" };
+    // A genuinely public log, so the dish has real community evidence...
+    await createLog(userA, dish, { livePhoto: false, receipt: false, location: { lat: 12.9, lng: 77.6 } }, ip, {
+      note: "a real public note, expected to be visible",
+    });
+    // ...and a second, explicitly PRIVATE log with a distinct marker note
+    // that must never surface in the public aggregate.
+    const phoneB = `+91900002${Math.floor(Math.random() * 9000 + 1000)}`;
+    const userB = await signUp(phoneB, ip);
+    await createLog(userB, dish, { livePhoto: false, receipt: false, location: { lat: 12.9, lng: 77.6 } }, ip, {
+      note: "private note text should never leak publicly",
+      visibility: "private",
+    });
 
     const score = await j(`/dishes/score?venue=${encodeURIComponent(dish.venue)}&category=${dish.category}&subtype=${dish.subtype}&name=${encodeURIComponent(dish.name)}`);
     const raw = JSON.stringify(score.body);
-    check("response never contains the raw note text", !raw.includes("private note text"), raw);
+    check("the public log's note IS visible (Phase 1's deliberate design, not a leak)", raw.includes("a real public note"), raw);
+    check("the PRIVATE log's note never appears", !raw.includes("private note text"), raw);
     check("response never contains raw lat/lng coordinates", !raw.includes("12.9") && !raw.includes("77.6"), raw);
-    check("response has no 'note' field at all", !("note" in (score.body.community ?? {})) && !("note" in (score.body.yours ?? {})), raw);
+    check("community count reflects only the one public log, not both", score.body.community.count === 1, JSON.stringify(score.body.community));
   }
 
   // ---- P0 trust: a legitimate multi-user spike is not wrongly classified as abuse ----

@@ -50,11 +50,21 @@ const createSchema = z.object({
 // spoofed or simply irrelevant lat/lng, at a venue this app can't verify,
 // still upgraded a log's evidence level. Unverifiable now correctly means
 // "not a match," not "assume yes."
-function computeLocationMatch(venueName: string, location: { lat: number; lng: number } | null): boolean {
+//
+// Phase 2 Session D (2026-09-11): checks the original hand-curated
+// VENUES array first (unchanged behavior, precise hand-checked
+// coordinates for those 13), then falls back to the real venues table
+// Session B populated (4,907 real venues, mostly from OpenStreetMap) —
+// extends GPS verification to real places without waiting on Session C's
+// careful name-matching merge of the two sources.
+async function computeLocationMatch(venueName: string, location: { lat: number; lng: number } | null): Promise<boolean> {
   if (!location) return false;
-  const known = VENUES.find((v) => v.name.toLowerCase() === venueName.trim().toLowerCase());
-  if (!known) return false;
-  return haversineKm(location.lat, location.lng, known.lat, known.lng) < 1;
+  const name = venueName.trim().toLowerCase();
+  const known = VENUES.find((v) => v.name.toLowerCase() === name);
+  if (known) return haversineKm(location.lat, location.lng, known.lat, known.lng) < 1;
+  const dbKnown = await db.findActiveVenueByExactName(venueName);
+  if (!dbKnown) return false;
+  return haversineKm(location.lat, location.lng, dbKnown.lat, dbKnown.lng) < 1;
 }
 
 // F05: the only input here is a server-computed fact (GPS matched against
@@ -111,12 +121,18 @@ async function isRepeatedDeleteRepost(userId: string, venue: string): Promise<bo
 // this stays a hold-for-review signal rather than a hard block.
 const IMPOSSIBLE_TRAVEL_MIN_KM = 6;
 const IMPOSSIBLE_TRAVEL_MAX_MINUTES = 10;
+async function findKnownVenue(name: string): Promise<{ lat: number; lng: number } | undefined> {
+  const n = name.trim().toLowerCase();
+  const known = VENUES.find((v) => v.name.toLowerCase() === n);
+  if (known) return known;
+  return db.findActiveVenueByExactName(name);
+}
 async function isImpossibleTravel(userId: string, venue: string, now: number): Promise<boolean> {
-  const known = VENUES.find((v) => v.name.toLowerCase() === venue.trim().toLowerCase());
+  const known = await findKnownVenue(venue);
   if (!known) return false;
   const prev = await db.mostRecentLocationVerifiedLog(userId, venue);
   if (!prev) return false;
-  const prevKnown = VENUES.find((v) => v.name.toLowerCase() === prev.venue.trim().toLowerCase());
+  const prevKnown = await findKnownVenue(prev.venue);
   if (!prevKnown) return false;
   const distanceKm = haversineKm(known.lat, known.lng, prevKnown.lat, prevKnown.lng);
   if (distanceKm < IMPOSSIBLE_TRAVEL_MIN_KM) return false;
@@ -143,7 +159,7 @@ logsRouter.post("/", requireAuth, async (req, res) => {
   const data = parsed.data;
   const now = Date.now();
 
-  const liveLocationMatch = computeLocationMatch(data.venue, data.evidence.location);
+  const liveLocationMatch = await computeLocationMatch(data.venue, data.evidence.location);
   const level = evidenceLevel(liveLocationMatch);
   // F05: the authenticated session's own device id, not whatever string
   // the client put in the body — see the AccessPayload.deviceId comment.
