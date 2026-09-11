@@ -126,7 +126,7 @@ Previously fully mocked. Now a real backend, zero paid APIs (polling instead of 
 - Data export + account deletion workflow (Phase 2 of the original brief, distinct from the "Phase 2" catalog rebuild above) — explicitly deferred by the user ("not needed for now, will see afterwards").
 
 ## Exact next step
-Today's stabilization pass (build fix, scroll fixes, honesty fixes, P0 security fixes, Google Sign-In) is shipped, verified, and live. The catalog rebuild ("Phase 2" above) is next per the user's own approved plan — it's the heaviest piece of remaining work, expected to span multiple sessions rather than one sitting.
+Today's stabilization pass (build fix, scroll fixes, honesty fixes, P0 security fixes, Google Sign-In) is shipped, verified, and live. The catalog rebuild ("Phase 2" above) is in progress per the user's own approved plan, split across 5 sessions — **Session A (schema + alias tables) is done** (2026-09-11): `venues`, `dishes`, `dish_attributes`, `category_aliases`, `venue_submissions` tables live in prod, nothing reads from them yet. **Session B (OSM Overpass ingestion) is next** — needs a real Neon test branch first (the user was asked to run `neon auth`; not yet confirmed done), since that session iterates on real venue-merge decisions that shouldn't touch prod until clean.
 
 ## Relevant files
 - **Frontend core**: `src/screens/Home.tsx` (Crave/search, redesigned), `src/screens/LogFlow.tsx` (BiteLog, AI removed, privacy toggle added), `src/screens/Bhookmarks.tsx`, `src/screens/Profile.tsx` (venue-claim UI added), `src/screens/Duel.tsx`, `src/components/BrowseCard.tsx`, `src/smartPicks.ts`, `src/evidenceThresholds.ts`, `src/api.ts`
