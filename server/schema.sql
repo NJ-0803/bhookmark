@@ -273,7 +273,18 @@ CREATE TABLE IF NOT EXISTS venues (
 -- guarantee — two real venues can share a name+area (different branches of
 -- a chain), which is exactly why the Phase 2 plan requires a human to
 -- confirm merges rather than matching on this index alone.
-CREATE UNIQUE INDEX IF NOT EXISTS uniq_venue_name_area ON venues (lower(name), lower(area)) WHERE status <> 'merged';
+--
+-- 2026-09-11: name+area alone turned out to collide constantly on real
+-- OSM data — most OSM entries have no specific addr:suburb tag, so many
+-- genuinely different locations of the same chain (8 separate real
+-- "Indira Canteen" branches several km apart, multiple "Third Wave
+-- Coffee" locations) all fell back to the same generic area string and
+-- got rejected as if they were the same venue (474 of 1,291 real OSM
+-- venues on the first real ingestion run). Rounding lat/lng to ~111m
+-- (3 decimal places) distinguishes real distinct locations while still
+-- catching a true accidental re-insert at the same spot.
+DROP INDEX IF EXISTS uniq_venue_name_area;
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_venue_name_area_location ON venues (lower(name), lower(area), round(lat::numeric, 3), round(lng::numeric, 3)) WHERE status <> 'merged';
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_venue_osm_id ON venues (osm_id) WHERE osm_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_venues_status ON venues(status);
 

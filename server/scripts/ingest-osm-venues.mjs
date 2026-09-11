@@ -23,6 +23,7 @@
 //   CONFIRM_PROD=1 npx dotenv -e ../.env.local -- node scripts/ingest-osm-venues.mjs --commit   (write to prod)
 import { neon } from "@neondatabase/serverless";
 import { nanoid } from "nanoid";
+import { isKnownProductionUrl } from "./prodHost.mjs";
 
 const url = process.env.DATABASE_URL;
 if (!url) {
@@ -34,8 +35,7 @@ if (process.env.ALLOW_TEST_DB === "1") {
 }
 
 const COMMIT = process.argv.includes("--commit");
-const looksLikeTestBranch = /test|dev|sandbox/i.test(url);
-if (COMMIT && !looksLikeTestBranch && process.env.CONFIRM_PROD !== "1") {
+if (COMMIT && isKnownProductionUrl(url) && process.env.CONFIRM_PROD !== "1") {
   console.error(
     "[ingest-osm-venues] --commit was passed against a DATABASE_URL that doesn't look like a test branch.\n" +
       "Refusing to write to what may be production without an explicit CONFIRM_PROD=1.\n" +
@@ -58,7 +58,7 @@ const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
 const USER_AGENT = "Bhookmark/1.0 (https://bhookmark.com; food discovery app, low-volume cached queries)";
 
 const QUERY = `
-[out:json][timeout:60];
+[out:json][timeout:180];
 (
   node["amenity"~"^(cafe|restaurant|fast_food)$"]["name"](${BBOX.south},${BBOX.west},${BBOX.north},${BBOX.east});
   way["amenity"~"^(cafe|restaurant|fast_food)$"]["name"](${BBOX.south},${BBOX.west},${BBOX.north},${BBOX.east});
@@ -66,17 +66,27 @@ const QUERY = `
 out center tags;
 `;
 
-async function fetchOverpass() {
+// The public instance is documented as frequently overloaded (see the
+// Phase 2 plan's own notes on Overpass's fair-use policy) — a 504 here is
+// a transient server-side timeout, not a bad query (the same query has
+// succeeded before). Retry a few times with a real pause between
+// attempts rather than hammering it, per their own "pause before
+// retrying" guidance.
+async function fetchOverpass(attempt = 1) {
   const res = await fetch(OVERPASS_URL, {
     method: "POST",
     headers: { "User-Agent": USER_AGENT, "Content-Type": "text/plain" },
     body: QUERY,
   });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Overpass returned ${res.status}: ${text.slice(0, 300)}`);
+  if (res.ok) return res.json();
+  const text = await res.text().catch(() => "");
+  if (attempt < 3 && (res.status === 504 || res.status === 429 || res.status === 502 || res.status === 503)) {
+    const waitMs = 30_000 * attempt;
+    console.log(`Overpass returned ${res.status} (attempt ${attempt}/3) — waiting ${waitMs / 1000}s before retrying...`);
+    await new Promise((r) => setTimeout(r, waitMs));
+    return fetchOverpass(attempt + 1);
   }
-  return res.json();
+  throw new Error(`Overpass returned ${res.status}: ${text.slice(0, 300)}`);
 }
 
 function elementLatLng(el) {
