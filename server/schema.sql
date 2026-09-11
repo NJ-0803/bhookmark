@@ -244,3 +244,104 @@ CREATE TABLE IF NOT EXISTS list_items (
 );
 CREATE INDEX IF NOT EXISTS idx_list_items_list ON list_items(list_id);
 CREATE INDEX IF NOT EXISTS idx_lists_parent ON lists(parent_list_id);
+
+-- ===== Phase 2 (2026-09-11): real venue/dish catalog =====
+-- Replaces the three hardcoded, drifting arrays (server/src/catalog.ts,
+-- server/src/venues.ts, src/data/dishes.ts) that caused the "Coffee search
+-- returns nothing" and "cafe X isn't in the app" bugs Phase 1 patched
+-- around rather than fixed. `logs` deliberately stays free-text — this is
+-- the discovery/browse/recommend layer, not a re-key of the evidence layer.
+
+CREATE TABLE IF NOT EXISTS venues (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  area TEXT NOT NULL,
+  city TEXT NOT NULL DEFAULT 'Bengaluru',
+  lat DOUBLE PRECISION NOT NULL,
+  lng DOUBLE PRECISION NOT NULL,
+  photo_url TEXT,
+  photo_is_verified BOOLEAN NOT NULL DEFAULT false,
+  source TEXT NOT NULL DEFAULT 'seed', -- 'seed' | 'osm' | 'user-submitted'
+  osm_id TEXT, -- dedup key on re-fetch from Overpass; null for seed/user-submitted rows
+  status TEXT NOT NULL DEFAULT 'active', -- 'active' | 'pending-review' | 'rejected' | 'merged'
+  merged_into_id TEXT REFERENCES venues(id),
+  created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+  created_at BIGINT NOT NULL,
+  updated_at BIGINT NOT NULL
+);
+-- Guards against re-running a backfill twice, not a semantic dedup
+-- guarantee — two real venues can share a name+area (different branches of
+-- a chain), which is exactly why the Phase 2 plan requires a human to
+-- confirm merges rather than matching on this index alone.
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_venue_name_area ON venues (lower(name), lower(area)) WHERE status <> 'merged';
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_venue_osm_id ON venues (osm_id) WHERE osm_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_venues_status ON venues(status);
+
+CREATE TABLE IF NOT EXISTS dishes (
+  id TEXT PRIMARY KEY,
+  venue_id TEXT NOT NULL REFERENCES venues(id) ON DELETE CASCADE,
+  category TEXT NOT NULL, -- always canonical (see category_aliases) — never a raw OSM cuisine tag or old string like "Filter Coffee"
+  subtype TEXT NOT NULL,
+  name TEXT NOT NULL,
+  price_rs INT,
+  photo_url TEXT,
+  source TEXT NOT NULL DEFAULT 'seed', -- 'seed' | 'user-submitted' | 'user-logged' (first real log at a bare OSM venue creates one)
+  status TEXT NOT NULL DEFAULT 'active',
+  created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+  created_at BIGINT NOT NULL,
+  updated_at BIGINT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_dish_identity ON dishes (venue_id, category, subtype, lower(name)) WHERE status <> 'merged';
+CREATE INDEX IF NOT EXISTS idx_dishes_venue ON dishes(venue_id);
+CREATE INDEX IF NOT EXISTS idx_dishes_category_subtype ON dishes(category, subtype);
+
+-- Diet/allergen attributes WITH PROVENANCE — replaces catalog.ts's static
+-- dietTags[]/allergens[] booleans. Multiple rows per dish are expected
+-- (seed says "dairy", a later user report says "gluten too") — nothing
+-- here overwrites in place, so one bad report can be rejected without
+-- losing the rest.
+CREATE TABLE IF NOT EXISTS dish_attributes (
+  dish_id TEXT NOT NULL REFERENCES dishes(id) ON DELETE CASCADE,
+  attribute TEXT NOT NULL, -- 'diet:veg' | 'diet:vegan' | 'diet:egg' | 'diet:non-veg' | 'allergen:dairy' | 'allergen:gluten' | 'allergen:nuts' | ...
+  source TEXT NOT NULL, -- 'seed-catalog' | 'venue-claim' | 'user-report' | 'moderator'
+  reported_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+  checked_at BIGINT NOT NULL,
+  PRIMARY KEY (dish_id, attribute, source)
+);
+CREATE INDEX IF NOT EXISTS idx_dish_attributes_dish ON dish_attributes(dish_id);
+
+-- Alias tables so a category/spelling only ever has to be correct in ONE
+-- place — the exact bug that broke Coffee search (frontend said "Coffee",
+-- server venues still said "Filter Coffee") structurally can't happen
+-- again once /venues/nearby resolves through this instead of exact-match.
+CREATE TABLE IF NOT EXISTS category_aliases (
+  alias TEXT PRIMARY KEY, -- lowercase, e.g. 'filter coffee', 'kaapi', 'pav bhaji'
+  category TEXT NOT NULL -- canonical, e.g. 'Coffee', 'Street Food & Chaat'
+);
+CREATE TABLE IF NOT EXISTS dish_name_aliases (
+  alias TEXT PRIMARY KEY, -- lowercase, e.g. 'dose', 'biriyani'
+  canonical_token TEXT NOT NULL -- widens a search match only, e.g. 'dosa', 'biryani'
+);
+
+-- Lightweight new-venue/new-dish submission — same cheap-submit/
+-- moderator-approves shape as the existing venue_claims table, for
+-- whatever the OSM ingestion (Phase 2, next session) genuinely doesn't
+-- have. Submitting stays cheap; the trust boundary is entirely at
+-- approval, same philosophy as venue_claims.
+CREATE TABLE IF NOT EXISTS venue_submissions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  area TEXT NOT NULL,
+  lat DOUBLE PRECISION,
+  lng DOUBLE PRECISION,
+  category TEXT NOT NULL,
+  subtype TEXT,
+  dish_name TEXT,
+  note TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'pending', -- pending | approved | rejected
+  resulting_venue_id TEXT REFERENCES venues(id),
+  created_at BIGINT NOT NULL,
+  reviewed_at BIGINT
+);
+CREATE INDEX IF NOT EXISTS idx_venue_submissions_status ON venue_submissions(status);
