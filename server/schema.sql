@@ -356,3 +356,11 @@ CREATE TABLE IF NOT EXISTS venue_submissions (
   reviewed_at BIGINT
 );
 CREATE INDEX IF NOT EXISTS idx_venue_submissions_status ON venue_submissions(status);
+
+-- Phase 2 Session E (2026-09-12): listCatalogDishesWithScores() looks up
+-- real evidence for every candidate dish by this exact key. The existing
+-- idx_logs_venue_category only covers (venue, category, status), leaving
+-- subtype/name to a row-by-row filter on every match — measurably slower
+-- (7s -> 2.6s on production data once this index existed) once the
+-- candidate pool grew from 12 hardcoded dishes to thousands of real ones.
+CREATE INDEX IF NOT EXISTS idx_logs_dish_lookup ON logs(venue, category, subtype, name) WHERE status = 'published';
