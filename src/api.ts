@@ -202,12 +202,17 @@ export interface NearbyVenue {
   name: string;
   area: string;
   distanceKm: number;
-  photo: string;
+  // Phase 2 Session D: real venues (mostly from OpenStreetMap) often have
+  // no photo at all — null is the honest, expected state, not an error.
+  // A category-based placeholder renders in its place; never a fabricated
+  // or scraped image (see PROJECT_STATUS.md's Phase 2 photo-sourcing
+  // decision).
+  photo: string | null;
   photoIsVerified: boolean;
   dishName: string;
-  rating: number;
-  ratingSource: "community" | "baseline";
-  reviewCount: number;
+  // Real evidence-gated rating (Phase 1's honesty fix, applied to real
+  // data) — score is null when count is 0, never a fabricated baseline.
+  community: { score: number | null; count: number };
   reviews: { verdict: string; note: string; score: number; createdAt: number }[];
 }
 
@@ -250,7 +255,70 @@ export async function getNearbyVenues(category: string, lat: number, lng: number
   // Unauthenticated on purpose — browsing nearby joints shouldn't require signing in first,
   // and the query carries no persistent identity (see server/src/routes/venues.ts).
   const res = await fetch(`/venues/nearby?${params}`);
-  return res.json() as Promise<{ ok: boolean; category: string; radiusKm: number; count: number; results: NearbyVenue[]; error?: string }>;
+  return res.json() as Promise<{
+    ok: boolean;
+    category: string;
+    radiusKm: number;
+    count: number;
+    results: NearbyVenue[];
+    // false when the category doesn't resolve through category_aliases at
+    // all (a genuine typo/unknown term) — distinct from "resolved but zero
+    // results nearby," so the UI can be honest about which happened.
+    categoryResolved: boolean;
+    error?: string;
+  }>;
+}
+
+// The canonical category list, fetched from the backend instead of
+// hardcoded — see the route's own comment for why that matters here.
+export async function getVenueCategories(): Promise<{ ok: boolean; categories: string[] }> {
+  const res = await fetch("/venues/categories");
+  return res.json();
+}
+
+export interface VenueSearchResult {
+  id: string;
+  name: string;
+  area: string;
+  category: string | null;
+  dishName: string | null;
+  photo: string | null;
+  photoIsVerified: boolean;
+  distanceKm: number | null;
+}
+
+// Phase 2 Session D: find a specific real place by name, whether or not
+// it has a resolved category — this is the actual fix for "when a user
+// searches for a particular cafe/bakery/pub, it appears" (Session B
+// inserts every real, named venue unconditionally; this is what makes
+// that data reachable).
+export async function searchVenues(query: string, lat?: number, lng?: number): Promise<{ ok: boolean; count: number; results: VenueSearchResult[]; error?: string }> {
+  const params = new URLSearchParams({ q: query });
+  if (lat !== undefined && lng !== undefined) {
+    params.set("lat", String(lat));
+    params.set("lng", String(lng));
+  }
+  const res = await fetch(`/venues/search?${params}`);
+  return res.json();
+}
+
+export interface SubmitVenuePayload {
+  name: string;
+  area: string;
+  lat: number | null;
+  lng: number | null;
+  category: string;
+  subtype?: string | null;
+  dishName?: string | null;
+  note?: string;
+}
+
+// The fallback for a real place OSM doesn't have yet — cheap to submit,
+// a moderator has to approve it before it's live (same trust boundary as
+// the existing venue-claim flow).
+export async function submitVenue(payload: SubmitVenuePayload): Promise<{ ok: boolean; submission?: { id: string; status: string }; error?: string }> {
+  const res = await api("/venues/submit", { method: "POST", body: JSON.stringify(payload) });
+  return res.json();
 }
 
 // ---------- Phase 4: Friends, Circles, Craving Rooms, Lists ----------

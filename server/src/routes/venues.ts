@@ -30,6 +30,17 @@ async function getAliasMap(): Promise<AliasMap> {
   return db.getCategoryAliasMap();
 }
 
+// The canonical category vocabulary, straight from category_aliases — so
+// the frontend never has to hardcode its own copy of this list. That
+// exact kind of drift (frontend says "Coffee", a hardcoded backend array
+// still says "Filter Coffee") is what silently broke Coffee search in
+// Phase 1; fetching this list instead of duplicating it structurally
+// rules that class of bug out for good.
+venuesRouter.get("/categories", async (_req, res) => {
+  const { canonical } = await getAliasMap();
+  res.json({ ok: true, categories: [...canonical].sort() });
+});
+
 // Degrees-per-km at this latitude — longitude degrees shrink toward the
 // poles (cos(lat)), latitude degrees don't. Used only to size a SQL
 // bounding-box prefilter; the route still computes exact haversine
