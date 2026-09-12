@@ -25,7 +25,18 @@ async function j(path, opts = {}) {
 }
 
 async function main() {
-  const phone = "+919911223344";
+  // 2026-09-12: this used to be a fixed phone number with fixed
+  // Idempotency-Key values ("rec-seed-0".."rec-seed-4"). That meant every
+  // run after the very first one replayed the SAME cached log-creation
+  // responses instead of creating fresh logs (idempotency keys are
+  // supposed to survive exactly one real request's retries, not every
+  // future run of this script) — the digest's "this week" checks
+  // silently broke days later as those stale logs aged out of the
+  // 7-day window, with no connection to anything this session actually
+  // changed. Randomized per run, matching the isolation pattern already
+  // used elsewhere (qa-brief-tests.mjs, phase4-test.mjs).
+  const phone = `+91991122${Math.floor(Math.random() * 9000 + 1000)}`;
+  const runId = crypto.randomUUID().slice(0, 8);
   const otp = (await j("/auth/otp/request", { method: "POST", body: JSON.stringify({ phone }) })).body.devOtp;
   const auth = (await j("/auth/otp/verify", { method: "POST", body: JSON.stringify({ phone, otp, deviceLabel: "rec-test" }) })).body;
   const H = { Authorization: `Bearer ${auth.accessToken}` };
@@ -47,7 +58,7 @@ async function main() {
   for (const [i, entry] of [...lovedDosas, ...dislikedBiryani].entries()) {
     await j("/logs", {
       method: "POST",
-      headers: { ...H, "Idempotency-Key": `rec-seed-${i}` },
+      headers: { ...H, "Idempotency-Key": `rec-seed-${runId}-${i}` },
       body: JSON.stringify({ ...entry, deviceId: "rec-test-device", evidence: { livePhoto: true, liveLocationMatch: true, receipt: false } }),
     });
   }

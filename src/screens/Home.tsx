@@ -38,8 +38,13 @@ interface Pick {
   subtype: string;
   name: string;
   venue: string;
-  score: number;
+  area: string;
   reason: string;
+  // Phase 2 Session E: no `score` field at all — a pick with no real
+  // evidence yet must never carry a number a client could render as if
+  // it were one. Real evidence (when it exists) is fetched separately
+  // via GET /dishes/score, same as every other card on this screen.
+  hasEvidence: boolean;
 }
 
 interface DigestData {
@@ -242,6 +247,37 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
     } satisfies DishEntry;
   }, [trending]);
 
+  // Phase 2 Session E: a recommended pick's id is now a real dish id from
+  // the DB catalog (thousands of rows, mostly Session B's OSM ingestion),
+  // not one of the 12 ids the old static DISHES array knew about —
+  // dishById(p.id) would silently return undefined for almost every real
+  // pick now. Checks the static catalog first (still works for the
+  // handful of legacy dishes that happen to match), falling back to a
+  // synthetic DishEntry built from the pick's own real fields — same
+  // pattern already used above for trendingSpotlight's non-catalog case.
+  function pickToDishEntry(p: Pick): DishEntry {
+    const catalogMatch = dishById(p.id);
+    if (catalogMatch) return catalogMatch;
+    const visual = categoryVisual(p.category);
+    return {
+      id: p.id,
+      category: p.category as Category,
+      subtype: p.subtype,
+      name: p.name,
+      venue: p.venue,
+      area: p.area,
+      emoji: visual.emoji,
+      tint: visual.tint,
+      score: 0,
+      verifiedPct: 0,
+      logCount: 0,
+      priceRs: 0,
+      tasteNotes: [],
+      allergens: [],
+      photo: visual.photo,
+    } satisfies DishEntry;
+  }
+
   // Layered stack: the trending/top-rated dish up front, then up to two
   // more real recommended picks peeking behind — never padded with filler.
   const stackCards = useMemo<StackCard[]>(() => {
@@ -250,10 +286,11 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
     const cards: StackCard[] = [{ dish: front, badge: trendingSpotlight ? `🔥 Trending — ${trending?.count ?? 0} logs this week` : "⭐ Top rated" }];
     for (const p of picks ?? []) {
       if (cards.length >= 3) break;
-      const dish = dishById(p.id);
-      if (dish && dish.id !== front.id) cards.push({ dish, badge: "✨ For you" });
+      const dish = pickToDishEntry(p);
+      if (dish.id !== front.id) cards.push({ dish, badge: "✨ For you" });
     }
     return cards;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trendingSpotlight, fallbackSpotlight, trending, picks]);
 
   // Same honesty fix for the trending/spotlight stack, which used to render
@@ -440,10 +477,7 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
                       className={`shrink-0 w-64 bg-surface border rounded-card overflow-hidden ${CATEGORY_BORDER[p.category as Category] ?? "border-line"} ${CATEGORY_SHADOW[p.category as Category] ?? ""}`}
                     >
                       <button
-                        onClick={() => {
-                          const dish = dishById(p.id);
-                          if (dish) setView({ name: "profile", dish });
-                        }}
+                        onClick={() => setView({ name: "profile", dish: pickToDishEntry(p) })}
                         className="block w-full text-left"
                       >
                         <div className="relative aspect-[4/3]">
@@ -673,9 +707,11 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
           </div>
         </div>
 
-        <div className="flex items-center gap-2 mt-4 text-xs text-muted">
-          <span>₹{d.priceRs}</span>
-        </div>
+        {d.priceRs > 0 && (
+          <div className="flex items-center gap-2 mt-4 text-xs text-muted">
+            <span>₹{d.priceRs}</span>
+          </div>
+        )}
 
         {dishScore && dishScore.community.count > 0 && (
           <div className="bg-surface border border-line rounded-card p-4 mt-4">

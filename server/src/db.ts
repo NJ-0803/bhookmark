@@ -1189,3 +1189,66 @@ export async function rejectVenueSubmission(submissionId: string, now: number): 
     RETURNING *`;
   return rows[0] ? venueSubmissionFromRow(rows[0]) : null;
 }
+
+export interface CatalogDishRow {
+  id: string;
+  category: string;
+  subtype: string;
+  name: string;
+  venue: string;
+  area: string;
+  dietTags: string[];
+  allergens: string[];
+  // Real evidence from `logs`, computed in the same query — never a
+  // static/fabricated score. count === 0 means genuinely no evidence yet
+  // (most of the 4,907 Session B venues, until someone logs one), not an
+  // error — recommend.ts is responsible for ranking these honestly
+  // (scored candidates before unscored, never interleaved by a guess).
+  evidenceScore: number | null;
+  evidenceCount: number;
+}
+
+// Phase 2 Session E: replaces server/src/catalog.ts's static 12-dish
+// array as recommend.ts's candidate pool. One query, not one round trip
+// per dish — a LATERAL join computes each dish's real average score from
+// `logs` inline, the same way listPublishedLogsForVenues batches Near
+// Me's ratings (see that function's comment for why an N+1 version of
+// this already caused a real connection-exhaustion bug once this
+// session). dish_attributes are aggregated per dish so dietCompatible()
+// gets the same dietTags/allergens shape the old static catalog had.
+export async function listCatalogDishesWithScores(): Promise<CatalogDishRow[]> {
+  const rows = await sql()`
+    SELECT
+      d.id, d.category, d.subtype, d.name, v.name AS venue, v.area,
+      COALESCE(attrs.diet_tags, '{}') AS diet_tags,
+      COALESCE(attrs.allergens, '{}') AS allergens,
+      ev.avg_score, ev.log_count
+    FROM dishes d
+    JOIN venues v ON v.id = d.venue_id
+    LEFT JOIN LATERAL (
+      SELECT
+        array_remove(array_agg(DISTINCT substring(a.attribute FROM 6)) FILTER (WHERE a.attribute LIKE 'diet:%'), NULL) AS diet_tags,
+        array_remove(array_agg(DISTINCT substring(a.attribute FROM 10)) FILTER (WHERE a.attribute LIKE 'allergen:%'), NULL) AS allergens
+      FROM dish_attributes a
+      WHERE a.dish_id = d.id
+    ) attrs ON true
+    LEFT JOIN LATERAL (
+      SELECT AVG(l.score)::float AS avg_score, COUNT(*)::int AS log_count
+      FROM logs l
+      WHERE l.venue = v.name AND l.category = d.category AND l.subtype = d.subtype AND l.name = d.name
+        AND l.status = 'published' AND l.owner_disclosed = false AND l.visibility = 'public'
+    ) ev ON true
+    WHERE d.status = 'active' AND v.status = 'active'`;
+  return (rows as any[]).map((r) => ({
+    id: r.id,
+    category: r.category,
+    subtype: r.subtype,
+    name: r.name,
+    venue: r.venue,
+    area: r.area,
+    dietTags: r.diet_tags ?? [],
+    allergens: r.allergens ?? [],
+    evidenceScore: r.avg_score !== null ? Math.round(r.avg_score * 10) / 10 : null,
+    evidenceCount: r.log_count ?? 0,
+  }));
+}

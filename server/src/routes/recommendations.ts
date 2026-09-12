@@ -22,10 +22,25 @@ recommendationsRouter.get("/next", requireAuth, async (req, res) => {
   const user = await db.getUserById(req.user!.sub);
   if (!user) return res.status(404).json({ ok: false, error: "User not found." });
 
-  const logs = await myLogs(user.id);
-  const picks = computeNextPicks(user, logs, 3);
+  const [logs, catalog] = await Promise.all([myLogs(user.id), db.listCatalogDishesWithScores()]);
+  const picks = computeNextPicks(user, logs, catalog, 3);
 
-  const enriched = picks.map((pick) => ({ ...pick.dish, reason: pick.reason }));
+  // Never a raw `score` field here — a pick with no real evidence yet
+  // must not carry a number a client could render as if it were one
+  // (Phase 1's honesty fix, applied at the source now instead of only at
+  // display time). Home.tsx already fetches the same real evidence
+  // separately per pick via GET /dishes/score; `hasEvidence` just lets
+  // the reason text and ordering be self-consistent with that.
+  const enriched = picks.map((pick) => ({
+    id: pick.dish.id,
+    category: pick.dish.category,
+    subtype: pick.dish.subtype,
+    name: pick.dish.name,
+    venue: pick.dish.venue,
+    area: pick.dish.area,
+    reason: pick.reason,
+    hasEvidence: pick.hasEvidence,
+  }));
 
   res.json({ ok: true, picks: enriched });
 });
@@ -33,5 +48,22 @@ recommendationsRouter.get("/next", requireAuth, async (req, res) => {
 recommendationsRouter.get("/digest", requireAuth, async (req, res) => {
   const user = await db.getUserById(req.user!.sub);
   if (!user) return res.status(404).json({ ok: false, error: "User not found." });
-  res.json({ ok: true, digest: computeDigest(user, await myLogs(user.id)) });
+  const [logs, catalog] = await Promise.all([myLogs(user.id), db.listCatalogDishesWithScores()]);
+  const digest = computeDigest(user, logs, catalog);
+  res.json({
+    ok: true,
+    digest: {
+      ...digest,
+      nextPicks: digest.nextPicks.map((pick) => ({
+        id: pick.dish.id,
+        category: pick.dish.category,
+        subtype: pick.dish.subtype,
+        name: pick.dish.name,
+        venue: pick.dish.venue,
+        area: pick.dish.area,
+        reason: pick.reason,
+        hasEvidence: pick.hasEvidence,
+      })),
+    },
+  });
 });
