@@ -1,7 +1,6 @@
 /* Fonts are loaded via <link> tags in index.html, not @import here — an
-   @import inside a bundled stylesheet is discovered late (after the whole
-   CSS file parses) and can lose the race on a real network, silently
-   leaving the page on its system-font fallback. */
+   @import inside a bundled stylesheet is discovered late and can lose the
+   race on a real network, leaving the page on its system-font fallback. */
 
 @tailwind base;
 @tailwind components;
@@ -15,9 +14,10 @@ html, body, #root {
 
 body {
   margin: 0;
-  background: #080707;
-  color: #F5F1E8;
-  font-family: "Hanken Grotesk", system-ui, sans-serif;
+  background: #0A0A0A;
+  color: #EDE8E1;
+  font-family: "Inter", system-ui, sans-serif;
+  letter-spacing: -0.005em;
   -webkit-font-smoothing: antialiased;
   overscroll-behavior-y: none;
 }
@@ -28,110 +28,76 @@ body {
   min-height: 100dvh;
   height: auto;
   position: relative;
-  background: #080707;
-  border-left: 1px solid #1A1717;
-  border-right: 1px solid #1A1717;
+  background: #0A0A0A;
+  border-left: 1px solid #141414;
+  border-right: 1px solid #141414;
   overflow-x: hidden;
   overflow-y: visible;
-}
-
-/* Ambient "blood gradient" glow — black stays the dominant surface; red only
-   shows up as a low-opacity wash top and bottom (~10-15% presence), never a
-   flat fill, so it reads as light bleeding into black rather than a red
-   background. */
-#root::before {
-  content: "";
-  position: fixed;
-  top: -10%;
-  left: 50%;
-  translate: -50% 0;
-  width: 140%;
-  aspect-ratio: 1;
-  max-width: 700px;
-  background: radial-gradient(circle, rgba(225, 18, 46, 0.28) 0%, rgba(139, 0, 0, 0.12) 35%, transparent 65%);
-  pointer-events: none;
-  z-index: 0;
-}
-
-#root::after {
-  content: "";
-  position: fixed;
-  bottom: -15%;
-  left: 50%;
-  translate: -50% 0;
-  width: 120%;
-  aspect-ratio: 1;
-  max-width: 600px;
-  background: radial-gradient(circle, rgba(139, 0, 0, 0.14) 0%, transparent 60%);
-  pointer-events: none;
-  z-index: 0;
-}
-
-#root > * {
-  position: relative;
-  z-index: 1;
 }
 
 ::-webkit-scrollbar { display: none; }
 
 .tabular { font-variant-numeric: tabular-nums; }
 
-/* Glassmorphism / "Liquid Glass" — every real card gets a frosted,
-   translucent surface instead of a flat opaque one. Placed after
-   @tailwind utilities so it wins the cascade at equal specificity,
-   retroactively applying everywhere bg-surface already is (every screen)
-   without touching each component file individually. Scoped to bg-surface
-   only, not bg-surface2 (small chips/pills use that) — a backdrop-filter
-   per element is real GPU cost, and this app can have dozens of small
-   surface2 chips on one screen; cards are far fewer per screen. */
-/* V03 (implementation brief, 2026-09-08): this was blur(24px) with no
-   `contain`, applied to every card on screen. A 24px backdrop-filter forces
-   the browser to resample and blur the pixels behind each card on every
-   scroll frame, and without `contain: paint` the browser also has to
-   consider each card's effect on a potentially larger repaint region than
-   its own box — real, measurable scroll jank once more than a couple of
-   these are on screen at once (which is normal here: card lists, stacks,
-   grids). Cut to 14px (still reads as glass at this app's card sizes) and
-   scoped the paint/compositing work to each card's own box. */
+/* Frosted card surface, applied everywhere bg-surface is used. V03: blur is
+   capped at 14px and paint is contained per card — a bigger uncontained
+   backdrop-filter caused measurable scroll jank with several cards on screen. */
 .bg-surface {
-  background-color: rgba(18, 16, 16, 0.55) !important;
-  backdrop-filter: blur(14px) saturate(150%);
-  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  background-color: rgba(16, 16, 16, 0.72) !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   contain: paint;
 }
 
-/* Floating — every card gets a real lift shadow by default ("every card
-   should float"), not just the few that opted into shadow-lift by hand. */
 .rounded-card {
-  box-shadow: 0 12px 36px -14px rgba(0, 0, 0, 0.65);
+  box-shadow: 0 12px 36px -14px rgba(0, 0, 0, 0.75);
 }
 
-/* Blood-gradient identity for primary actions: oxidised dark red into
-   bright crimson, like the red ambient trim on black leather. */
+/* Primary action fill: dark blood red with only a slight vertical falloff,
+   so it reads as a material rather than a gradient. */
 .gradient-primary {
-  background: linear-gradient(135deg, #5A0008 0%, #B00B1E 50%, #FF2A3D 100%);
+  background: linear-gradient(180deg, #86161E 0%, #6A0F16 100%);
 }
 
-/* Gradient-clipped headline text — bright end first so it stays legible on
-   near-black. */
+/* Headline text: a faint cream-to-stone falloff, never a colour gradient. */
 .text-gradient {
-  background: linear-gradient(135deg, #FF6B6B 0%, #FF2A3D 50%, #C4102A 100%);
+  background: linear-gradient(180deg, #F2EDE6 0%, #B9B1AA 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
 
-/* The brand word itself: gradient fill + stroke outline + emissive glow, so
-   it outshines the plain headline text around it. The glow lives on a
-   drop-shadow filter because text-shadow renders underneath a
-   background-clipped transparent fill and would muddy it. */
+/* Dark blood (#7A1219) fails contrast as small text on black, so text uses a
+   lifted tone of the same red; fills and borders keep the dark one. */
+.text-accent { color: #C9525A; }
+
+/* The brand word as a true outline: hollow letters with a 1px blood-red
+   stroke. A dark fill under the stroke read as muddy at this size. */
 .text-blood-outline {
-  background: linear-gradient(135deg, #FF8A8A 0%, #FF2A3D 45%, #B00B1E 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
   color: transparent;
-  -webkit-text-stroke: 1px rgba(255, 90, 100, 0.85);
-  filter: drop-shadow(0 0 10px rgba(225, 18, 46, 0.55)) drop-shadow(0 0 24px rgba(139, 0, 0, 0.45));
+  -webkit-text-stroke: 1px #A8323B;
+}
+
+/* Dish names: a quiet serif inside a hairline blood-red frame, like a menu
+   card rather than an app label. */
+.dish-name {
+  display: inline-block;
+  max-width: 100%;
+  font-family: "Instrument Serif", Georgia, serif;
+  font-weight: 400;
+  line-height: 1.15;
+  letter-spacing: 0.005em;
+  padding: 0.14em 0.5em 0.2em;
+  border: 1px solid rgba(185, 70, 79, 0.45);
+  border-radius: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rating-range {
+  accent-color: #9B1B24;
+  height: 28px;
 }
 
 @media (prefers-reduced-motion: reduce) {

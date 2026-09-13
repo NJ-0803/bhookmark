@@ -613,10 +613,6 @@ export function dishById(id: string): DishEntry | undefined {
   return DISHES.find((d) => d.id === id);
 }
 
-export function dishesForSubtype(category: Category, subtype: string): DishEntry[] {
-  return DISHES.filter((d) => d.category === category && d.subtype === subtype).sort((a, b) => b.score - a.score);
-}
-
 const CATEGORY_TINT: Record<string, string> = {
   "Dosa & Idli": "from-amber-500/30 to-amber-900/40",
   Biryani: "from-orange-500/30 to-red-900/40",
@@ -627,43 +623,16 @@ const CATEGORY_TINT: Record<string, string> = {
   "Ice Cream": "from-sky-400/30 to-indigo-950/40",
 };
 
-/** Restrained per-category accents (brief's Phase 5 direction: "chilli red,
- * saffron, butter yellow, coffee brown") — shared across every screen that
- * shows a category pill, so Home/Bhookmarks/Circles all read as one system. */
+/** One quiet chip style for every category — the per-category amber, teal
+ * and sky colours went with the move to black and dark blood red. */
 export const CATEGORY_ACCENT: Record<Category, string> = {
-  "Dosa & Idli": "bg-amber-400 text-amber-950",
-  Biryani: "bg-orange-600 text-orange-50",
-  Coffee: "bg-amber-800 text-amber-50",
-  Burger: "bg-rose-500 text-rose-50",
-  Pizza: "bg-red-600 text-red-50",
-  Momos: "bg-teal-500 text-teal-950",
-  "Ice Cream": "bg-sky-400 text-sky-950",
-};
-
-/** Which of the three palette roles (turquoise/saffron/coral) a category's
- * hover-lift shadow borrows — shared so Home's cards and the trending stack
- * cast the same "food-coloured shadow" the redesign brief asked for. */
-export const CATEGORY_SHADOW: Record<Category, string> = {
-  "Dosa & Idli": "shadow-saffronGlow",
-  Biryani: "shadow-coralGlow",
-  Coffee: "shadow-saffronGlow",
-  Burger: "shadow-coralGlow",
-  Pizza: "shadow-coralGlow",
-  Momos: "shadow-accentGlow",
-  "Ice Cream": "shadow-accentGlow",
-};
-
-/** Same three-color assignment as CATEGORY_SHADOW, as a visible border
- * instead of (or alongside) the shadow — a shadow alone reads as too subtle
- * on a real phone screen in daylight, a colored border reads immediately. */
-export const CATEGORY_BORDER: Record<Category, string> = {
-  "Dosa & Idli": "border-saffron/50",
-  Biryani: "border-coral/50",
-  Coffee: "border-saffron/50",
-  Burger: "border-coral/50",
-  Pizza: "border-coral/50",
-  Momos: "border-accent/50",
-  "Ice Cream": "border-accent/50",
+  "Dosa & Idli": "bg-accentDim text-accent",
+  Biryani: "bg-accentDim text-accent",
+  Coffee: "bg-accentDim text-accent",
+  Burger: "bg-accentDim text-accent",
+  Pizza: "bg-accentDim text-accent",
+  Momos: "bg-accentDim text-accent",
+  "Ice Cream": "bg-accentDim text-accent",
 };
 
 /** Matches a backend log (category/subtype/name/venue only, no photo) back

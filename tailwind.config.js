@@ -4,53 +4,57 @@ export default {
   theme: {
     extend: {
       colors: {
-        bg: "#080707",
-        surface: "#121010",
-        surface2: "#1A1717",
-        line: "#262121",
-        ink: "#F5F1E8",
-        muted: "#A39B9A",
-        faint: "#8A8281",
-        // "Blood gradient" red-on-black identity (replaces the earlier
-        // purple/pink/magenta) — saffron still carries discovery/trending,
-        // coral still carries social reactions. accent is the flat
-        // representative (text/borders); actual buttons use the
-        // .gradient-primary class from index.css for the full gradient.
-        accent: "#E1122E",
-        accentInk: "#FFFFFF",
-        accentDim: "#2A0A0C",
-        bad: "#FF7A63",
-        badDim: "#2E1A16",
-        saffron: "#FFB547",
-        saffronDim: "#3A2A12",
-        coral: "#FF6659",
-        coralDim: "#3A1815",
+        // ~90% flat near-black. Red is dark blood, used on hairlines and
+        // small fills; text-accent is lifted in index.css for legibility.
+        bg: "#0A0A0A",
+        surface: "#101010",
+        surface2: "#161616",
+        line: "#2A1518",
+        ink: "#EDE8E1",
+        muted: "#A19A96",
+        faint: "#857E7B",
+        accent: "#7A1219",
+        accentInk: "#F4EEE8",
+        accentDim: "#1C0A0C",
+        bad: "#C9525A",
+        badDim: "#1F0B0D",
+        // No gold anywhere, by explicit direction: the old saffron and coral
+        // roles resolve to muted blood tones.
+        saffron: "#B9616A",
+        saffronDim: "#1C0C0E",
+        coral: "#9E2A33",
+        coralDim: "#1C0A0C",
       },
       fontFamily: {
-        // Archivo read as too plain/generic ("boring") — Unbounded is a
-        // bold, geometric variable display face built for exactly this kind
-        // of vibrant, expressive app; Hanken Grotesk stays for body text,
-        // which needs to stay readable rather than characterful.
-        display: ["Unbounded", "system-ui", "sans-serif"],
-        body: ["Hanken Grotesk", "system-ui", "sans-serif"],
-        mono: ["IBM Plex Mono", "monospace"],
+        display: ['"Inter Tight"', "Inter", "system-ui", "sans-serif"],
+        body: ["Inter", "system-ui", "sans-serif"],
+        serif: ['"Instrument Serif"', "Georgia", "serif"],
+        mono: ['"IBM Plex Mono"', "monospace"],
+      },
+      // Heavy weights read as childish next to the restrained type; cap them.
+      fontWeight: {
+        bold: "600",
+        extrabold: "600",
+        black: "600",
+      },
+      fontSize: {
+        lg: ["1rem", { lineHeight: "1.4rem" }],
+        xl: ["1.125rem", { lineHeight: "1.5rem" }],
+        "2xl": ["1.3125rem", { lineHeight: "1.7rem" }],
+        "3xl": ["1.5625rem", { lineHeight: "1.9rem" }],
+        "4xl": ["1.875rem", { lineHeight: "2.2rem" }],
+        "5xl": ["2.375rem", { lineHeight: "1" }],
       },
       borderRadius: {
-        card: "18px",
+        card: "16px",
       },
       boxShadow: {
-        lift: "0 8px 24px -12px rgba(0,0,0,0.6)",
-        // Food-colored lift shadows (brief: cards should "cast a
-        // food-coloured shadow" instead of a flat black one). Each value
-        // bundles the black lift AND the color glow into ONE box-shadow —
-        // Tailwind's shadow-* utilities all set the same CSS property, so
-        // two separate shadow-* classes on one element can't combine; only
-        // one wins. A combined value is the only way to actually get both.
-        accentGlow: "0 8px 24px -12px rgba(0,0,0,0.6), 0 12px 28px -10px rgba(225,18,46,0.55)",
-        saffronGlow: "0 8px 24px -12px rgba(0,0,0,0.6), 0 12px 28px -10px rgba(255,181,71,0.55)",
-        coralGlow: "0 8px 24px -12px rgba(0,0,0,0.6), 0 12px 28px -10px rgba(255,102,89,0.55)",
-        // Baseline float for every card (brief: "every card should float").
-        float: "0 12px 36px -14px rgba(0,0,0,0.65)",
+        lift: "0 8px 24px -12px rgba(0,0,0,0.7)",
+        // Kept as names because screens reference them; coloured glows are gone.
+        accentGlow: "0 8px 24px -12px rgba(0,0,0,0.7)",
+        saffronGlow: "0 8px 24px -12px rgba(0,0,0,0.7)",
+        coralGlow: "0 8px 24px -12px rgba(0,0,0,0.7)",
+        float: "0 12px 36px -14px rgba(0,0,0,0.75)",
       },
     },
   },

@@ -5,7 +5,7 @@ import { cloneList, createList, getListsFeed, type DishList } from "../api";
 import { haptic } from "../haptics";
 import BottomSheet from "../components/BottomSheet";
 
-const ACCENTS = ["bg-amber-400 text-amber-950", "bg-orange-600 text-orange-50", "bg-amber-800 text-amber-50", "bg-rose-500 text-rose-50"];
+const ACCENTS = ["bg-accentDim text-accent", "bg-surface2 text-ink/85", "bg-accentDim text-accent", "bg-surface2 text-ink/85"];
 
 export default function RemixableLists() {
   const [reacted, setReacted] = useState<Set<string>>(new Set());

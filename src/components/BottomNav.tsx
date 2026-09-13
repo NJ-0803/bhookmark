@@ -4,12 +4,54 @@ import { haptic } from "../haptics";
 
 export type Tab = "home" | "bhookmarks" | "circles" | "profile";
 
-const TABS: { id: Tab; label: string; icon: string }[] = [
-  { id: "home", label: "Crave", icon: "🔍" },
-  { id: "bhookmarks", label: "Bhookmarks", icon: "📓" },
-  { id: "circles", label: "Circles", icon: "👥" },
-  { id: "profile", label: "You", icon: "◎" },
+const TABS: { id: Tab; label: string }[] = [
+  { id: "home", label: "Crave" },
+  { id: "bhookmarks", label: "Bhookmarks" },
+  { id: "circles", label: "Circles" },
+  { id: "profile", label: "You" },
 ];
+
+function TabIcon({ tab }: { tab: Tab }) {
+  const props = {
+    viewBox: "0 0 24 24",
+    className: "w-[19px] h-[19px]",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.5,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    "aria-hidden": true,
+  };
+  if (tab === "home") {
+    return (
+      <svg {...props}>
+        <circle cx="11" cy="11" r="6.5" />
+        <path d="M16 16l4 4" />
+      </svg>
+    );
+  }
+  if (tab === "bhookmarks") {
+    return (
+      <svg {...props}>
+        <path d="M7 3.5h10a1 1 0 0 1 1 1V20l-6-3.6L6 20V4.5a1 1 0 0 1 1-1z" />
+      </svg>
+    );
+  }
+  if (tab === "circles") {
+    return (
+      <svg {...props}>
+        <circle cx="9" cy="12" r="5" />
+        <circle cx="15" cy="12" r="5" />
+      </svg>
+    );
+  }
+  return (
+    <svg {...props}>
+      <circle cx="12" cy="8.5" r="3.5" />
+      <path d="M5 20c1.2-3.6 3.8-5.5 7-5.5s5.8 1.9 7 5.5" />
+    </svg>
+  );
+}
 
 export default function BottomNav({
   active,
@@ -22,7 +64,7 @@ export default function BottomNav({
 }) {
   return (
     <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[460px] z-40 px-4 pb-4 bg-bg">
-      <div className="relative flex items-end justify-between px-3 pb-3 pt-2.5 bg-bg/75 backdrop-blur-md border border-line rounded-[28px] shadow-lift">
+      <div className="relative flex items-end justify-between px-3 pb-2.5 pt-2 bg-bg/75 backdrop-blur-md border border-line rounded-[26px] shadow-lift">
         {TABS.slice(0, 2).map((t) => (
           <NavItem key={t.id} tab={t} active={active === t.id} onClick={() => onChange(t.id)} />
         ))}
@@ -33,13 +75,14 @@ export default function BottomNav({
             haptic("medium");
             onBite();
           }}
-          whileHover={{ scale: 1.04 }}
           whileTap={TAP_SCALE}
           transition={LIQUID_SPRING}
-          className="gradient-primary relative -top-5 w-14 h-14 rounded-full text-white text-2xl font-bold flex items-center justify-center shadow-[0_0_28px_rgba(225,18,46,0.55)]"
+          className="gradient-primary relative -top-4 w-12 h-12 rounded-full text-accentInk flex items-center justify-center border border-accent shadow-[0_10px_24px_-10px_rgba(0,0,0,0.9)]"
           aria-label="Log a bite"
         >
-          +
+          <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
         </motion.button>
 
         {TABS.slice(2).map((t) => (
@@ -55,7 +98,7 @@ function NavItem({
   active,
   onClick,
 }: {
-  tab: { id: Tab; label: string; icon: string };
+  tab: { id: Tab; label: string };
   active: boolean;
   onClick: () => void;
 }) {
@@ -67,7 +110,7 @@ function NavItem({
       }}
       whileTap={TAP_SCALE}
       transition={LIQUID_SPRING}
-      className="relative flex flex-col items-center gap-1 w-14 py-1 text-[11px] font-medium"
+      className="relative flex flex-col items-center gap-1 w-14 py-1.5"
     >
       {active && (
         <motion.div
@@ -76,8 +119,10 @@ function NavItem({
           className="absolute inset-0 bg-surface2 rounded-2xl -z-10"
         />
       )}
-      <span className={`text-lg leading-none transition-colors ${active ? "" : "opacity-70"}`}>{tab.icon}</span>
-      <span className={active ? "text-accent" : "text-faint"}>{tab.label}</span>
+      <span className={active ? "text-accent" : "text-faint"}>
+        <TabIcon tab={tab.id} />
+      </span>
+      <span className={`text-[10px] ${active ? "text-ink" : "text-faint"}`}>{tab.label}</span>
     </motion.button>
   );
 }

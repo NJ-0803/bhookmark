@@ -33,13 +33,13 @@ function RadiusRing({ radius, onChange }: { radius: number; onChange: (v: number
       </motion.button>
       <div className="relative w-20 h-20 shrink-0">
         <svg viewBox="0 0 80 80" className="w-full h-full -rotate-90">
-          <circle cx="40" cy="40" r="34" fill="none" stroke="#262121" strokeWidth="7" />
+          <circle cx="40" cy="40" r="34" fill="none" stroke="#1C1C1C" strokeWidth="7" />
           <motion.circle
             cx="40"
             cy="40"
             r="34"
             fill="none"
-            stroke="#E1122E"
+            stroke="#9B1B24"
             strokeWidth="7"
             strokeLinecap="round"
             strokeDasharray={circumference}
@@ -298,7 +298,7 @@ export default function CravingRoom() {
             transition={{ duration: 1.1, ease: "easeOut" }}
             className="absolute inset-0 rounded-card bg-accent/25"
           />
-          <DishThumb emoji={winner.emoji} tint={winner.tint} photo={winner.photo} size="card" />
+          <DishThumb seed={winner.category} photo={winner.photo} size="card" />
           <div className="min-w-0 relative">
             <span className="inline-block mb-1 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full gradient-primary text-white">
               🎉 unanimous pick
@@ -315,7 +315,7 @@ export default function CravingRoom() {
         <div className="flex flex-col gap-2.5 mb-6">
           {reveal.unanimous.slice(1).map((d) => (
             <div key={d.id} className="flex gap-3 bg-surface border border-accent/40 rounded-xl p-3">
-              <DishThumb emoji={d.emoji} tint={d.tint} photo={d.photo} size="md" />
+              <DishThumb seed={d.category} photo={d.photo} size="md" />
               <div className="min-w-0">
                 <div className="font-semibold text-sm truncate">{d.name}</div>
                 <div className="text-faint text-xs truncate">{d.venue} · {d.area}</div>
@@ -334,7 +334,7 @@ export default function CravingRoom() {
           <div className="flex flex-col gap-2.5 mb-6">
             {reveal.partial.map((d) => (
               <div key={d.id} className="flex gap-3 bg-surface border border-line rounded-xl p-3">
-                <DishThumb emoji={d.emoji} tint={d.tint} photo={d.photo} size="sm" />
+                <DishThumb seed={d.category} photo={d.photo} size="sm" />
                 <div className="min-w-0">
                   <div className="font-semibold text-sm truncate">{d.name}</div>
                   <div className="text-faint text-xs truncate">{d.venue}</div>
@@ -398,9 +398,9 @@ function SwipeCard({ dish, onSwipe }: { dish: DishEntry; onSwipe: (like: boolean
         NOPE
       </motion.span>
 
-      <DishThumb emoji={dish.emoji} tint={dish.tint} photo={dish.photo} size="lg" />
+      <DishThumb seed={dish.category} photo={dish.photo} size="lg" />
       <div className="text-center mt-4 mb-6">
-        <h3 className="font-display font-bold text-xl">{dish.name}</h3>
+        <h3 className="dish-name text-[18px] text-ink">{dish.name}</h3>
         <p className="text-muted text-sm mt-1">{dish.venue} · {dish.area}</p>
       </div>
       <div className="grid grid-cols-2 gap-4">

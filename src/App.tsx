@@ -12,6 +12,7 @@ import { DISHES } from "./data/dishes";
 import type { DishEntry, JournalLog } from "./types";
 import { getMyLogs, getSession, type RemoteLog } from "./api";
 import { LIQUID_SPRING } from "./motion";
+import { CardStageProvider, StageShell } from "./components/CardStage";
 
 export default function App() {
   const [authed, setAuthed] = useState(() => !!getSession());
@@ -53,7 +54,9 @@ export default function App() {
   if (showOnboarding) return <Onboarding onDone={() => setShowOnboarding(false)} />;
 
   return (
+    <CardStageProvider>
     <div className="min-h-dvh">
+      <StageShell>
       <AnimatePresence mode="wait" initial={false}>
       <motion.div
         key={tab}
@@ -76,6 +79,7 @@ export default function App() {
         )}
       </motion.div>
       </AnimatePresence>
+      </StageShell>
 
       <BottomNav active={tab} onChange={setTab} onBite={() => setLogFlow({ open: true })} />
 
@@ -89,5 +93,6 @@ export default function App() {
         )}
       </AnimatePresence>
     </div>
+    </CardStageProvider>
   );
 }

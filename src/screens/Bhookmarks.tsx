@@ -1,15 +1,14 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import type { RemoteLog } from "../api";
-import { CATEGORY_ACCENT, categoryVisual, findDishPhoto } from "../data/dishes";
-import type { Category } from "../types";
-import DishThumb from "../components/DishThumb";
-import ScoreBadge from "../components/ScoreBadge";
+import { categoryVisual, findDishPhoto } from "../data/dishes";
+import { DepthLayer, FloatCard, FloatMedia } from "../components/CardStage";
+import { ratingVerdict } from "../components/RatingPicker";
 import { LIQUID_SPRING, TAP_SCALE } from "../motion";
 import { VERDICT_COPY } from "../verdictCopy";
 import { signatureCraving } from "../evidenceThresholds";
 
-const REACTIONS = ["🫡 ordering this", "🧢 cap", "📍 take me"];
+const REACTIONS = ["Ordering this", "Cap", "Take me"];
 
 export default function Bhookmarks({
   logs,
@@ -21,12 +20,6 @@ export default function Bhookmarks({
   onLogFirst: () => void;
 }) {
   const [previewEmpty, setPreviewEmpty] = useState(false);
-  const [reactions, setReactions] = useState<Record<string, string>>({});
-
-  function react(logId: string, label: string) {
-    setReactions((prev) => ({ ...prev, [logId]: prev[logId] === label ? "" : label }));
-  }
-
   const visibleLogs = (logs ?? []).filter((l) => l.status !== "removed");
   const loading = logs === null && !logsError;
   const empty = previewEmpty || (!loading && visibleLogs.length === 0);
@@ -89,59 +82,36 @@ export default function Bhookmarks({
           )}
           <div className="flex flex-col gap-2.5">
             {visibleLogs.map((log, i) => {
-              const visual = categoryVisual(log.category);
-              const photo = findDishPhoto(log.category, log.subtype, log.name, log.venue);
-              const reorder = log.verdict === "loved";
+              const photo = findDishPhoto(log.category, log.subtype, log.name, log.venue) ?? categoryVisual(log.category).photo;
+              const id = `log-${log.id}`;
               return (
                 <motion.div
                   key={log.id}
-                  initial={{ opacity: 0, y: 24, scale: 0.96 }}
-                  whileInView={{ opacity: 1, y: 0, scale: 1 }}
+                  initial={{ opacity: 0, y: 24 }}
+                  whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true, margin: "-40px" }}
                   transition={{ ...LIQUID_SPRING, delay: Math.min(i, 4) * 0.04 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="flex gap-3 bg-surface border border-line rounded-xl p-3"
                 >
-                  <div className="relative shrink-0">
-                    <DishThumb emoji={visual.emoji} tint={visual.tint} photo={photo ?? visual.photo} size="card" />
-                    <span
-                      className={`absolute -top-1.5 -left-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full border border-bg ${
-                        CATEGORY_ACCENT[log.category as Category] ?? "bg-surface2 text-muted"
-                      }`}
-                    >
-                      {visual.emoji}
-                    </span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-semibold text-sm truncate">{log.name}</span>
-                      <ScoreBadge score={log.score} verified={log.verified} size="sm" />
+                  <FloatCard
+                    id={id}
+                    label={log.name}
+                    radius={14}
+                    className="bg-surface border border-line"
+                    contentClassName="flex gap-3 p-3"
+                    panel={() => <LogPanel log={log} photo={photo} mediaId={`${id}-media`} />}
+                  >
+                    <FloatMedia id={`${id}-media`} photo={photo} seed={log.category} className="w-20 h-20 shrink-0" radius={10} compact />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="dish-name text-[15px] text-ink">{log.name}</span>
+                        <span className="font-mono text-[12px] text-ink/85 tabular shrink-0">{log.score.toFixed(1)}</span>
+                      </div>
+                      <div className="text-faint text-xs truncate mt-1.5">
+                        {log.venue} · {timeAgo(log.createdAt)}
+                      </div>
+                      {log.note && <p className="text-ink/75 text-xs mt-1.5 leading-snug line-clamp-2">"{log.note}"</p>}
                     </div>
-                    <div className="text-faint text-xs truncate mt-0.5">{log.venue} · {timeAgo(log.createdAt)}</div>
-                    {log.note && <p className="text-ink/80 text-xs mt-1.5 leading-snug">"{log.note}"</p>}
-                    <div className="flex items-center gap-2 mt-2 flex-wrap">
-                      {reorder && <Chip label="🔁 running it back" tone="accent" />}
-                      <Chip label={`${VERDICT_COPY[log.verdict].emoji} ${VERDICT_COPY[log.verdict].label}`} tone={VERDICT_COPY[log.verdict].tone} />
-                      {log.status === "held" && <Chip label="Pending review" tone="warn" />}
-                      {log.ownerDisclosed && <Chip label="🏷️ Restaurant representative" tone="warn" />}
-                      {log.visibility === "private" && <Chip label="🔒 Private" tone="neutral" />}
-                    </div>
-                    <div className="flex items-center gap-1.5 mt-2">
-                      {REACTIONS.map((r) => (
-                        <motion.button
-                          key={r}
-                          whileTap={TAP_SCALE}
-                          transition={LIQUID_SPRING}
-                          onClick={() => react(log.id, r)}
-                          className={`text-[10px] font-medium px-2 py-1 rounded-full border ${
-                            reactions[log.id] === r ? "bg-coral text-bg border-coral" : "bg-surface2 border-line text-faint"
-                          }`}
-                        >
-                          {r}
-                        </motion.button>
-                      ))}
-                    </div>
-                  </div>
+                  </FloatCard>
                 </motion.div>
               );
             })}
@@ -149,6 +119,57 @@ export default function Bhookmarks({
         </>
       )}
     </div>
+  );
+}
+
+function LogPanel({ log, photo, mediaId }: { log: RemoteLog; photo?: string; mediaId: string }) {
+  const [reaction, setReaction] = useState("");
+  return (
+    <>
+      <FloatMedia id={mediaId} photo={photo} seed={log.category} className="aspect-[16/10]" scrim />
+      <div className="p-5">
+        <DepthLayer depth={6}>
+          <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-faint mb-2">
+            {log.category} · {timeAgo(log.createdAt)}
+          </p>
+          <h2 className="dish-name text-[20px] text-ink">{log.name}</h2>
+          <p className="text-muted text-[13px] mt-2">{log.venue}</p>
+        </DepthLayer>
+
+        <DepthLayer depth={10} className="mt-6">
+          <div className="flex items-baseline gap-1.5">
+            <span className="font-display font-light text-[44px] leading-none tracking-[-0.03em] tabular text-ink">{log.score.toFixed(1)}</span>
+            <span className="text-faint text-sm">/ 10</span>
+            {log.verified && <span className="ml-2 text-[10px] font-mono uppercase tracking-[0.14em] text-accent">verified</span>}
+          </div>
+          <p className="text-[13px] text-muted mt-2">{ratingVerdict(log.score).line}</p>
+          {log.note && <p className="text-[14px] text-ink/90 leading-relaxed mt-4">"{log.note}"</p>}
+        </DepthLayer>
+
+        <DepthLayer depth={13} className="mt-5">
+          <div className="flex flex-wrap gap-2">
+            {log.verdict === "loved" && <Chip label="Running it back" tone="accent" />}
+            <Chip label={VERDICT_COPY[log.verdict].label} tone={VERDICT_COPY[log.verdict].tone} />
+            {log.status === "held" && <Chip label="Pending review" tone="warn" />}
+            {log.ownerDisclosed && <Chip label="Restaurant representative" tone="warn" />}
+            {log.visibility === "private" && <Chip label="Private" tone="neutral" />}
+          </div>
+          <div className="flex gap-2 mt-4">
+            {REACTIONS.map((r) => (
+              <motion.button
+                key={r}
+                whileTap={TAP_SCALE}
+                transition={LIQUID_SPRING}
+                onClick={() => setReaction((cur) => (cur === r ? "" : r))}
+                className={`text-[11px] px-3 py-1.5 rounded-full border ${reaction === r ? "bg-accentDim border-accent text-ink" : "border-line text-faint"}`}
+              >
+                {r}
+              </motion.button>
+            ))}
+          </div>
+        </DepthLayer>
+      </div>
+    </>
   );
 }
 

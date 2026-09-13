@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { categoryVisual } from "../data/dishes";
+import Medallion from "../components/Medallion";
+import { DepthLayer, FloatCard, FloatMedia } from "../components/CardStage";
 import { getNearbyVenues, getVenueCategories, searchVenues, submitVenue, type NearbyVenue, type VenueSearchResult } from "../api";
 import { LIQUID_SPRING, TAP_SCALE } from "../motion";
 
@@ -183,19 +184,17 @@ export default function NearMe({ onBack }: { onBack: () => void }) {
               <p className="font-mono text-[11px] tracking-[0.1em] uppercase text-faint mb-3">Craving</p>
               <div className="grid grid-cols-2 gap-2.5 mb-6">
                 {categories.map((c) => {
-                  const visual = categoryVisual(c);
                   return (
                     <motion.button
                       key={c}
                       onClick={() => setCategory(c)}
                       whileTap={TAP_SCALE}
                       transition={LIQUID_SPRING}
-                      className={`flex items-center gap-2.5 rounded-xl px-3.5 py-3 border text-left ${
-                        category === c ? "bg-accent border-accent text-accentInk" : "bg-surface border-line"
+                      className={`flex items-center rounded-xl px-3.5 py-3 border text-left ${
+                        category === c ? "bg-accentDim border-accent text-ink" : "bg-surface border-line text-ink/85"
                       }`}
                     >
-                      <span className="text-lg">{visual.emoji}</span>
-                      <span className="font-medium text-sm">{c}</span>
+                      <span className="text-[13px]">{c}</span>
                     </motion.button>
                   );
                 })}
@@ -258,74 +257,93 @@ export default function NearMe({ onBack }: { onBack: () => void }) {
 }
 
 function CategoryPlaceholder({ category }: { category: string | null }) {
-  const visual = categoryVisual(category ?? "");
+  const seed = category ?? "Bhookmark";
   return (
-    <div className={`absolute inset-0 bg-gradient-to-br ${visual.tint} bg-surface2 flex items-center justify-center text-4xl`}>
-      {visual.emoji}
+    <div className="absolute inset-0 bg-surface2 flex items-center justify-center">
+      <Medallion seed={seed} label={seed} className="w-full h-full" />
     </div>
   );
 }
 
 function VenueCard({ venue, index, category }: { venue: NearbyVenue; index: number; category: string }) {
-  const [expanded, setExpanded] = useState(false);
+  const id = `venue-${venue.id}`;
+  const reviewCount = venue.community.count;
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ ...LIQUID_SPRING, delay: index * 0.05 }}
-      className="bg-surface border border-line rounded-card overflow-hidden"
-    >
-      <div className="relative aspect-[16/9]">
-        {venue.photo ? (
-          <img src={venue.photo} alt="" className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
-        ) : (
-          <CategoryPlaceholder category={category} />
-        )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
-        <div className="absolute bottom-3 left-4 right-4 flex items-end justify-between">
-          <div>
-            <div className="font-display font-bold text-white text-base leading-tight">{venue.name}</div>
-            <div className="text-white/70 text-xs mt-0.5">{venue.area} · {venue.distanceKm} km away</div>
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ ...LIQUID_SPRING, delay: index * 0.05 }}>
+      <FloatCard
+        id={id}
+        label={venue.name}
+        className="bg-surface border border-line"
+        panel={() => <VenuePanel venue={venue} category={category} mediaId={`${id}-media`} />}
+      >
+        {venue.photo && <FloatMedia id={`${id}-media`} photo={venue.photo} seed={category} className="aspect-[21/9]" />}
+        <div className="p-4 flex items-center gap-3">
+          {!venue.photo && <FloatMedia id={`${id}-media`} seed={category} className="w-11 h-11 shrink-0" radius={22} compact />}
+          <div className="min-w-0 flex-1">
+            <span className="dish-name text-[16px] text-ink">{venue.name}</span>
+            <div className="text-faint text-xs mt-1">
+              {venue.area} · {venue.distanceKm} km away
+            </div>
+            <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-faint mt-2">
+              {reviewCount > 0 ? `${reviewCount} Bhookmark review${reviewCount === 1 ? "" : "s"}` : "No Bhookmark reviews yet"}
+            </div>
           </div>
-          {venue.community.count > 0 && venue.community.score !== null ? (
-            <span className="font-mono text-sm font-semibold text-accent bg-black/50 rounded-md px-2 py-1 tabular">{venue.community.score.toFixed(1)}</span>
-          ) : (
-            <span className="font-mono text-[10px] uppercase text-white/70 bg-black/50 rounded-md px-2 py-1">no logs yet</span>
-          )}
+          <span className="text-faint shrink-0" aria-hidden="true">
+            ›
+          </span>
         </div>
-        {venue.photo && !venue.photoIsVerified && (
-          <span className="absolute top-2 right-2 text-[9px] font-mono uppercase tracking-wide text-white/70 bg-black/50 rounded px-1.5 py-0.5">representative photo</span>
-        )}
-      </div>
-      <div className="p-4">
-        <span className="text-[10px] font-mono uppercase text-faint">
-          {venue.community.count > 0 ? `${venue.community.count} Bhookmark review${venue.community.count === 1 ? "" : "s"}` : "no Bhookmark reviews yet"}
-        </span>
-
-        {venue.reviews.length > 0 ? (
-          <>
-            <button onClick={() => setExpanded((v) => !v)} className="block text-accent text-xs font-medium mt-2">
-              {expanded ? "Hide reviews" : `Read ${venue.reviews.length} review${venue.reviews.length === 1 ? "" : "s"}`}
-            </button>
-            {expanded && (
-              <div className="flex flex-col gap-2 mt-3">
-                {venue.reviews.map((r, i) => (
-                  <div key={i} className="bg-surface2 rounded-lg p-2.5">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-[10px] font-mono text-accent">{r.score.toFixed(1)}</span>
-                      <span className="text-[10px] text-faint">{r.verdict === "loved" ? "Loved it" : r.verdict === "fine" ? "It was fine" : "Not for them"}</span>
-                    </div>
-                    <p className="text-xs text-ink/85 leading-snug">"{r.note}"</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </>
-        ) : (
-          <p className="text-faint text-xs mt-2">Be the first to log this one.</p>
-        )}
-      </div>
+      </FloatCard>
     </motion.div>
+  );
+}
+
+function VenuePanel({ venue, category, mediaId }: { venue: NearbyVenue; category: string; mediaId: string }) {
+  // No coordinates on NearbyVenue, so Maps resolves the place by name + area.
+  const mapsHref = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${venue.name} ${venue.area}`)}`;
+  return (
+    <>
+      <FloatMedia id={mediaId} photo={venue.photo} seed={category} className="aspect-[16/10]" scrim />
+      <div className="p-5">
+        <DepthLayer depth={6}>
+          <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-faint mb-2">
+            {category} · {venue.distanceKm} km away
+          </p>
+          <h2 className="dish-name text-[20px] text-ink">{venue.name}</h2>
+          <p className="text-muted text-[13px] mt-2">{venue.area}</p>
+          {venue.photo && !venue.photoIsVerified && <p className="text-faint text-[11px] mt-1.5">Representative photo, not taken at this venue.</p>}
+        </DepthLayer>
+
+        <DepthLayer depth={10} className="mt-6">
+          <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-faint mb-2.5">From Bhookmark logs</p>
+          {venue.reviews.length === 0 ? (
+            <p className="text-[13px] text-muted">No one has logged a dish here yet. Be the first.</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {venue.reviews.map((r, i) => (
+                <div key={i} className="border border-line rounded-xl p-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-mono text-[12px] text-ink tabular">{r.score.toFixed(1)}</span>
+                    <span className="text-[11px] text-faint">{r.verdict === "loved" ? "Loved it" : r.verdict === "fine" ? "It was fine" : "Not for them"}</span>
+                  </div>
+                  {r.note && <p className="text-[13px] text-ink/85 leading-snug">"{r.note}"</p>}
+                </div>
+              ))}
+            </div>
+          )}
+        </DepthLayer>
+
+        <DepthLayer depth={14} className="mt-6">
+          <a
+            href={mapsHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center w-full bg-accent text-accentInk font-medium rounded-xl py-3.5"
+          >
+            Open in Maps
+          </a>
+        </DepthLayer>
+      </div>
+    </>
   );
 }
 

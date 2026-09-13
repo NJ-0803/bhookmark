@@ -1,25 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { LIQUID_SPRING, TAP_SCALE } from "../motion";
-import { CATEGORY_ACCENT, CATEGORY_BORDER, CATEGORY_SHADOW, DISHES, categoryVisual, dishById } from "../data/dishes";
+import { DISHES, categoryVisual, dishById } from "../data/dishes";
 import type { Category, DishEntry } from "../types";
-import DishThumb from "../components/DishThumb";
-import EvidenceScoreBadge from "../components/EvidenceScoreBadge";
-import WhyThis from "../components/WhyThis";
+import Medallion from "../components/Medallion";
 import BrowseCard from "../components/BrowseCard";
-import CravingOrb from "../components/CravingOrb";
 import TrendingStack, { type StackCard } from "../components/TrendingStack";
+import DishPanel from "../components/DishPanel";
+import { FloatCard, FloatMedia } from "../components/CardStage";
 import {
   browseDishes,
   getDietProfile,
   getDigest,
   getNextPicks,
-  getDishScore,
   getTrending,
   getVenueCategories,
   searchVenues,
   type BrowseDish,
-  type DishScoreResponse,
   type TrendingResponse,
   type VenueSearchResult,
 } from "../api";
@@ -61,7 +58,6 @@ type View =
   // category. Category -> real results directly, matching how Near Me
   // already works.
   | { name: "results"; category: string }
-  | { name: "profile"; dish: DishEntry }
   | { name: "nearby" };
 
 export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => void }) {
@@ -70,19 +66,11 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
   const [picks, setPicks] = useState<Pick[] | null>(null);
   const [digest, setDigest] = useState<DigestData | null>(null);
   const [userAllergens, setUserAllergens] = useState<string[]>([]);
-  const [dishScore, setDishScore] = useState<DishScoreResponse | null>(null);
-  // Phase 1 honesty fix (2026-09-10): real evidence-gated scores for cards
-  // that used to render the static seed `score`/`tasteNotes` fields as if
-  // they were genuine community data — keyed by dish id, fetched from the
-  // same /dishes/score endpoint the profile view already uses correctly.
-  const [pickScores, setPickScores] = useState<Record<string, DishScoreResponse>>({});
-  const [stackScores, setStackScores] = useState<Record<string, DishScoreResponse>>({});
   const [resultIndex, setResultIndex] = useState(0);
   const [smartOrder, setSmartOrder] = useState<SmartOrderResult | null>(null);
   const [trending, setTrending] = useState<TrendingResponse["trending"] | null>(null);
   const [smartLoading, setSmartLoading] = useState(false);
   const [smartDismissed, setSmartDismissed] = useState(() => localStorage.getItem(SMART_ORDER_DISMISSED_KEY) === "1");
-  const [hoveredCategory, setHoveredCategory] = useState<string | null>(null);
   // Real categories, fetched — not hardcoded — so this can never drift
   // from the category_aliases table the way the old "Filter Coffee"
   // array once did (see NearMe.tsx's identical fetch for the same reason).
@@ -142,33 +130,6 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
     };
   }, [query]);
 
-  // Fetches the real evidence-gated score for each recommended pick — the
-  // recommendation ranking (server/src/recommend.ts) reads the real
-  // DB-backed catalog now (Phase 2 Session E), but what's *displayed*
-  // here is always fetched fresh so it never depends on that internal
-  // ranking detail.
-  useEffect(() => {
-    if (!picks || picks.length === 0) return;
-    let cancelled = false;
-    Promise.all(
-      picks.map((p) =>
-        getDishScore(p.venue, p.category, p.subtype, p.name)
-          .then((res) => [p.id, res] as const)
-          .catch(() => [p.id, null] as const)
-      )
-    ).then((results) => {
-      if (cancelled) return;
-      setPickScores((prev) => {
-        const next = { ...prev };
-        for (const [id, res] of results) if (res) next[id] = res;
-        return next;
-      });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [picks]);
-
   useEffect(() => {
     getNextPicks().then((res) => res.ok && setPicks(res.picks)).catch(() => setPicks([]));
     getDigest().then((res) => res.ok && setDigest(res.digest)).catch(() => setDigest(null));
@@ -211,19 +172,6 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
     localStorage.setItem(SMART_ORDER_DISMISSED_KEY, "1");
   }
 
-  // Score separation (brief 1.2): the profile view below shows Your/Community/
-  // Verified-only ratings from real published logs, not the static seed score.
-  useEffect(() => {
-    if (view.name !== "profile") {
-      setDishScore(null);
-      return;
-    }
-    const d = view.dish;
-    getDishScore(d.venue, d.category, d.subtype, d.name)
-      .then((res) => setDishScore(res.ok ? res : null))
-      .catch(() => setDishScore(null));
-  }, [view]);
-
   // Real categories (fetched from GET /venues/categories), reordered by
   // smartOrder's weather/location priority where it knows a category —
   // smartOrder's own list (src/smartPicks.ts) predates the 6 new Session
@@ -243,14 +191,15 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
     return orderedCategories.filter((name) => name.toLowerCase().includes(q));
   }, [query, orderedCategories]);
 
-  // Fallback spotlight when there's no real trending signal yet (the
-  // expected, honest state pre-launch): a highest-scored seed dish, labeled
-  // "Top rated" — never "trending", since that has no time window behind it.
-  const fallbackSpotlight = useMemo(() => {
-    const topCategory = smartOrder?.categories[0];
-    const pool = topCategory ? DISHES.filter((d) => d.category === topCategory) : DISHES;
-    const source = pool.length ? pool : DISHES;
-    return [...source].sort((a, b) => b.score - a.score)[0];
+  // Seed scores aren't real ratings, so the fallback never sorts by them —
+  // it rotates daily through the photographed catalog dishes, leading with
+  // the smart-order category when there is one.
+  const rotatedSpotlights = useMemo(() => {
+    const withPhotos = DISHES.filter((d) => d.photo);
+    const offset = Math.floor(Date.now() / 86_400_000) % withPhotos.length;
+    const rotated = [...withPhotos.slice(offset), ...withPhotos.slice(0, offset)];
+    const top = smartOrder?.categories[0];
+    return top ? [...rotated.filter((d) => d.category === top), ...rotated.filter((d) => d.category !== top)] : rotated;
   }, [smartOrder]);
 
   // The real trending dish (brief 1.6: an urgency label needs a real
@@ -342,44 +291,25 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
     } satisfies DishEntry;
   }
 
-  // Layered stack: the trending/top-rated dish up front, then up to two
-  // more real recommended picks peeking behind — never padded with filler.
+  // The recommended row already shows the server's picks, so the stack only
+  // carries the real trending dish plus rotating catalog dishes — matched on
+  // name + venue, since pick ids and static catalog ids never coincide.
   const stackCards = useMemo<StackCard[]>(() => {
-    const front = trendingSpotlight ?? fallbackSpotlight;
-    if (!front) return [];
-    const cards: StackCard[] = [{ dish: front, badge: trendingSpotlight ? `🔥 Trending — ${trending?.count ?? 0} logs this week` : "⭐ Top rated" }];
-    for (const p of picks ?? []) {
+    const shown = new Set((picks ?? []).map((p) => `${p.name}|${p.venue}`));
+    const cards: StackCard[] = [];
+    if (trendingSpotlight) {
+      cards.push({ dish: trendingSpotlight, badge: `Trending · ${trending?.count ?? 0} this week` });
+      shown.add(`${trendingSpotlight.name}|${trendingSpotlight.venue}`);
+    }
+    for (const dish of rotatedSpotlights) {
       if (cards.length >= 3) break;
-      const dish = toDishEntry(p);
-      if (dish.id !== front.id) cards.push({ dish, badge: "✨ For you" });
+      const key = `${dish.name}|${dish.venue}`;
+      if (shown.has(key)) continue;
+      shown.add(key);
+      cards.push({ dish, badge: dish.category });
     }
     return cards;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trendingSpotlight, fallbackSpotlight, trending, picks]);
-
-  // Same honesty fix for the trending/spotlight stack, which used to render
-  // dish.score (the static seed value) directly.
-  useEffect(() => {
-    if (stackCards.length === 0) return;
-    let cancelled = false;
-    Promise.all(
-      stackCards.map(({ dish }) =>
-        getDishScore(dish.venue, dish.category, dish.subtype, dish.name)
-          .then((res) => [dish.id, res] as const)
-          .catch(() => [dish.id, null] as const)
-      )
-    ).then((results) => {
-      if (cancelled) return;
-      setStackScores((prev) => {
-        const next = { ...prev };
-        for (const [id, res] of results) if (res) next[id] = res;
-        return next;
-      });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [stackCards]);
+  }, [trendingSpotlight, trending, picks, rotatedSpotlights]);
 
   if (view.name === "nearby") {
     return <NearMe onBack={() => setView({ name: "search" })} />;
@@ -388,53 +318,27 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
   if (view.name === "search") {
     return (
       <motion.div key="search" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={LIQUID_SPRING} className="relative px-5 pt-8 pb-32">
-        <CravingOrb activeCategory={hoveredCategory} />
-        <div className="relative">
-          {smartOrder?.area ? (
-            <span className="inline-flex items-center gap-1 font-mono text-[11px] tracking-[0.1em] uppercase text-faint bg-surface border border-line rounded-full px-2.5 py-1 mb-3">
-              📍 {smartOrder.area}
-            </span>
-          ) : (
-            <p className="font-mono text-[11px] tracking-[0.14em] uppercase text-faint mb-2">Bangalore · Today</p>
-          )}
-          <h1 className="font-display font-extrabold text-3xl leading-tight mb-1 text-balance text-ink">
-            What are you<br />
-            <span className="text-blood-outline">Bhookmark</span>ing now?
-          </h1>
-          <p className="text-muted text-sm mb-4">Pick a craving. We'll do the rest.</p>
-        </div>
+        <p className="font-mono text-[10px] tracking-[0.18em] uppercase text-faint mb-3">
+          {smartOrder?.area ?? "Bangalore"} · Today
+        </p>
+        <h1 className="font-display font-semibold text-[26px] leading-[1.15] tracking-[-0.02em] text-ink mb-1.5">
+          What are you <span className="text-blood-outline">Bhookmark</span>ing now?
+        </h1>
+        <p className="text-muted text-[13px] mb-6">Pick a craving. We'll do the rest.</p>
 
-        <div className="flex gap-4 overflow-x-auto mb-5 -mx-5 px-5" style={{ scrollbarWidth: "none" }}>
-          {orderedCategories.map((name) => {
-            const visual = categoryVisual(name);
-            return (
-              <motion.button
-                key={name}
-                whileTap={{ ...TAP_SCALE, y: -2 }}
-                transition={LIQUID_SPRING}
-                onPointerDown={() => setHoveredCategory(name)}
-                onPointerEnter={() => setHoveredCategory(name)}
-                onPointerLeave={() => setHoveredCategory(null)}
-                onClick={() => setView({ name: "results", category: name })}
-                className="shrink-0 flex flex-col items-center gap-1.5 w-16"
-              >
-                <div
-                  className={`w-16 h-16 rounded-full overflow-hidden border-2 relative transition-colors ${
-                    hoveredCategory === name ? "border-accent" : "border-line"
-                  }`}
-                >
-                  {visual.photo ? (
-                    <img src={visual.photo} alt="" className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
-                  ) : (
-                    <div className={`absolute inset-0 bg-gradient-to-br ${visual.tint} bg-surface2 flex items-center justify-center text-2xl`}>
-                      {visual.emoji}
-                    </div>
-                  )}
-                </div>
-                <span className="text-[11px] font-medium text-muted truncate w-full text-center">{name}</span>
-              </motion.button>
-            );
-          })}
+        <div className="flex gap-3.5 overflow-x-auto mb-6 -mx-5 px-5 pb-1" style={{ scrollbarWidth: "none" }}>
+          {orderedCategories.map((name) => (
+            <motion.button
+              key={name}
+              whileTap={TAP_SCALE}
+              transition={LIQUID_SPRING}
+              onClick={() => setView({ name: "results", category: name })}
+              className="shrink-0 flex flex-col items-center gap-2 w-[64px]"
+            >
+              <Medallion seed={name} label={name} className="w-[58px] h-[58px]" />
+              <span className="text-[10.5px] text-muted truncate w-full text-center">{name}</span>
+            </motion.button>
+          ))}
         </div>
 
         <input
@@ -445,21 +349,30 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
           className="w-full bg-surface border border-line rounded-xl px-4 py-3.5 text-[15px] placeholder:text-faint outline-none focus:border-accent transition-colors mb-4"
         />
 
+        <button
+          onClick={() => setView({ name: "nearby" })}
+          className="w-full flex items-center gap-3.5 bg-surface border border-line rounded-xl px-4 py-3.5 mb-3 text-left"
+        >
+          <PinGlyph />
+          <div className="flex-1 min-w-0">
+            <div className="text-[14px] font-medium text-ink">Restaurants near you</div>
+            <div className="text-faint text-[12px] mt-0.5">Share your location once, see what's actually close</div>
+          </div>
+          <span className="text-faint">›</span>
+        </button>
+
         {smartOrder ? (
-          <div className="flex flex-wrap gap-x-3 gap-y-1 mb-4 px-1">
+          <div className="flex flex-wrap gap-x-3 gap-y-1 mb-6 px-1">
             {smartOrder.reasons.map((r, i) => (
               <span key={i} className="text-faint text-[11px]">{r}</span>
             ))}
           </div>
         ) : (
           !smartDismissed && (
-            <div className="flex items-center gap-3 bg-surface border border-line rounded-xl px-4 py-3 mb-4">
-              <button onClick={enableSmartPicks} disabled={smartLoading} className="flex-1 flex items-center gap-3 text-left">
-                <span className="text-xl">🌍</span>
-                <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-sm">{smartLoading ? "Checking your location & weather…" : "Personalize by where you are"}</div>
-                  <div className="text-faint text-xs mt-0.5">Real location + live weather, reorders categories — nothing stored or shared</div>
-                </div>
+            <div className="flex items-center gap-3 border border-line rounded-xl px-4 py-2.5 mb-6">
+              <button onClick={enableSmartPicks} disabled={smartLoading} className="flex-1 min-w-0 text-left">
+                <div className="text-[13px] text-ink/90">{smartLoading ? "Checking your location & weather…" : "Personalize by where you are"}</div>
+                <div className="text-faint text-[11px] mt-0.5">Location and live weather reorder the cravings. Nothing is stored.</div>
               </button>
               {!smartLoading && (
                 <button onClick={dismissSmartPicks} className="text-faint text-xs shrink-0 w-11 h-11 -mr-2 flex items-center justify-center" aria-label="Dismiss">
@@ -470,36 +383,21 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
           )
         )}
 
-        {!query.trim() && (trendingSpotlight || fallbackSpotlight) && (
-          <TrendingStack cards={stackCards} scores={stackScores} onSelect={(dish) => setView({ name: "profile", dish })} />
-        )}
-
-        <button
-          onClick={() => setView({ name: "nearby" })}
-          className="w-full flex items-center gap-3 bg-gradient-to-r from-accentDim to-surface border border-accent/30 rounded-xl px-4 py-3.5 mb-6 text-left"
-        >
-          <span className="text-xl">📍</span>
-          <div className="flex-1">
-            <div className="font-semibold text-sm text-accent">Near me, right now</div>
-            <div className="text-faint text-xs mt-0.5">Share your location, pick a craving, see what's actually close</div>
-          </div>
-          <span className="text-faint">›</span>
-        </button>
-
         {digest && (digest.daysSinceLastLog === null || digest.daysSinceLastLog >= 1) && (
-          <div className="bg-surface border border-line rounded-card p-4 mb-6">
-            <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-saffron mb-1.5">👀 while you were gone</p>
+          <div className="border-t border-line pt-4 mb-7">
+            <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-faint mb-1.5">While you were away</p>
             {digest.logsThisWeek > 0 ? (
-              <p className="text-sm text-ink/90">
-                {digest.logsThisWeek} dish{digest.logsThisWeek > 1 ? "es" : ""} logged this week, mostly{" "}
-                <span className="font-semibold">{digest.topCategoryThisWeek}</span>. Certified {digest.topCategoryThisWeek?.toLowerCase()} enjoyer.
+              <p className="text-[13px] text-ink/85 leading-relaxed">
+                {digest.logsThisWeek} dish{digest.logsThisWeek > 1 ? "es" : ""} logged this week, mostly {digest.topCategoryThisWeek}.
                 {digest.personalBestThisWeek && (
-                  <> Your best was <span className="text-accent font-semibold">{digest.personalBestThisWeek.name}</span> at {digest.personalBestThisWeek.score.toFixed(1)} 🔥</>
+                  <> Your best: <span className="text-accent">{digest.personalBestThisWeek.name}</span>, {digest.personalBestThisWeek.score.toFixed(1)}.</>
                 )}
               </p>
             ) : (
-              <p className="text-sm text-ink/90">
-                {digest.daysSinceLastLog === null ? "You haven't logged a single dish yet — Bhookmark's judging you a little. 👀" : `It's been ${digest.daysSinceLastLog} day${digest.daysSinceLastLog === 1 ? "" : "s"} since your last log. Life happens, come back.`}
+              <p className="text-[13px] text-ink/85 leading-relaxed">
+                {digest.daysSinceLastLog === null
+                  ? "Nothing logged yet. Your first bite starts the journal."
+                  : `${digest.daysSinceLastLog} day${digest.daysSinceLastLog === 1 ? "" : "s"} since your last log.`}
               </p>
             )}
           </div>
@@ -510,8 +408,8 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
             <p className="font-mono text-[11px] tracking-[0.1em] uppercase text-faint mb-3">Recommended for you</p>
             <div className="flex gap-3 overflow-x-auto -mx-5 px-5" style={{ scrollbarWidth: "none" }}>
               {[0, 1].map((i) => (
-                <div key={i} className="shrink-0 w-64">
-                  <div className="aspect-[4/3] rounded-card bg-surface2 animate-pulse mb-2" />
+                <div key={i} className="shrink-0 w-52">
+                  <div className="aspect-[16/10] rounded-card bg-surface2 animate-pulse mb-2" />
                   <div className="h-3.5 w-3/4 rounded bg-surface2 animate-pulse mb-1.5" />
                   <div className="h-3 w-1/2 rounded bg-surface2 animate-pulse" />
                 </div>
@@ -524,43 +422,30 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
               <p className="font-mono text-[11px] tracking-[0.1em] uppercase text-faint mb-3">Recommended for you</p>
               <div className="flex gap-3 overflow-x-auto -mx-5 px-5 pb-1" style={{ scrollbarWidth: "none" }}>
                 {picks.map((p) => {
-                  const visual = categoryVisual(p.category);
                   const photo = dishById(p.id)?.photo;
+                  const id = `pick-${p.id}`;
                   return (
-                    <motion.div
+                    <FloatCard
                       key={p.id}
-                      whileHover={{ rotate: 2, y: -4, transition: LIQUID_SPRING }}
-                      whileTap={{ rotate: 2, y: -2, scale: 0.98, transition: LIQUID_SPRING }}
-                      className={`shrink-0 w-64 bg-surface border rounded-card overflow-hidden ${CATEGORY_BORDER[p.category as Category] ?? "border-line"} ${CATEGORY_SHADOW[p.category as Category] ?? ""}`}
+                      id={id}
+                      label={p.name}
+                      className="shrink-0 w-52 bg-surface border border-line"
+                      panel={() => (
+                        <DishPanel dish={toDishEntry(p)} mediaId={`${id}-media`} photo={photo} reason={p.reason} userAllergens={userAllergens} onLog={onLogDish} />
+                      )}
                     >
-                      <button
-                        onClick={() => setView({ name: "profile", dish: toDishEntry(p) })}
-                        className="block w-full text-left"
-                      >
-                        <div className="relative aspect-[4/3]">
-                          {photo ? (
-                            <img src={photo} alt="" className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
-                          ) : (
-                            <div className={`absolute inset-0 bg-gradient-to-br ${visual.tint} bg-surface2 flex items-center justify-center text-4xl`}>
-                              {visual.emoji}
-                            </div>
-                          )}
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
-                          <span className={`absolute top-2 left-2 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${CATEGORY_ACCENT[p.category as Category] ?? "bg-surface2 text-ink/80"}`}>
-                            {p.category}
-                          </span>
-                          <EvidenceScoreBadge community={pickScores[p.id]?.community} size="sm" className="absolute top-2 right-2" />
-                        </div>
-                        <div className="p-3 pb-0">
-                          <div className="font-semibold text-sm truncate">{p.name}</div>
-                          <div className="text-faint text-xs mb-1.5 truncate">{p.venue}</div>
-                          <p className="text-ink/80 text-xs leading-snug line-clamp-2">{p.reason}</p>
-                        </div>
-                      </button>
-                      <div className="px-3 pb-3">
-                        <WhyThis body="Grounded in your real dietary profile and log history — a fixed template, no AI model involved in wording this one." />
+                      <div className="relative">
+                        <FloatMedia id={`${id}-media`} photo={photo} seed={p.category} className="aspect-[16/10]" />
+                        <span className="absolute top-2 left-2 text-[9px] font-mono uppercase tracking-[0.14em] text-ink/80 bg-black/60 border border-line rounded px-1.5 py-0.5">
+                          {p.category}
+                        </span>
                       </div>
-                    </motion.div>
+                      <div className="p-3">
+                        <span className="dish-name text-[15px] text-ink">{p.name}</span>
+                        <div className="text-faint text-[11px] mt-1.5 truncate">{p.venue}</div>
+                        <p className="text-muted text-[11px] leading-snug line-clamp-2 mt-1">{p.reason}</p>
+                      </div>
+                    </FloatCard>
                   );
                 })}
               </div>
@@ -578,9 +463,8 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
                     <button
                       key={name}
                       onClick={() => setView({ name: "results", category: name })}
-                      className="flex items-center gap-1.5 bg-surface border border-line rounded-full px-3.5 py-2 text-sm font-medium"
+                      className="flex items-center bg-surface border border-line rounded-full px-3.5 py-2 text-[13px]"
                     >
-                      <span>{categoryVisual(name).emoji}</span>
                       {name}
                     </button>
                   ))}
@@ -597,7 +481,6 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
               </div>
             ) : nameSearchResults.length === 0 ? (
               <div className="border border-dashed border-line rounded-card px-6 py-10 text-center">
-                <div className="text-3xl mb-3">🔍</div>
                 <h3 className="font-display font-bold text-lg mb-1.5">Nothing matches "{query.trim()}" yet</h3>
                 <p className="text-faint text-xs max-w-[32ch] mx-auto">
                   It might be a real place we don't have yet — tap Near Me to search and add it.
@@ -606,22 +489,21 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
             ) : (
               <div className="flex flex-col gap-2.5">
                 {nameSearchResults.map((v) => {
-                  const visual = categoryVisual(v.category ?? "");
+                  const id = `place-${v.id}`;
                   return (
-                    <button
+                    <FloatCard
                       key={v.id}
-                      onClick={() => setView({ name: "profile", dish: venueToDishEntry(v) })}
-                      className="flex items-center gap-3 bg-surface border border-line rounded-card p-3.5 text-left"
+                      id={id}
+                      label={v.name}
+                      className="bg-surface border border-line"
+                      contentClassName="flex items-center gap-3 p-3.5"
+                      panel={() => (
+                        <DishPanel dish={venueToDishEntry(v)} mediaId={`${id}-media`} photo={v.photo} userAllergens={userAllergens} onLog={onLogDish} />
+                      )}
                     >
-                      <div className="relative w-14 h-14 rounded-lg overflow-hidden shrink-0">
-                        {v.photo ? (
-                          <img src={v.photo} alt="" className="absolute inset-0 w-full h-full object-cover" />
-                        ) : (
-                          <div className={`absolute inset-0 bg-gradient-to-br ${visual.tint} bg-surface2 flex items-center justify-center text-xl`}>{visual.emoji}</div>
-                        )}
-                      </div>
+                      <FloatMedia id={`${id}-media`} photo={v.photo} seed={v.category ?? v.name} className="w-12 h-12 shrink-0" radius={10} compact />
                       <div className="min-w-0 flex-1">
-                        <div className="font-semibold text-sm truncate">{v.name}</div>
+                        <div className="text-[14px] text-ink truncate">{v.name}</div>
                         <div className="text-faint text-xs truncate">{v.area}</div>
                       </div>
                       {v.category ? (
@@ -629,12 +511,24 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
                       ) : (
                         <span className="text-[10px] font-mono uppercase text-faint bg-surface2 rounded-full px-2 py-1 shrink-0">uncategorized</span>
                       )}
-                    </button>
+                    </FloatCard>
                   );
                 })}
               </div>
             )}
           </>
+        )}
+
+        {!query.trim() && stackCards.length > 0 && (
+          <div className="mt-8">
+            <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-faint mb-3">Worth a look</p>
+            <TrendingStack
+              cards={stackCards}
+              renderPanel={(dish, mediaId) => (
+                <DishPanel dish={dish} mediaId={mediaId} photo={dish.photo} userAllergens={userAllergens} onLog={onLogDish} />
+              )}
+            />
+          </div>
         )}
       </motion.div>
     );
@@ -666,7 +560,6 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
           <div className="aspect-[4/3] rounded-card bg-surface2 animate-pulse" />
         ) : dishes.length === 0 ? (
           <div className="border border-dashed border-line rounded-card px-6 py-10 text-center">
-            <div className="text-3xl mb-3">🍽️</div>
             <h3 className="font-display font-bold text-lg mb-1.5">Nothing here yet</h3>
             <p className="text-muted text-sm">Be the first — tap the + below to log one.</p>
           </div>
@@ -679,20 +572,27 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
               canPrev={canPrev}
               onSwipeNext={() => setResultIndex((i) => Math.min(i + 1, dishes.length - 1))}
               onSwipePrev={() => setResultIndex((i) => Math.max(i - 1, 0))}
-              className="bg-surface border border-line rounded-card overflow-hidden"
             >
-              <button onClick={() => setView({ name: "profile", dish: toDishEntry(current) })} className="block w-full text-left">
-                <DishThumb emoji={visual.emoji} tint={visual.tint} photo={current.photo ?? visual.photo} size="lg" scrim />
+              <FloatCard
+                id={`result-${current.id}`}
+                label={current.name}
+                className="bg-surface border border-line"
+                panel={() => (
+                  <DishPanel
+                    dish={toDishEntry(current)}
+                    mediaId={`result-${current.id}-media`}
+                    photo={current.photo ?? visual.photo}
+                    userAllergens={userAllergens}
+                    onLog={onLogDish}
+                  />
+                )}
+              >
+                <FloatMedia id={`result-${current.id}-media`} photo={current.photo ?? visual.photo} seed={view.category} className="aspect-[21/9]" scrim />
                 <div className="p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="font-display font-bold text-lg leading-tight truncate">{current.name}</div>
-                      <div className="text-faint text-sm mt-0.5 truncate">{current.venue} · {current.area}</div>
-                    </div>
-                    <EvidenceScoreBadge community={current.community} />
-                  </div>
+                  <span className="dish-name text-[17px] text-ink">{current.name}</span>
+                  <div className="text-faint text-[12px] mt-1.5 truncate">{current.venue} · {current.area}</div>
                 </div>
-              </button>
+              </FloatCard>
             </BrowseCard>
 
             {dishes.length > 1 ? (
@@ -731,125 +631,16 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
     );
   }
 
-  // profile
-  const d = view.dish;
-  return (
-    <motion.div key={`profile-${d.id}`} initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={LIQUID_SPRING} className="pb-32">
-      <div className="px-5 pt-6">
-        <BackRow
-          label="Dish"
-          onBack={() =>
-            // A venue reached via name search can have no real category
-            // (see venueToDishEntry) — there's no "results" screen to
-            // browse back into for one of those, so land on search
-            // instead of an always-empty "Uncategorized" results screen.
-            setView((d.category as string) === "Uncategorized" ? { name: "search" } : { name: "results", category: d.category })
-          }
-        />
-      </div>
-      <div className="px-5">
-        <DishThumb emoji={d.emoji} tint={d.tint} photo={d.photo} size="lg" />
-      </div>
-      <div className="px-5 pt-5">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="font-display font-bold text-xl leading-tight">{d.name}</h2>
-            <p className="text-muted text-sm mt-1">{d.venue} · {d.area}</p>
-          </div>
-          <div className="text-right shrink-0">
-            {dishScore === null ? (
-              <div className="font-mono text-2xl font-semibold text-faint tabular">···</div>
-            ) : dishScore.community.score !== null ? (
-              <>
-                <div className="font-mono text-2xl font-semibold text-accent tabular">{dishScore.community.score.toFixed(1)}</div>
-                <div className="text-faint text-[11px]">/ 10 · {dishScore.community.count} logged</div>
-              </>
-            ) : (
-              <>
-                <div className="font-mono text-2xl font-semibold text-faint tabular">—</div>
-                <div className="text-faint text-[11px]">no Bhookmark logs yet</div>
-              </>
-            )}
-          </div>
-        </div>
-
-        {d.priceRs > 0 && (
-          <div className="flex items-center gap-2 mt-4 text-xs text-muted">
-            <span>₹{d.priceRs}</span>
-          </div>
-        )}
-
-        {dishScore && dishScore.community.count > 0 && (
-          <div className="bg-surface border border-line rounded-card p-4 mt-4">
-            <div className="flex items-center justify-between mb-3">
-              <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-faint">Score breakdown</p>
-              <ConfidenceChip band={dishScore.confidenceBand} />
-            </div>
-            <ScoreRow label="Community" score={dishScore.community.score} count={dishScore.community.count} />
-            <ScoreRow label="Verified-only" score={dishScore.verifiedOnly.score} count={dishScore.verifiedOnly.count} />
-            {dishScore.yours && <ScoreRow label="Your rating" score={dishScore.yours.score} count={1} highlight />}
-            <WhyThis
-              body={`Community averages every published log for this exact dish at this venue. Verified-only counts just the logs Bhookmark could confirm with a live photo or a matched location. Confidence is "${dishScore.confidenceBand}" because it's based on ${dishScore.community.count} log${dishScore.community.count === 1 ? "" : "s"} so far — not a fixed decimal Bhookmark is fully sure of.`}
-            />
-          </div>
-        )}
-
-        {d.allergens.some((a) => userAllergens.includes(a)) && (
-          <div className="bg-badDim border border-bad/30 rounded-xl px-4 py-3 mt-5 text-sm text-bad">
-            Contains {d.allergens.filter((a) => userAllergens.includes(a)).join(", ")} — flagged against your dietary profile.
-          </div>
-        )}
-
-        {/* Phase 1 honesty fix (2026-09-10): this used to render the static
-            seed `tasteNotes` array unconditionally, labeled "Consensus
-            notes" — implying real aggregated feedback that didn't exist.
-            Now it only appears once real logs with real note text exist,
-            and shows that actual text instead of hand-authored copy. */}
-        {dishScore && dishScore.community.count > 0 && dishScore.notes.length > 0 && (
-          <>
-            <p className="font-mono text-[11px] tracking-[0.1em] uppercase text-faint mt-6 mb-2">From recent logs</p>
-            <div className="flex flex-wrap gap-2">
-              {dishScore.notes.map((n, i) => (
-                <span key={i} className="text-xs bg-surface border border-line rounded-full px-3 py-1.5 text-ink/90">
-                  {n.note}
-                </span>
-              ))}
-            </div>
-          </>
-        )}
-
-        <button
-          onClick={() => onLogDish(d)}
-          className="w-full mt-8 bg-accent text-accentInk font-semibold rounded-xl py-3.5 active:scale-[0.98] transition-transform"
-        >
-          I ate this — log it
-        </button>
-      </div>
-    </motion.div>
-  );
+  return null;
 }
 
-function ScoreRow({ label, score, count, highlight }: { label: string; score: number | null; count: number; highlight?: boolean }) {
+function PinGlyph() {
   return (
-    <div className="flex items-center justify-between py-1.5">
-      <span className={`text-sm ${highlight ? "text-accent font-medium" : "text-ink/80"}`}>{label}</span>
-      <span className="font-mono text-sm tabular text-ink/90">
-        {score !== null ? score.toFixed(1) : "—"}
-        <span className="text-faint text-[11px] ml-1.5">
-          {count === 1 ? "1 log" : `${count} logs`}
-        </span>
-      </span>
-    </div>
+    <svg viewBox="0 0 24 24" className="w-5 h-5 shrink-0 text-accent" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z" />
+      <circle cx="12" cy="10" r="2.3" />
+    </svg>
   );
-}
-
-function ConfidenceChip({ band }: { band: "insufficient" | "early" | "developing" | "strong" }) {
-  const copy = { insufficient: "no data", early: "early", developing: "developing", strong: "strong" }[band];
-  const tone =
-    band === "strong" ? "bg-accentDim text-accent" :
-    band === "developing" ? "bg-saffron/10 text-saffron" :
-    "bg-surface2 text-faint";
-  return <span className={`text-[10px] font-mono uppercase tracking-wide px-2 py-0.5 rounded-full ${tone}`}>{copy}</span>;
 }
 
 function BackRow({ label, onBack }: { label: string; onBack: () => void }) {

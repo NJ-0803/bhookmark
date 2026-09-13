@@ -31,7 +31,7 @@ function MatchRing({ score }: { score: number }) {
   return (
     <div
       className="relative w-9 h-9 rounded-full shrink-0"
-      style={{ background: `conic-gradient(#E1122E ${score * 3.6}deg, #262121 0deg)` }}
+      style={{ background: `conic-gradient(#9B1B24 ${score * 3.6}deg, #1C1C1C 0deg)` }}
     >
       <div className="absolute inset-[3px] rounded-full bg-surface flex items-center justify-center">
         <span className="font-mono text-[9px] font-semibold text-accent tabular">{score}</span>

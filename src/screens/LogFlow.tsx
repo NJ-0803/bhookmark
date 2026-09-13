@@ -1,10 +1,10 @@
 import { useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { CATEGORIES, dishesForSubtype } from "../data/dishes";
+import { CATEGORIES } from "../data/dishes";
 import type { Category, DishEntry, JournalLog, Verdict } from "../types";
 import DishThumb from "../components/DishThumb";
 import WhyThis from "../components/WhyThis";
-import Duel from "./Duel";
+import RatingPicker, { ratingVerdict } from "../components/RatingPicker";
 import { api, currentDeviceId } from "../api";
 import { LIQUID_SPRING, TAP_SCALE } from "../motion";
 
@@ -13,7 +13,7 @@ import { LIQUID_SPRING, TAP_SCALE } from "../motion";
 // Google — all paid, no way around it), and the call was made not to take
 // on that ongoing cost. This is a complete, honest state, not a gap: no
 // fabricated confidence, no dead-end, nothing implying AI is coming.
-type Step = "capture" | "details" | "verify" | "confirm" | "duel" | "done";
+type Step = "capture" | "details" | "verify" | "confirm" | "rate" | "done";
 type ServerStatus = "published" | "held" | "local-only" | "session-expired";
 
 const TINTS = ["from-amber-500/30 to-amber-900/40", "from-rose-500/30 to-rose-900/40", "from-cyan-600/30 to-slate-900/40", "from-emerald-500/30 to-emerald-900/40"];
@@ -45,6 +45,7 @@ export default function LogFlow({
   const [serverStatus, setServerStatus] = useState<ServerStatus>("local-only");
   const [copied, setCopied] = useState(false);
   const [revealScore, setRevealScore] = useState(0);
+  const [rating, setRating] = useState<number | null>(null);
   const idempotencyKey = useRef(crypto.randomUUID());
 
   const resolvedCategory = (category === "Other" ? customCategory || "Other" : category) as Category;
@@ -66,8 +67,6 @@ export default function LogFlow({
       tasteNotes: [],
       allergens: [],
     };
-
-  const opponents = dishesForSubtype(workingDish.category, workingDish.subtype).filter((d) => d.id !== workingDish.id);
 
   function attachPhoto(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -162,11 +161,7 @@ export default function LogFlow({
       setShowOfflineBanner(true);
       return;
     }
-    if (opponents.length === 0) {
-      finishLog(6.8, "fine");
-      return;
-    }
-    setStep("duel");
+    setStep("rate");
   }
 
   return (
@@ -199,7 +194,6 @@ export default function LogFlow({
                   <img src={photoUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
                 ) : (
                   <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-                    <span className="text-3xl">📸</span>
                     <span className="text-muted text-sm font-medium">No photo yet</span>
                   </div>
                 )}
@@ -207,11 +201,11 @@ export default function LogFlow({
               <div className="flex gap-2.5 mt-4">
                 <label className="flex-1 flex items-center justify-center gap-2 bg-surface border border-line rounded-xl py-3 text-sm font-medium cursor-pointer hover:border-accent/50 transition-colors">
                   <input type="file" accept="image/*" capture="environment" onChange={attachPhoto} className="sr-only" />
-                  📷 Take photo
+                  Take photo
                 </label>
                 <label className="flex-1 flex items-center justify-center gap-2 bg-surface border border-line rounded-xl py-3 text-sm font-medium cursor-pointer hover:border-accent/50 transition-colors">
                   <input type="file" accept="image/*" onChange={attachPhoto} className="sr-only" />
-                  🖼️ Choose from gallery
+                  Choose from gallery
                 </label>
               </div>
               <button onClick={() => setStep("details")} className="w-full mt-2.5 bg-transparent text-faint py-2.5 text-sm font-medium">
@@ -273,7 +267,7 @@ export default function LogFlow({
           {step === "verify" && (
             <div className="px-5">
               <div className="flex items-center gap-3 mb-4">
-                <DishThumb emoji={workingDish.emoji} tint={workingDish.tint} size="sm" />
+                <DishThumb seed={workingDish.category} size="sm" />
                 <div>
                   <div className="font-semibold text-sm">{workingDish.name}</div>
                   <div className="text-faint text-xs">{workingDish.category} · {workingDish.subtype}</div>
@@ -308,7 +302,7 @@ export default function LogFlow({
             <div className="px-5">
               <h3 className="font-display font-bold text-xl mb-5">Ready to log</h3>
               <div className="bg-surface border border-line rounded-card p-4 flex items-center gap-3 mb-5">
-                <DishThumb emoji={workingDish.emoji} tint={workingDish.tint} photo={photoUrl ?? undefined} size="md" />
+                <DishThumb seed={workingDish.category} photo={photoUrl ?? undefined} size="md" />
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-sm truncate">{workingDish.name}</div>
                   <div className="text-faint text-xs truncate">{workingDish.venue || "Venue not set"}</div>
@@ -356,18 +350,26 @@ export default function LogFlow({
 
               {!showOfflineBanner && (
                 <button onClick={handleSave} className="w-full bg-accent text-accentInk font-semibold rounded-xl py-3.5 mt-6 active:scale-[0.98] transition-transform">
-                  Save log
+                  Continue to rating
                 </button>
               )}
             </div>
           )}
 
-          {step === "duel" && (
-            <Duel
-              challenger={{ name: workingDish.name, venue: workingDish.venue, emoji: workingDish.emoji, tint: workingDish.tint, photo: workingDish.photo }}
-              opponents={opponents}
-              onDone={({ score, verdict }) => finishLog(score, verdict)}
-            />
+          {step === "rate" && (
+            <div className="px-5">
+              <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-faint mb-1">Your rating</p>
+              <h3 className="font-display font-semibold text-xl mb-1">How good was it, really?</h3>
+              <p className="text-muted text-[13px] mb-8">You set the number. Bhookmark only tells you what it thinks of it.</p>
+              <RatingPicker value={rating} onChange={setRating} />
+              <button
+                onClick={() => rating !== null && finishLog(rating, ratingVerdict(rating).verdict)}
+                disabled={rating === null}
+                className="w-full bg-accent text-accentInk font-medium rounded-xl py-3.5 mt-8 disabled:opacity-40 active:scale-[0.98] transition-transform"
+              >
+                Add to Bhookmarks
+              </button>
+            </div>
           )}
 
           {step === "done" && (
@@ -387,16 +389,20 @@ export default function LogFlow({
               <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-faint mb-2 text-left">Taste Receipt</p>
               <div className="bg-gradient-to-b from-surface2 to-surface border border-line rounded-card p-5 mb-5 text-left">
                 {photoUrl ? (
-                  <img src={photoUrl} alt="" className="w-full aspect-[4/3] object-cover rounded-xl" />
+                  <img src={photoUrl} alt="" className="w-full aspect-[16/10] object-cover rounded-xl" />
                 ) : (
-                  <DishThumb emoji={workingDish.emoji} tint={workingDish.tint} size="lg" />
+                  <DishThumb seed={workingDish.category} size="lg" />
                 )}
-                <div className="mt-3 font-display font-bold text-lg leading-tight">{workingDish.name}</div>
-                <div className="text-faint text-xs mt-0.5">{workingDish.venue}</div>
-                <div className="flex items-center justify-between mt-3">
-                  <span className="font-mono text-2xl font-semibold text-accent tabular">{revealScore.toFixed(1)}</span>
-                  <span className="text-xs text-muted">via Bhookmark</span>
+                <span className="dish-name text-[17px] text-ink mt-3">{workingDish.name}</span>
+                <div className="text-faint text-xs mt-1.5">{workingDish.venue}</div>
+                <div className="flex items-baseline justify-between mt-4">
+                  <span className="font-display font-light text-3xl tabular text-ink">
+                    {revealScore.toFixed(1)}
+                    <span className="text-faint text-xs ml-1">/ 10</span>
+                  </span>
+                  <span className="text-[11px] text-faint">your rating</span>
                 </div>
+                <p className="text-[13px] text-muted mt-1.5">{ratingVerdict(revealScore).line}</p>
               </div>
 
               <button
@@ -412,7 +418,7 @@ export default function LogFlow({
           )}
         </div>
       </div>
-      <style>{`.input { background: #1A1717; border: 1px solid #262121; border-radius: 10px; padding: 10px 14px; font-size: 14px; color: #F5F1E8; outline: none; } .input:focus { border-color: #E1122E; }`}</style>
+      <style>{`.input { background: #161616; border: 1px solid #2A1518; border-radius: 10px; padding: 10px 14px; font-size: 14px; color: #EDE8E1; outline: none; } .input:focus { border-color: #9B1B24; }`}</style>
     </motion.div>
   );
 }
