@@ -2,14 +2,16 @@ import { useEffect, useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import type { DishEntry } from "../types";
 import { FloatCard, FloatMedia } from "./CardStage";
+import CategoryArt from "./CategoryArt";
 import { LIQUID_SPRING } from "../motion";
+import { placeLine } from "../format";
 
 export interface StackCard {
   dish: DishEntry;
   badge: string;
 }
 
-/** A compact fanned stack: drag the front card to cycle, tap it to lift it
+/** A photo-led fanned stack: drag the front card to cycle, tap it to lift it
  * into a panel, or tap a peeking card to bring it forward. */
 export default function TrendingStack({
   cards,
@@ -45,21 +47,21 @@ export default function TrendingStack({
   const visible = order.map((id) => byId.get(id)).filter((c): c is StackCard => !!c).slice(0, 3);
 
   return (
-    <div className="relative mb-6" style={{ paddingBottom: "calc(47.6% + 32px)" }}>
+    <div className="relative">
+      {/* Reserves the front card's height plus the fanned offset, so nothing
+          shifts while photos load. */}
+      <div className="aspect-[16/11] lg:aspect-[16/10]" />
+      <div className="h-5" />
       {visible.map(({ dish, badge }, stackPos) => {
         const isFront = stackPos === 0;
         const id = `stack-${dish.id}`;
         const overlay = (
           <>
-            <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent" />
-            <span className="absolute top-3 left-3 text-[9px] font-mono uppercase tracking-[0.14em] text-ink/85 bg-black/60 border border-line rounded px-1.5 py-0.5">
-              {badge}
-            </span>
-            <div className="absolute inset-0 flex flex-col justify-end items-start p-3.5">
-              <span className="dish-name text-[16px] text-white">{dish.name}</span>
-              <span className="text-white/60 text-[11px] mt-1.5">
-                {dish.venue} · {dish.area}
-              </span>
+            {dish.photo && <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/15 to-transparent" />}
+            <span className="absolute top-3.5 left-3.5 text-[12px] text-white/90 bg-black/55 rounded-full px-2.5 py-1">{badge}</span>
+            <div className="absolute inset-x-0 bottom-0 p-4 lg:p-5">
+              <span className={`dish-name text-[24px] lg:text-[30px] line-clamp-2 ${dish.photo ? "text-white" : "text-ink"}`}>{dish.name}</span>
+              <span className={`block text-[14px] mt-1 ${dish.photo ? "text-white/75" : "text-muted"}`}>{placeLine(dish)}</span>
             </div>
           </>
         );
@@ -74,26 +76,29 @@ export default function TrendingStack({
             }}
             onClick={isFront ? undefined : cycle}
             initial={false}
-            animate={{ scale: 1 - stackPos * 0.04, y: stackPos * 8, opacity: 1 - stackPos * 0.3 }}
+            animate={{ scale: 1 - stackPos * 0.045, y: stackPos * 10, opacity: 1 - stackPos * 0.3 }}
             transition={LIQUID_SPRING}
             style={{ zIndex: 10 - stackPos, touchAction: isFront ? "pan-y" : undefined }}
-            className="absolute inset-x-0 aspect-[21/10] cursor-grab active:cursor-grabbing"
+            className="absolute inset-x-0 top-0 aspect-[16/11] lg:aspect-[16/10] cursor-grab active:cursor-grabbing"
           >
             {isFront ? (
               <FloatCard
                 id={id}
                 label={dish.name}
+                wide
                 className="absolute inset-0 bg-surface2 border border-line"
                 contentClassName="absolute inset-0"
                 panel={() => renderPanel(dish, `${id}-media`)}
               >
-                <FloatMedia id={`${id}-media`} photo={dish.photo} seed={dish.category} className="absolute inset-0" />
+                <FloatMedia id={`${id}-media`} photo={dish.photo} category={dish.category} className="absolute inset-0" />
                 {overlay}
               </FloatCard>
             ) : (
-              <div className="absolute inset-0 rounded-card overflow-hidden border border-line bg-surface2">
-                {dish.photo && (
-                  <img src={dish.photo} alt="" className="absolute inset-0 w-full h-full object-cover" style={{ filter: "saturate(0.8)" }} loading="lazy" draggable={false} />
+              <div className="absolute inset-0 rounded-card overflow-hidden border border-line bg-surface2" aria-hidden="true">
+                {dish.photo ? (
+                  <img src={dish.photo} alt="" className="absolute inset-0 w-full h-full object-cover" loading="lazy" draggable={false} />
+                ) : (
+                  <CategoryArt category={dish.category} />
                 )}
                 {overlay}
               </div>
@@ -101,9 +106,7 @@ export default function TrendingStack({
           </motion.div>
         );
       })}
-      {cards.length > 1 && (
-        <p className="absolute bottom-0 inset-x-0 text-center text-faint text-[10.5px]">Drag to see more</p>
-      )}
+      {cards.length > 1 && <p className="text-center text-faint text-[12px] mt-2">Drag the card for more</p>}
     </div>
   );
 }

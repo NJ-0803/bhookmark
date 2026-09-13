@@ -5,9 +5,10 @@
 // reads as "expensive" motion; the old damping 15 / stiffness 120 overshot.
 export const LIQUID_SPRING = { type: "spring" as const, damping: 28, stiffness: 260, mass: 0.9 };
 
-// Card-to-panel lift: damping ratio ~0.76 gives a small overshoot and
-// settles in roughly half a second.
-export const FLOAT_SPRING = { type: "spring" as const, stiffness: 140, damping: 18, mass: 1 };
+// Card-to-panel lift: a ~380ms main movement with a small overshoot, inside
+// the 300–450ms window the visual brief asks to test. visualDuration keeps
+// the perceived timing fixed while the spring still responds to distance.
+export const FLOAT_SPRING = { type: "spring" as const, visualDuration: 0.38, bounce: 0.12 };
 
 // Scroll reveals: slow and slightly overdamped, so sections glide in with
 // no bounce.

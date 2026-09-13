@@ -8,7 +8,7 @@ export default function WhyThis({ title = "How this is calculated", body }: { ti
     <div className="mt-2.5">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="text-accent text-[11px] font-medium underline underline-offset-2"
+        className="text-rose text-[11px] font-medium underline underline-offset-2"
       >
         {open ? "Hide" : title}
       </button>

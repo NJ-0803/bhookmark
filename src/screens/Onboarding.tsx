@@ -21,7 +21,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
         <motion.span
           animate={{ opacity: [0, 0, 1, 0, 0, 0, 0, 0] }}
           transition={{ duration: 4, repeat: Infinity, times: [0, 0.15, 0.25, 0.4, 0.5, 0.65, 0.85, 1] }}
-          className="absolute top-3 right-3 text-accent border-2 border-accent rounded-lg px-2.5 py-1 text-xs font-bold rotate-6"
+          className="absolute top-3 right-3 text-rose border-2 border-accent rounded-lg px-2.5 py-1 text-xs font-bold rotate-6"
         >
           YEAH
         </motion.span>
@@ -36,8 +36,8 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
 
       <div className="flex flex-col gap-4 mb-10 text-left max-w-[300px]">
         <div className="flex items-center gap-3">
-          <span className="w-9 h-9 rounded-full bg-accentDim text-accent flex items-center justify-center text-lg shrink-0">→</span>
-          <p className="text-sm text-ink/90"><span className="text-accent font-semibold">Swipe right</span> for a yeah — loved it, or this one wins a duel.</p>
+          <span className="w-9 h-9 rounded-full bg-accentDim text-rose flex items-center justify-center text-lg shrink-0">→</span>
+          <p className="text-sm text-ink/90"><span className="text-rose font-semibold">Swipe right</span> for a yeah — loved it, or this one wins a duel.</p>
         </div>
         <div className="flex items-center gap-3">
           <span className="w-9 h-9 rounded-full bg-badDim text-bad flex items-center justify-center text-lg shrink-0">←</span>

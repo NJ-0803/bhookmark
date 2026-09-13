@@ -25,12 +25,21 @@ export default defineConfig({
     proxy: {
       '/auth': 'http://localhost:4001',
       '/logs': 'http://localhost:4001',
-      '/dishes': 'http://localhost:4001',
+      // /dishes is also where the static catalog photos live (public/dishes);
+      // only API calls should reach the backend.
+      '/dishes': {
+        target: 'http://localhost:4001',
+        bypass: (req) => (/\.(jpe?g|png|webp)$/.test(req.url ?? '') ? req.url : undefined),
+      },
       '/venues': 'http://localhost:4001',
       '/profile': 'http://localhost:4001',
       '/recommendations': 'http://localhost:4001',
       '/moderation': 'http://localhost:4001',
       '/notifications': 'http://localhost:4001',
+      '/friends': 'http://localhost:4001',
+      '/circles': 'http://localhost:4001',
+      '/rooms': 'http://localhost:4001',
+      '/lists': 'http://localhost:4001',
       '/dev': 'http://localhost:4001',
     },
   },

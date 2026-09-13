@@ -119,7 +119,7 @@ function NavItem({
           className="absolute inset-0 bg-surface2 rounded-2xl -z-10"
         />
       )}
-      <span className={active ? "text-accent" : "text-faint"}>
+      <span className={active ? "text-rose" : "text-faint"}>
         <TabIcon tab={tab.id} />
       </span>
       <span className={`text-[10px] ${active ? "text-ink" : "text-faint"}`}>{tab.label}</span>

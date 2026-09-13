@@ -6,6 +6,54 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Theme tokens as RGB channels (see tailwind.config.js). Evening is the
+   default; index.html sets data-theme before first paint from the saved
+   preference (src/theme.ts). Measured WCAG contrast, Evening: ink/bg 15.9,
+   muted/surface 7.8, faint/surface2 4.8, rose/bg 8.1, ivory/burgundy 6.7.
+   Daylight: ink/bg 14.3, muted/surface 7.7, faint/surface2 4.6, burgundy/bg 6.7. */
+:root,
+:root[data-theme="evening"] {
+  color-scheme: dark;
+  --bg: 21 20 18;          /* warm graphite #151412 */
+  --surface: 35 33 31;     /* espresso #23211F */
+  --surface2: 45 42 39;
+  --line: 58 53 49;
+  --ink: 243 238 231;      /* ivory #F3EEE7 */
+  --muted: 189 179 169;
+  --faint: 157 148 139;
+  --accent: 142 51 64;     /* burgundy #8E3340 */
+  --accent-ink: 243 238 231;
+  --accent-dim: 52 29 33;
+  --rose: 216 156 164;     /* #D89CA4 */
+  --bad: 229 138 146;
+  --bad-dim: 50 26 29;
+  --edge: 255 255 255;
+  --scrim: 8 7 6;
+  --shadow-card: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 16px 36px -20px rgb(0 0 0 / 0.7);
+  --shadow-float: 0 50px 100px -30px rgb(0 0 0 / 0.85), 0 22px 44px -26px rgb(142 51 64 / 0.35);
+}
+
+:root[data-theme="daylight"] {
+  color-scheme: light;
+  --bg: 243 238 231;       /* ivory #F3EEE7 */
+  --surface: 255 252 248;  /* paper #FFFCF8 */
+  --surface2: 233 225 215;
+  --line: 220 210 198;
+  --ink: 35 30 26;         /* ink #231E1A */
+  --muted: 90 80 72;
+  --faint: 100 90 81;
+  --accent: 142 51 64;
+  --accent-ink: 243 238 231;
+  --accent-dim: 242 222 224;
+  --rose: 142 51 64;
+  --bad: 161 45 56;
+  --bad-dim: 248 226 227;
+  --edge: 255 255 255;
+  --scrim: 35 30 26;
+  --shadow-card: inset 0 1px 0 rgb(255 255 255 / 0.8), 0 14px 32px -20px rgb(60 40 30 / 0.28);
+  --shadow-float: 0 44px 90px -30px rgb(60 40 30 / 0.4), 0 20px 40px -26px rgb(142 51 64 / 0.22);
+}
+
 * { box-sizing: border-box; }
 
 html, body, #root {
@@ -14,8 +62,8 @@ html, body, #root {
 
 body {
   margin: 0;
-  background: #0A0A0A;
-  color: #EDE8E1;
+  background: rgb(var(--bg));
+  color: rgb(var(--ink));
   font-family: "Inter", system-ui, sans-serif;
   letter-spacing: -0.005em;
   -webkit-font-smoothing: antialiased;
@@ -28,75 +76,56 @@ body {
   min-height: 100dvh;
   height: auto;
   position: relative;
-  background: #0A0A0A;
-  border-left: 1px solid #141414;
-  border-right: 1px solid #141414;
+  background: rgb(var(--bg));
+  border-left: 1px solid rgb(var(--line) / 0.5);
+  border-right: 1px solid rgb(var(--line) / 0.5);
   overflow-x: hidden;
   overflow-y: visible;
+}
+
+/* Desktop: the app gets the width; each screen caps its own reading width
+   rather than stretching mobile cards across the window. */
+@media (min-width: 1024px) {
+  #root {
+    max-width: 1200px;
+    border: 0;
+  }
 }
 
 ::-webkit-scrollbar { display: none; }
 
 .tabular { font-variant-numeric: tabular-nums; }
 
-/* Frosted card surface, applied everywhere bg-surface is used. V03: blur is
-   capped at 14px and paint is contained per card — a bigger uncontained
-   backdrop-filter caused measurable scroll jank with several cards on screen. */
-.bg-surface {
-  background-color: rgba(16, 16, 16, 0.72) !important;
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  contain: paint;
-}
+/* In the components layer so utilities (line-clamp, shadow-*) can still
+   override them on a specific element. */
+@layer components {
+  /* Cards: opaque surfaces (essential content never sits on glass), a fine
+     top edge highlight and a soft shadow. */
+  .rounded-card {
+    box-shadow: var(--shadow-card);
+  }
 
-.rounded-card {
-  box-shadow: 0 12px 36px -14px rgba(0, 0, 0, 0.75);
-}
+  /* Primary action fill: burgundy with a slight vertical falloff so it reads
+     as a material. Ivory text on it measures ~6.7:1. */
+  .gradient-primary {
+    background: linear-gradient(180deg, #973847 0%, #86303C 100%);
+  }
 
-/* Primary action fill: dark blood red with only a slight vertical falloff,
-   so it reads as a material rather than a gradient. */
-.gradient-primary {
-  background: linear-gradient(180deg, #86161E 0%, #6A0F16 100%);
-}
-
-/* Headline text: a faint cream-to-stone falloff, never a colour gradient. */
-.text-gradient {
-  background: linear-gradient(180deg, #F2EDE6 0%, #B9B1AA 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-/* Dark blood (#7A1219) fails contrast as small text on black, so text uses a
-   lifted tone of the same red; fills and borders keep the dark one. */
-.text-accent { color: #C9525A; }
-
-/* The brand word as a true outline: hollow letters with a 1px blood-red
-   stroke. A dark fill under the stroke read as muddy at this size. */
-.text-blood-outline {
-  color: transparent;
-  -webkit-text-stroke: 1px #A8323B;
-}
-
-/* Dish names: a quiet serif inside a hairline blood-red frame, like a menu
-   card rather than an app label. */
-.dish-name {
-  display: inline-block;
-  max-width: 100%;
-  font-family: "Instrument Serif", Georgia, serif;
-  font-weight: 400;
-  line-height: 1.15;
-  letter-spacing: 0.005em;
-  padding: 0.14em 0.5em 0.2em;
-  border: 1px solid rgba(185, 70, 79, 0.45);
-  border-radius: 4px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* Dish names: Instrument Serif, allowed to wrap. Cards clamp with
+     line-clamp-2 where space is fixed. */
+  .dish-name {
+    display: block;
+    min-width: 0;
+    font-family: "Instrument Serif", Georgia, serif;
+    font-weight: 400;
+    line-height: 1.12;
+    letter-spacing: 0.005em;
+    overflow-wrap: anywhere;
+  }
 }
 
 .rating-range {
-  accent-color: #9B1B24;
+  accent-color: rgb(var(--accent));
   height: 28px;
 }
 

@@ -135,14 +135,14 @@ export default function RemixableLists() {
             className="flex-1 bg-surface2 border border-line rounded-lg px-3 py-2 text-sm outline-none focus:border-accent"
           />
         </div>
-        <button onClick={addItem} disabled={!dishName.trim() || !venue.trim()} className="text-accent text-xs font-medium mb-4 disabled:opacity-40">
+        <button onClick={addItem} disabled={!dishName.trim() || !venue.trim()} className="text-rose text-xs font-medium mb-4 disabled:opacity-40">
           + add to list
         </button>
         <motion.button
           whileTap={TAP_SCALE}
           onClick={submitCreate}
           disabled={creating || !title.trim() || items.length === 0}
-          className="w-full gradient-primary text-white font-semibold rounded-xl py-3 disabled:opacity-40"
+          className="w-full gradient-primary text-accentInk font-semibold rounded-xl py-3 disabled:opacity-40"
         >
           Publish list
         </motion.button>

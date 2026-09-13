@@ -626,13 +626,13 @@ const CATEGORY_TINT: Record<string, string> = {
 /** One quiet chip style for every category — the per-category amber, teal
  * and sky colours went with the move to black and dark blood red. */
 export const CATEGORY_ACCENT: Record<Category, string> = {
-  "Dosa & Idli": "bg-accentDim text-accent",
-  Biryani: "bg-accentDim text-accent",
-  Coffee: "bg-accentDim text-accent",
-  Burger: "bg-accentDim text-accent",
-  Pizza: "bg-accentDim text-accent",
-  Momos: "bg-accentDim text-accent",
-  "Ice Cream": "bg-accentDim text-accent",
+  "Dosa & Idli": "bg-accentDim text-rose",
+  Biryani: "bg-accentDim text-rose",
+  Coffee: "bg-accentDim text-rose",
+  Burger: "bg-accentDim text-rose",
+  Pizza: "bg-accentDim text-rose",
+  Momos: "bg-accentDim text-rose",
+  "Ice Cream": "bg-accentDim text-rose",
 };
 
 /** Matches a backend log (category/subtype/name/venue only, no photo) back

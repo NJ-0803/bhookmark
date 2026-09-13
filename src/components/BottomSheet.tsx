@@ -49,7 +49,8 @@ export default function BottomSheet({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 bg-black/60 z-40"
+            className="fixed inset-0 z-40"
+            style={{ background: "rgb(var(--scrim) / 0.55)" }}
           />
           <motion.div
             initial={{ y: "100%" }}

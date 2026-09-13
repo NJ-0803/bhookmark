@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import type { RemoteLog } from "../api";
-import { categoryVisual, findDishPhoto } from "../data/dishes";
+import { findDishPhoto } from "../data/dishes";
 import { DepthLayer, FloatCard, FloatMedia } from "../components/CardStage";
 import { ratingVerdict } from "../components/RatingPicker";
 import { LIQUID_SPRING, TAP_SCALE } from "../motion";
@@ -35,7 +35,7 @@ export default function Bhookmarks({
           </button>
         )}
       </div>
-      <h1 className="font-display font-extrabold text-2xl mb-6 text-gradient">Never forget a bite.</h1>
+      <h1 className="font-display font-extrabold text-2xl mb-6 text-ink">Never forget a bite.</h1>
 
       {logsError && (
         <div className="bg-badDim border border-bad/30 rounded-xl px-4 py-3 text-sm text-bad mb-5">{logsError}</div>
@@ -45,8 +45,7 @@ export default function Bhookmarks({
         <div className="border border-line rounded-card px-6 py-10 text-center text-faint text-sm">Loading your Bhookmarks…</div>
       ) : empty ? (
         <div className="border border-dashed border-line rounded-card px-6 py-10 text-center">
-          <div className="text-3xl mb-3">📓💀</div>
-          <h3 className="font-display font-bold text-lg mb-1.5">Your Bhookmarks are embarrassingly empty</h3>
+          <h3 className="font-display font-semibold text-[18px] mb-1.5">Your Bhookmarks are embarrassingly empty</h3>
           <p className="text-muted text-sm mb-6 max-w-[28ch] mx-auto">
             Log your first bite and this becomes the fastest way to remember whether something's worth bhookmarking again.
           </p>
@@ -64,7 +63,7 @@ export default function Bhookmarks({
               ) : flavorNote.kind === "early" ? (
                 <p className="text-sm text-ink/90">
                   <span className="text-saffron font-semibold">Early signal</span> — leaning toward{" "}
-                  <span className="text-accent font-semibold">{flavorNote.category}</span>, based on {flavorNote.logsSeen} loved logs.
+                  <span className="text-rose font-semibold">{flavorNote.category}</span>, based on {flavorNote.logsSeen} loved logs.
                   Not a real pattern yet.
                 </p>
               ) : (
@@ -82,7 +81,7 @@ export default function Bhookmarks({
           )}
           <div className="flex flex-col gap-2.5">
             {visibleLogs.map((log, i) => {
-              const photo = findDishPhoto(log.category, log.subtype, log.name, log.venue) ?? categoryVisual(log.category).photo;
+              const photo = findDishPhoto(log.category, log.subtype, log.name, log.venue);
               const id = `log-${log.id}`;
               return (
                 <motion.div
@@ -95,21 +94,22 @@ export default function Bhookmarks({
                   <FloatCard
                     id={id}
                     label={log.name}
-                    radius={14}
+                    radius={20}
+                    wide
                     className="bg-surface border border-line"
                     contentClassName="flex gap-3 p-3"
                     panel={() => <LogPanel log={log} photo={photo} mediaId={`${id}-media`} />}
                   >
-                    <FloatMedia id={`${id}-media`} photo={photo} seed={log.category} className="w-20 h-20 shrink-0" radius={10} compact />
+                    <FloatMedia id={`${id}-media`} photo={photo} category={log.category} className="w-20 h-20 shrink-0" radius={14} compact />
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="dish-name text-[15px] text-ink">{log.name}</span>
-                        <span className="font-mono text-[12px] text-ink/85 tabular shrink-0">{log.score.toFixed(1)}</span>
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="dish-name text-[19px] text-ink line-clamp-2">{log.name}</span>
+                        <span className="font-mono text-[13px] text-ink/85 tabular shrink-0 mt-0.5">{log.score.toFixed(1)}</span>
                       </div>
-                      <div className="text-faint text-xs truncate mt-1.5">
+                      <div className="text-muted text-[13px] truncate mt-1">
                         {log.venue} · {timeAgo(log.createdAt)}
                       </div>
-                      {log.note && <p className="text-ink/75 text-xs mt-1.5 leading-snug line-clamp-2">"{log.note}"</p>}
+                      {log.note && <p className="text-ink/75 text-[13px] mt-1 leading-snug line-clamp-2">"{log.note}"</p>}
                     </div>
                   </FloatCard>
                 </motion.div>
@@ -125,22 +125,28 @@ export default function Bhookmarks({
 function LogPanel({ log, photo, mediaId }: { log: RemoteLog; photo?: string; mediaId: string }) {
   const [reaction, setReaction] = useState("");
   return (
-    <>
-      <FloatMedia id={mediaId} photo={photo} seed={log.category} className="aspect-[16/10]" scrim />
-      <div className="p-5">
+    <div className="lg:grid lg:grid-cols-2">
+      <FloatMedia
+        id={mediaId}
+        photo={photo}
+        category={log.category}
+        className="aspect-[4/3] lg:aspect-auto lg:sticky lg:top-0 lg:self-start lg:h-[min(560px,calc(100dvh-48px))]"
+        scrim
+      />
+      <div className="p-5 lg:p-7">
         <DepthLayer depth={6}>
-          <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-faint mb-2">
+          <p className="text-[13px] text-muted mb-1.5">
             {log.category} · {timeAgo(log.createdAt)}
           </p>
-          <h2 className="dish-name text-[20px] text-ink">{log.name}</h2>
-          <p className="text-muted text-[13px] mt-2">{log.venue}</p>
+          <h2 className="dish-name text-[30px] text-ink lg:pr-12">{log.name}</h2>
+          <p className="text-muted text-[15px] mt-2">{log.venue}</p>
         </DepthLayer>
 
         <DepthLayer depth={10} className="mt-6">
           <div className="flex items-baseline gap-1.5">
             <span className="font-display font-light text-[44px] leading-none tracking-[-0.03em] tabular text-ink">{log.score.toFixed(1)}</span>
             <span className="text-faint text-sm">/ 10</span>
-            {log.verified && <span className="ml-2 text-[10px] font-mono uppercase tracking-[0.14em] text-accent">verified</span>}
+            {log.verified && <span className="ml-2 text-[10px] font-mono uppercase tracking-[0.14em] text-rose">verified</span>}
           </div>
           <p className="text-[13px] text-muted mt-2">{ratingVerdict(log.score).line}</p>
           {log.note && <p className="text-[14px] text-ink/90 leading-relaxed mt-4">"{log.note}"</p>}
@@ -161,7 +167,7 @@ function LogPanel({ log, photo, mediaId }: { log: RemoteLog; photo?: string; med
                 whileTap={TAP_SCALE}
                 transition={LIQUID_SPRING}
                 onClick={() => setReaction((cur) => (cur === r ? "" : r))}
-                className={`text-[11px] px-3 py-1.5 rounded-full border ${reaction === r ? "bg-accentDim border-accent text-ink" : "border-line text-faint"}`}
+                className={`text-[13px] px-3.5 h-10 rounded-full border ${reaction === r ? "bg-accentDim border-accent text-ink" : "border-line text-muted"}`}
               >
                 {r}
               </motion.button>
@@ -169,7 +175,7 @@ function LogPanel({ log, photo, mediaId }: { log: RemoteLog; photo?: string; med
           </div>
         </DepthLayer>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -183,7 +189,7 @@ function timeAgo(ts: number) {
 
 function Chip({ label, tone }: { label: string; tone: "accent" | "neutral" | "warn" | "bad" }) {
   const toneClass =
-    tone === "accent" ? "bg-accentDim text-accent" :
+    tone === "accent" ? "bg-accentDim text-rose" :
     tone === "warn" ? "bg-saffron/15 text-saffron" :
     tone === "bad" ? "bg-badDim text-bad" :
     "bg-surface2 text-muted";

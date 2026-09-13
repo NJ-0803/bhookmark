@@ -18,30 +18,40 @@ import {
   motionValue,
   useMotionValue,
   useReducedMotion,
+  useIsPresent,
   useSpring,
   useTransform,
   type MotionValue,
+  type Variants,
 } from "framer-motion";
 import { FLOAT_SPRING } from "../motion";
 import { haptic } from "../haptics";
-import Medallion from "./Medallion";
+import CategoryArt from "./CategoryArt";
 
 /* A tapped card detaches into a floating panel. Layout (shared layoutId),
    3D choreography, and pointer parallax each live on their own wrapper so
-   the transforms never fight; the panel is portaled so no clipping or
-   `contain: paint` ancestor can crop it. */
+   the transforms never fight; the panel is portaled so no clipping ancestor
+   can crop it. */
 
 interface StageEntry {
   id: string;
   label: string;
   render: () => ReactNode;
   trigger: HTMLElement | null;
+  wide: boolean;
 }
 
 interface StageContextValue {
   openId: string | null;
   open: (entry: StageEntry) => void;
   close: () => void;
+}
+
+/** Passed to the exiting panel: when the source card is gone (filtered away,
+ * navigated off) there's nothing to return to, so the panel fades in place
+ * instead of flying to a stale position. */
+interface ExitInfo {
+  sourceGone: boolean;
 }
 
 const StageContext = createContext<StageContextValue>({ openId: null, open: () => {}, close: () => {} });
@@ -56,28 +66,70 @@ const DepthContext = createContext<{ px: MotionValue<number>; py: MotionValue<nu
   reduce: true,
 });
 
+// A drag that ends over the card still produces a tap; anything that moved
+// further than this is a swipe, not a request to open.
+const TAP_SLOP_PX = 10;
+
+// About twice the longest closing movement (~0.5s).
+// Natural exits measured at ~830ms in headless Chrome; this is the fallback.
+const EXIT_WATCHDOG_MS = 1200;
+
 export function CardStageProvider({ children }: { children: ReactNode }) {
   const [entry, setEntry] = useState<StageEntry | null>(null);
+  const [exitInfo, setExitInfo] = useState<ExitInfo>({ sourceGone: false });
   const entryRef = useRef<StageEntry | null>(null);
-  // Ignores taps while a panel is closing, so rapid repeat taps can't stack
-  // two shared-layout transitions on top of each other.
+  // True while a closed panel is still animating out (see open/close).
   const exiting = useRef(false);
   const lastTrigger = useRef<HTMLElement | null>(null);
+  const exitWatchdog = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Remounting AnimatePresence drops any exiting panel immediately.
+  const [presenceKey, setPresenceKey] = useState(0);
+
+  const finishExit = useCallback(() => {
+    if (exitWatchdog.current) {
+      clearTimeout(exitWatchdog.current);
+      exitWatchdog.current = null;
+    }
+    exiting.current = false;
+  }, []);
+
+  useEffect(() => () => {
+    if (exitWatchdog.current) clearTimeout(exitWatchdog.current);
+  }, []);
 
   const open = useCallback((next: StageEntry) => {
-    if (entryRef.current || exiting.current) return;
+    if (entryRef.current) return;
+    // A tap while the previous panel is still closing drops that panel at
+    // once, so two shared-layout transitions never stack and no tap is lost.
+    if (exiting.current) {
+      setPresenceKey((k) => k + 1);
+      finishExit();
+    }
     entryRef.current = next;
     lastTrigger.current = next.trigger;
     haptic("light");
+    setExitInfo({ sourceGone: false });
     setEntry(next);
-  }, []);
+  }, [finishExit]);
 
   const close = useCallback(() => {
-    if (!entryRef.current) return;
+    const current = entryRef.current;
+    if (!current) return;
     entryRef.current = null;
     exiting.current = true;
+    setExitInfo({ sourceGone: !current.trigger?.isConnected });
     setEntry(null);
-  }, []);
+    // Framer's shared-layout exit sometimes never reports completion (headless
+    // QA: roughly 1 close in 2–6 leaves the already-faded panel in the DOM).
+    // The leftover ignores pointer events (see StagePanel); this removes it
+    // and unblocks the next open.
+    exitWatchdog.current = setTimeout(() => {
+      exitWatchdog.current = null;
+      if (!exiting.current) return;
+      setPresenceKey((k) => k + 1);
+      finishExit();
+    }, EXIT_WATCHDOG_MS);
+  }, [finishExit]);
 
   useEffect(() => {
     if (!entry) return;
@@ -93,6 +145,13 @@ export function CardStageProvider({ children }: { children: ReactNode }) {
     };
   }, [entry, close]);
 
+  // Focus returns to the card as soon as it is visible again, not after the
+  // closing movement, so keyboard users never sit on a disappearing panel.
+  useEffect(() => {
+    if (entry || !exiting.current) return;
+    if (lastTrigger.current?.isConnected) lastTrigger.current.focus({ preventScroll: true });
+  }, [entry]);
+
   const value = useMemo(() => ({ openId: entry?.id ?? null, open, close }), [entry, open, close]);
 
   return (
@@ -106,13 +165,8 @@ export function CardStageProvider({ children }: { children: ReactNode }) {
               <feDisplacementMap in="SourceGraphic" in2="noise" scale="22" xChannelSelector="R" yChannelSelector="G" />
             </filter>
           </svg>
-          <AnimatePresence
-            onExitComplete={() => {
-              exiting.current = false;
-              lastTrigger.current?.focus({ preventScroll: true });
-            }}
-          >
-            {entry && <StagePanel key={entry.id} entry={entry} onClose={close} />}
+          <AnimatePresence key={presenceKey} custom={exitInfo} onExitComplete={finishExit}>
+            {entry && <StagePanel key={entry.id} entry={entry} exitInfo={exitInfo} onClose={close} />}
           </AnimatePresence>
         </>,
         document.body
@@ -122,7 +176,8 @@ export function CardStageProvider({ children }: { children: ReactNode }) {
 }
 
 /** The app surface behind a floating panel: recedes to 0.96 around the
- * centre of the current viewport. Keep fixed-position UI (nav) outside it. */
+ * centre of the current viewport, so a card opened far down the page doesn't
+ * make the page appear to jump. Keep fixed-position UI (nav) outside it. */
 export function StageShell({ children }: { children: ReactNode }) {
   const { openId } = useCardStage();
   const reduce = useReducedMotion();
@@ -147,8 +202,32 @@ export function StageShell({ children }: { children: ReactNode }) {
   );
 }
 
-function StagePanel({ entry, onClose }: { entry: StageEntry; onClose: () => void }) {
+const EASE_OUT = [0.22, 1, 0.36, 1] as const;
+const EASE_IN_OUT = [0.4, 0, 0.2, 1] as const;
+
+// One scene: the lift peaks early, then settles at a small retained depth
+// (translateZ 16 ≈ 1.3% larger under the 1200px perspective) so the open
+// card still reads as raised while being perfectly still for reading.
+const depthVariants: Variants = {
+  hidden: { z: 0, rotateX: 0, opacity: 1, scale: 1 },
+  shown: { z: [0, 60, 16], rotateX: [0, 3, 0], transition: { duration: 0.42, times: [0, 0.45, 1], ease: EASE_OUT } },
+  exit: (info: ExitInfo | undefined) =>
+    info?.sourceGone
+      ? { opacity: 0, scale: 0.96, z: 0, transition: { duration: 0.22, ease: EASE_IN_OUT } }
+      : { z: [16, 28, 0], rotateX: [0, -2, 0], transition: { duration: 0.32, ease: EASE_IN_OUT } },
+};
+
+const reducedDepthVariants: Variants = {
+  hidden: { opacity: 0 },
+  shown: { opacity: 1, transition: { duration: 0.18 } },
+  exit: { opacity: 0, transition: { duration: 0.15 } },
+};
+
+function StagePanel({ entry, exitInfo, onClose }: { entry: StageEntry; exitInfo: ExitInfo; onClose: () => void }) {
   const reduce = !!useReducedMotion();
+  // False once closing starts: from then on the whole scene lets taps through
+  // to the page, even if the exit animation is still finishing.
+  const isPresent = useIsPresent();
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const rawX = useMotionValue(0);
@@ -158,6 +237,9 @@ function StagePanel({ entry, onClose }: { entry: StageEntry; onClose: () => void
   const tiltX = useTransform(py, (v) => v * -2.5);
   const tiltY = useTransform(px, (v) => v * 2.5);
   const sheenX = useTransform(px, [-1, 1], ["-12%", "12%"]);
+  // Pointer tilt and the pointer-following reflection only exist where a
+  // hovering pointer does; touch gets a still, flat panel.
+  const finePointer = useMemo(() => window.matchMedia("(hover: hover) and (pointer: fine)").matches, []);
 
   useEffect(() => {
     closeRef.current?.focus({ preventScroll: true });
@@ -195,40 +277,44 @@ function StagePanel({ entry, onClose }: { entry: StageEntry; onClose: () => void
   const layoutTransition = reduce ? { duration: 0 } : FLOAT_SPRING;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center px-4 py-6" style={{ perspective: 1200 }}>
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center px-4"
+      style={{
+        pointerEvents: isPresent ? "auto" : "none",
+        perspective: 1200,
+        paddingTop: "max(24px, env(safe-area-inset-top))",
+        paddingBottom: "max(24px, env(safe-area-inset-bottom))",
+      }}
+    >
       <motion.div
         aria-hidden="true"
         onClick={onClose}
-        className="absolute inset-0 bg-black/60"
-        style={{ backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)" }}
+        className="absolute inset-0"
+        style={{ background: "rgb(var(--scrim) / 0.6)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)" }}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        transition={{ duration: reduce ? 0.15 : 0.35, ease: [0.4, 0, 0.2, 1] }}
+        transition={{ duration: reduce ? 0.15 : 0.3, ease: EASE_IN_OUT }}
       />
 
-      {/* 3D choreography: forward on translateZ with a brief tilt, then flat for reading. */}
       <motion.div
-        className="relative w-full max-w-[420px]"
+        className={`relative w-full max-w-[420px] ${entry.wide ? "lg:max-w-[880px]" : ""}`}
         style={{ transformStyle: "preserve-3d" }}
-        initial={reduce ? { opacity: 0 } : { z: 0, rotateX: 0 }}
-        animate={reduce ? { opacity: 1 } : { z: [0, 80, 0], rotateX: [0, 4, 0] }}
-        exit={
-          reduce
-            ? { opacity: 0 }
-            : { z: [0, 50, 0], rotateX: [0, -3, 0], transition: { duration: 0.45, ease: [0.4, 0, 0.2, 1] } }
-        }
-        transition={reduce ? { duration: 0.2 } : { duration: 0.6, times: [0, 0.42, 1], ease: [0.22, 1, 0.36, 1] }}
+        variants={reduce ? reducedDepthVariants : depthVariants}
+        custom={exitInfo}
+        initial="hidden"
+        animate="shown"
+        exit="exit"
       >
         {/* Pointer parallax (desktop only). */}
-        <motion.div className="relative" style={reduce ? undefined : { rotateX: tiltX, rotateY: tiltY, transformStyle: "preserve-3d" }}>
+        <motion.div className="relative" style={reduce || !finePointer ? undefined : { rotateX: tiltX, rotateY: tiltY, transformStyle: "preserve-3d" }}>
           <motion.div
             aria-hidden="true"
             className="absolute inset-0 rounded-[22px]"
-            style={{ boxShadow: "0 50px 100px -30px rgba(0,0,0,0.95), 0 24px 48px -24px rgba(122,18,25,0.4)" }}
+            style={{ boxShadow: "var(--shadow-float)" }}
             initial={{ opacity: 0 }}
-            animate={{ opacity: 1, transition: { delay: 0.22, duration: 0.4 } }}
-            exit={{ opacity: 0, transition: { duration: 0.15 } }}
+            animate={{ opacity: 1, transition: { delay: 0.12, duration: 0.3 } }}
+            exit={{ opacity: 0, transition: { duration: 0.12 } }}
           />
 
           <motion.div
@@ -241,18 +327,18 @@ function StagePanel({ entry, onClose }: { entry: StageEntry; onClose: () => void
             onKeyDown={trapFocus}
             onPointerMove={handlePointerMove}
             onPointerLeave={resetPointer}
-            className="relative flex flex-col w-full overflow-hidden border border-[#9B1B24]/35 bg-[rgba(16,16,16,0.88)]"
+            className="relative flex flex-col w-full overflow-hidden border border-line bg-surface"
             style={{
               borderRadius: 22,
-              maxHeight: "calc(100dvh - 48px)",
-              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.09), inset 0 0 0 1px rgba(255,255,255,0.04)",
+              maxHeight: "calc(100dvh - max(24px, env(safe-area-inset-top)) - max(24px, env(safe-area-inset-bottom)))",
+              boxShadow: "inset 0 1px 0 rgb(var(--edge) / 0.08)",
             }}
           >
             <motion.div layout transition={layoutTransition} className="relative min-h-0 overflow-y-auto overscroll-contain">
               <DepthContext.Provider value={{ px, py, reduce }}>{entry.render()}</DepthContext.Provider>
             </motion.div>
 
-            <GlassSheen sheenX={sheenX} reduce={reduce} />
+            <GlassSheen sheenX={sheenX} reduce={reduce} finePointer={finePointer} />
 
             <motion.button
               ref={closeRef}
@@ -260,9 +346,10 @@ function StagePanel({ entry, onClose }: { entry: StageEntry; onClose: () => void
               onClick={onClose}
               aria-label="Close"
               initial={{ opacity: 0 }}
-              animate={{ opacity: 1, transition: { delay: 0.25, duration: 0.25 } }}
+              animate={{ opacity: 1, transition: { delay: 0.18, duration: 0.2 } }}
               exit={{ opacity: 0, transition: { duration: 0.1 } }}
-              className="absolute top-3 right-3 z-20 w-10 h-10 rounded-full flex items-center justify-center text-ink bg-black/55 border border-white/10 outline-none focus-visible:border-[#C9525A]"
+              className="absolute top-3 right-3 z-20 w-11 h-11 rounded-full flex items-center justify-center text-white border border-white/15 outline-none focus-visible:ring-2 focus-visible:ring-rose"
+              style={{ background: "rgb(20 18 16 / 0.62)" }}
             >
               <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
                 <path d="M6 6l12 12M18 6L6 18" />
@@ -275,33 +362,35 @@ function StagePanel({ entry, onClose }: { entry: StageEntry; onClose: () => void
   );
 }
 
-/* Decorative glass only: a pointer-following reflection, a one-time liquid
-   shimmer (the only distorted layer), and a luminous top edge. It sits over
-   the content with pointer-events off and screen blending, so text and
-   photos underneath are never filtered. */
-function GlassSheen({ sheenX, reduce }: { sheenX: MotionValue<string>; reduce: boolean }) {
+/* Decorative glass only: a single liquid reflection that crosses once and is
+   gone before reading starts, a luminous top edge, and (with a mouse) a faint
+   pointer-following sheen. Pointer events are off and nothing here filters
+   the text or photos underneath. */
+function GlassSheen({ sheenX, reduce, finePointer }: { sheenX: MotionValue<string>; reduce: boolean; finePointer: boolean }) {
   return (
     <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-10 overflow-hidden" style={{ mixBlendMode: "screen" }}>
-      <motion.div
-        className="absolute inset-y-0 -left-1/4 w-[150%]"
-        style={{
-          x: reduce ? 0 : sheenX,
-          background: "linear-gradient(115deg, transparent 35%, rgba(255,255,255,0.06) 47%, rgba(255,255,255,0.015) 53%, transparent 64%)",
-        }}
-      />
+      {finePointer && !reduce && (
+        <motion.div
+          className="absolute inset-y-0 -left-1/4 w-[150%]"
+          style={{
+            x: sheenX,
+            background: "linear-gradient(115deg, transparent 38%, rgb(255 255 255 / 0.05) 48%, rgb(255 255 255 / 0.012) 54%, transparent 64%)",
+          }}
+        />
+      )}
       {!reduce && (
         <motion.div
           className="absolute inset-y-0 left-0 w-2/3"
           style={{
-            background: "linear-gradient(100deg, transparent 0%, rgba(237,232,225,0.14) 45%, rgba(155,27,36,0.12) 60%, transparent 100%)",
+            background: "linear-gradient(100deg, transparent 0%, rgb(243 238 231 / 0.14) 45%, rgb(216 156 164 / 0.12) 60%, transparent 100%)",
             filter: "url(#bhk-liquid)",
           }}
           initial={{ x: "-110%", opacity: 0 }}
           animate={{ x: "210%", opacity: [0, 1, 1, 0] }}
-          transition={{ duration: 1.15, delay: 0.2, ease: [0.4, 0, 0.2, 1] }}
+          transition={{ duration: 0.75, delay: 0.12, ease: EASE_IN_OUT }}
         />
       )}
-      <div className="absolute inset-x-0 top-0 h-px" style={{ background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.22), transparent)" }} />
+      <div className="absolute inset-x-0 top-0 h-px" style={{ background: "linear-gradient(90deg, transparent, rgb(255 255 255 / 0.22), transparent)" }} />
     </div>
   );
 }
@@ -314,19 +403,22 @@ interface Ripple {
 
 /** A tappable card that lifts into a floating panel. Hidden (not unmounted)
  * while its panel is open so the list keeps its layout; the shared layoutId
- * carries position, size and corner radius between the two. */
+ * carries position, size and corner radius between the two. `wide` panels
+ * become a two-column detail view on desktop. */
 export function FloatCard({
   id,
   label,
   panel,
+  wide = false,
   className = "",
   contentClassName = "",
-  radius = 16,
+  radius = 22,
   children,
 }: {
   id: string;
   label: string;
   panel: () => ReactNode;
+  wide?: boolean;
   className?: string;
   contentClassName?: string;
   radius?: number;
@@ -335,17 +427,26 @@ export function FloatCard({
   const { openId, open } = useCardStage();
   const reduce = !!useReducedMotion();
   const buttonRef = useRef<HTMLDivElement>(null);
+  const downAt = useRef<{ x: number; y: number } | null>(null);
   const [ripples, setRipples] = useState<Ripple[]>([]);
   const isOpen = openId === id;
 
   function trigger() {
-    open({ id, label, render: panel, trigger: buttonRef.current });
+    open({ id, label, render: panel, trigger: buttonRef.current, wide });
   }
 
-  function spawnRipple(e: ReactPointerEvent<HTMLDivElement>) {
+  function handlePointerDown(e: ReactPointerEvent<HTMLDivElement>) {
+    downAt.current = { x: e.clientX, y: e.clientY };
     if (reduce || !buttonRef.current) return;
     const rect = buttonRef.current.getBoundingClientRect();
     setRipples((prev) => [...prev.slice(-2), { id: performance.now(), x: e.clientX - rect.left, y: e.clientY - rect.top }]);
+  }
+
+  function handleTap(e: MouseEvent | TouchEvent | PointerEvent) {
+    const start = downAt.current;
+    downAt.current = null;
+    if (start && "clientX" in e && Math.hypot(e.clientX - start.x, e.clientY - start.y) > TAP_SLOP_PX) return;
+    trigger();
   }
 
   return (
@@ -353,7 +454,7 @@ export function FloatCard({
       layoutId={id}
       transition={reduce ? { duration: 0 } : FLOAT_SPRING}
       className={`overflow-hidden ${className}`}
-      style={{ borderRadius: radius, visibility: isOpen ? "hidden" : "visible" }}
+      style={{ borderRadius: radius, visibility: isOpen ? "hidden" : "visible", boxShadow: "var(--shadow-card)" }}
     >
       <motion.div
         ref={buttonRef}
@@ -364,15 +465,15 @@ export function FloatCard({
         aria-expanded={isOpen}
         whileTap={reduce ? undefined : { scale: 0.98 }}
         transition={{ type: "spring", stiffness: 500, damping: 32 }}
-        onTap={trigger}
-        onPointerDown={spawnRipple}
+        onTap={handleTap}
+        onPointerDown={handlePointerDown}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
             trigger();
           }
         }}
-        className="relative h-full w-full cursor-pointer text-left outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#C9525A]"
+        className="relative h-full w-full cursor-pointer text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-rose"
         style={{ borderRadius: radius }}
       >
         <motion.div layout transition={reduce ? { duration: 0 } : FLOAT_SPRING} className={contentClassName}>
@@ -386,11 +487,11 @@ export function FloatCard({
               style={{
                 left: rp.x,
                 top: rp.y,
-                background: "radial-gradient(circle, rgba(237,232,225,0.32) 0%, rgba(155,27,36,0.16) 45%, transparent 70%)",
+                background: "radial-gradient(circle, rgb(var(--ink) / 0.26) 0%, rgb(var(--accent) / 0.16) 45%, transparent 70%)",
               }}
               initial={{ scale: 0, opacity: 1 }}
               animate={{ scale: 9, opacity: 0 }}
-              transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+              transition={{ duration: 0.5, ease: EASE_OUT }}
               onAnimationComplete={() => setRipples((prev) => prev.filter((p) => p.id !== rp.id))}
             />
           ))}
@@ -400,12 +501,12 @@ export function FloatCard({
   );
 }
 
-/** Shared artwork between a card and its panel: a photo, or the engraved
- * medallion when there's no photo. */
+/** Shared artwork between a card and its panel: the real photo, or the
+ * category illustration when there isn't one. */
 export function FloatMedia({
   id,
   photo,
-  seed,
+  category,
   className = "",
   radius = 0,
   compact = false,
@@ -413,7 +514,7 @@ export function FloatMedia({
 }: {
   id: string;
   photo?: string | null;
-  seed: string;
+  category: string | null | undefined;
   className?: string;
   radius?: number;
   compact?: boolean;
@@ -435,16 +536,13 @@ export function FloatMedia({
           alt=""
           draggable={false}
           className="absolute inset-0 w-full h-full object-cover"
-          style={{ filter: "saturate(0.85)" }}
         />
       ) : (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <motion.div layoutId={`${id}-mark`} transition={FLOAT_SPRING} className={compact ? "w-[88%] h-[88%]" : "h-[62%] aspect-square"}>
-            <Medallion seed={seed} label={seed} className="w-full h-full" />
-          </motion.div>
-        </div>
+        <motion.div layoutId={`${id}-art`} transition={FLOAT_SPRING} className="absolute inset-0">
+          <CategoryArt category={category} compact={compact} />
+        </motion.div>
       )}
-      {scrim && <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />}
+      {scrim && photo && <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent" />}
     </motion.div>
   );
 }
@@ -458,10 +556,10 @@ export function DepthLayer({ depth, className = "", children }: { depth: number;
   return (
     <motion.div
       className={className}
-      initial={reduce ? { opacity: 0 } : { opacity: 0, y: 8 + depth * 0.5 }}
+      initial={reduce ? { opacity: 0 } : { opacity: 0, y: 6 + depth * 0.4 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, transition: { duration: 0.12 } }}
-      transition={reduce ? { duration: 0.2 } : { ...FLOAT_SPRING, delay: 0.1 + depth * 0.012 }}
+      exit={{ opacity: 0, transition: { duration: 0.1 } }}
+      transition={reduce ? { duration: 0.18 } : { ...FLOAT_SPRING, delay: 0.06 + depth * 0.01 }}
     >
       <motion.div style={reduce ? undefined : { x, y }}>{children}</motion.div>
     </motion.div>

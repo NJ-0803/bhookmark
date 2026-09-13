@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import Medallion from "../components/Medallion";
+import CategoryArt from "../components/CategoryArt";
 import { DepthLayer, FloatCard, FloatMedia } from "../components/CardStage";
 import { getNearbyVenues, getVenueCategories, searchVenues, submitVenue, type NearbyVenue, type VenueSearchResult } from "../api";
 import { LIQUID_SPRING, TAP_SCALE } from "../motion";
@@ -257,12 +257,7 @@ export default function NearMe({ onBack }: { onBack: () => void }) {
 }
 
 function CategoryPlaceholder({ category }: { category: string | null }) {
-  const seed = category ?? "Bhookmark";
-  return (
-    <div className="absolute inset-0 bg-surface2 flex items-center justify-center">
-      <Medallion seed={seed} label={seed} className="w-full h-full" />
-    </div>
-  );
+  return <CategoryArt category={category} compact />;
 }
 
 function VenueCard({ venue, index, category }: { venue: NearbyVenue; index: number; category: string }) {
@@ -273,18 +268,19 @@ function VenueCard({ venue, index, category }: { venue: NearbyVenue; index: numb
       <FloatCard
         id={id}
         label={venue.name}
+        wide
         className="bg-surface border border-line"
         panel={() => <VenuePanel venue={venue} category={category} mediaId={`${id}-media`} />}
       >
-        {venue.photo && <FloatMedia id={`${id}-media`} photo={venue.photo} seed={category} className="aspect-[21/9]" />}
+        {venue.photo && <FloatMedia id={`${id}-media`} photo={venue.photo} category={category} className="aspect-[16/9]" />}
         <div className="p-4 flex items-center gap-3">
-          {!venue.photo && <FloatMedia id={`${id}-media`} seed={category} className="w-11 h-11 shrink-0" radius={22} compact />}
+          {!venue.photo && <FloatMedia id={`${id}-media`} category={category} className="w-14 h-14 shrink-0" radius={14} compact />}
           <div className="min-w-0 flex-1">
-            <span className="dish-name text-[16px] text-ink">{venue.name}</span>
-            <div className="text-faint text-xs mt-1">
+            <span className="dish-name text-[20px] text-ink line-clamp-2">{venue.name}</span>
+            <div className="text-muted text-[14px] mt-1">
               {venue.area} · {venue.distanceKm} km away
             </div>
-            <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-faint mt-2">
+            <div className="text-[12px] text-muted mt-1.5">
               {reviewCount > 0 ? `${reviewCount} Bhookmark review${reviewCount === 1 ? "" : "s"}` : "No Bhookmark reviews yet"}
             </div>
           </div>
@@ -301,15 +297,21 @@ function VenuePanel({ venue, category, mediaId }: { venue: NearbyVenue; category
   // No coordinates on NearbyVenue, so Maps resolves the place by name + area.
   const mapsHref = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${venue.name} ${venue.area}`)}`;
   return (
-    <>
-      <FloatMedia id={mediaId} photo={venue.photo} seed={category} className="aspect-[16/10]" scrim />
-      <div className="p-5">
+    <div className="lg:grid lg:grid-cols-2">
+      <FloatMedia
+        id={mediaId}
+        photo={venue.photo}
+        category={category}
+        className="aspect-[4/3] lg:aspect-auto lg:sticky lg:top-0 lg:self-start lg:h-[min(560px,calc(100dvh-48px))]"
+        scrim
+      />
+      <div className="p-5 lg:p-7">
         <DepthLayer depth={6}>
-          <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-faint mb-2">
+          <p className="text-[13px] text-muted mb-1.5">
             {category} · {venue.distanceKm} km away
           </p>
-          <h2 className="dish-name text-[20px] text-ink">{venue.name}</h2>
-          <p className="text-muted text-[13px] mt-2">{venue.area}</p>
+          <h2 className="dish-name text-[30px] text-ink lg:pr-12">{venue.name}</h2>
+          <p className="text-muted text-[15px] mt-2">{venue.area}</p>
           {venue.photo && !venue.photoIsVerified && <p className="text-faint text-[11px] mt-1.5">Representative photo, not taken at this venue.</p>}
         </DepthLayer>
 
@@ -343,7 +345,7 @@ function VenuePanel({ venue, category, mediaId }: { venue: NearbyVenue; category
           </a>
         </DepthLayer>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -361,7 +363,7 @@ function SearchResultCard({ venue }: { venue: VenueSearchResult }) {
         </div>
       </div>
       {venue.category ? (
-        <span className="text-[10px] font-mono uppercase text-accent bg-accentDim rounded-full px-2 py-1 shrink-0">{venue.category}</span>
+        <span className="text-[10px] font-mono uppercase text-rose bg-accentDim rounded-full px-2 py-1 shrink-0">{venue.category}</span>
       ) : (
         <span className="text-[10px] font-mono uppercase text-faint bg-surface2 rounded-full px-2 py-1 shrink-0">uncategorized</span>
       )}
@@ -413,7 +415,7 @@ function SubmitVenueLink({
 
   if (!show) {
     return (
-      <button onClick={() => setShow(true)} className="w-full bg-surface border border-dashed border-line rounded-xl py-3.5 text-sm font-medium text-accent">
+      <button onClick={() => setShow(true)} className="w-full bg-surface border border-dashed border-line rounded-xl py-3.5 text-sm font-medium text-rose">
         Don't see your spot? Add it
       </button>
     );
@@ -421,7 +423,7 @@ function SubmitVenueLink({
 
   if (status === "done") {
     return (
-      <div className="bg-accentDim border border-accent/30 rounded-xl px-4 py-4 text-sm text-accent">
+      <div className="bg-accentDim border border-accent/30 rounded-xl px-4 py-4 text-sm text-rose">
         Thanks — sent for review. A moderator will check it before it appears for everyone.
       </div>
     );

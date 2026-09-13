@@ -34,10 +34,10 @@ function MatchRing({ score, size = "sm" }: { score: number; size?: "sm" | "lg" }
   return (
     <div
       className={`relative rounded-full shrink-0 ${lg ? "w-14 h-14" : "w-9 h-9"}`}
-      style={{ background: `conic-gradient(#9B1B24 ${score * 3.6}deg, #1C1C1C 0deg)` }}
+      style={{ background: `conic-gradient(rgb(var(--accent)) ${score * 3.6}deg, rgb(var(--surface2)) 0deg)` }}
     >
       <div className={`absolute rounded-full bg-surface flex items-center justify-center ${lg ? "inset-[4px]" : "inset-[3px]"}`}>
-        <span className={`font-mono font-semibold text-accent tabular ${lg ? "text-[12px]" : "text-[9px]"}`}>{score}</span>
+        <span className={`font-mono font-semibold text-rose tabular ${lg ? "text-[12px]" : "text-[9px]"}`}>{score}</span>
       </div>
     </div>
   );
@@ -159,7 +159,7 @@ export default function FoodCircles() {
       <Reveal className="bg-surface border border-line rounded-card p-4 mb-5">
         <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-faint mb-2">Your friend code</p>
         <div className="flex items-center justify-between mb-3">
-          <span className="font-mono text-2xl font-bold tabular text-gradient">{myCode ?? "········"}</span>
+          <span className="font-mono text-2xl font-bold tabular text-ink">{myCode ?? "········"}</span>
           <span className="text-faint text-xs">Share this so others can add you</span>
         </div>
         <div className="flex gap-2">
@@ -174,13 +174,13 @@ export default function FoodCircles() {
             whileTap={TAP_SCALE}
             onClick={submitAddFriend}
             disabled={addingFriend || !addCodeInput.trim()}
-            className="gradient-primary text-white font-semibold rounded-lg px-4 text-sm disabled:opacity-40"
+            className="gradient-primary text-accentInk font-semibold rounded-lg px-4 text-sm disabled:opacity-40"
           >
             Add
           </motion.button>
         </div>
         {addFriendError && <p className="text-bad text-xs mt-2">{addFriendError}</p>}
-        {addFriendNotice && <p className="text-accent text-xs mt-2">{addFriendNotice}</p>}
+        {addFriendNotice && <p className="text-rose text-xs mt-2">{addFriendNotice}</p>}
         {friends && friends.length > 0 && (
           <p className="text-faint text-[11px] mt-2">{friends.length} friend{friends.length === 1 ? "" : "s"} added</p>
         )}
@@ -199,7 +199,7 @@ export default function FoodCircles() {
                   <button
                     onClick={() => respond(r.id, true)}
                     disabled={respondingTo === r.id}
-                    className="text-xs font-semibold text-accent px-2.5 py-1.5 rounded-lg bg-accentDim disabled:opacity-40"
+                    className="text-xs font-semibold text-rose px-2.5 py-1.5 rounded-lg bg-accentDim disabled:opacity-40"
                   >
                     Accept
                   </button>
@@ -220,7 +220,7 @@ export default function FoodCircles() {
       <Reveal className="bg-surface border border-line rounded-card p-4 mb-5">
         <div className="flex items-center justify-between mb-1.5">
           <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-faint">Friend-nearby alerts</p>
-          {pushState === "subscribed" && <span className="text-accent text-[11px] font-medium">on</span>}
+          {pushState === "subscribed" && <span className="text-rose text-[11px] font-medium">on</span>}
         </div>
         <p className="text-sm text-ink/90 mb-3">
           {pushState === "unsupported"
@@ -234,7 +234,7 @@ export default function FoodCircles() {
             onClick={togglePush}
             whileTap={TAP_SCALE}
             transition={LIQUID_SPRING}
-            className={`w-full rounded-xl py-2.5 text-sm font-semibold ${pushState === "subscribed" ? "bg-surface2 border border-line text-muted" : "gradient-primary text-white"}`}
+            className={`w-full rounded-xl py-2.5 text-sm font-semibold ${pushState === "subscribed" ? "bg-surface2 border border-line text-muted" : "gradient-primary text-accentInk"}`}
           >
             {pushState === "subscribed" ? "Turn off" : "Turn on notifications"}
           </motion.button>
@@ -245,7 +245,7 @@ export default function FoodCircles() {
               onClick={simulate}
               whileTap={TAP_SCALE}
               transition={LIQUID_SPRING}
-              className="w-full rounded-xl py-2.5 text-xs font-medium text-accent border border-accent/30 mt-2"
+              className="w-full rounded-xl py-2.5 text-xs font-medium text-rose border border-accent/30 mt-2"
             >
               Test it: simulate "Aish logged nearby"
             </motion.button>
@@ -314,7 +314,7 @@ export default function FoodCircles() {
               }`}
             >
               <span className="text-sm">Friend {initialsFor(f.id)}</span>
-              <span className={`text-xs ${selectedMemberIds.has(f.id) ? "text-accent" : "text-faint"}`}>
+              <span className={`text-xs ${selectedMemberIds.has(f.id) ? "text-rose" : "text-faint"}`}>
                 {selectedMemberIds.has(f.id) ? "added" : "add"}
               </span>
             </button>
@@ -324,7 +324,7 @@ export default function FoodCircles() {
           whileTap={TAP_SCALE}
           onClick={submitCreateCircle}
           disabled={creatingCircle || !newCircleName.trim()}
-          className="w-full gradient-primary text-white font-semibold rounded-xl py-3 disabled:opacity-40"
+          className="w-full gradient-primary text-accentInk font-semibold rounded-xl py-3 disabled:opacity-40"
         >
           Create circle
         </motion.button>

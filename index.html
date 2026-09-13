@@ -4,8 +4,21 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0A0A0A" />
+    <meta name="theme-color" content="#151412" />
     <title>Bhookmark</title>
+    <!-- Applies the saved Evening/Daylight choice before first paint so the
+         page never flashes the wrong theme. Kept in sync with src/theme.ts. -->
+    <script>
+      (function () {
+        var theme = "evening";
+        try {
+          var pref = localStorage.getItem("bhookmark.theme");
+          if (pref === "daylight") theme = "daylight";
+          else if (pref === "system" && window.matchMedia("(prefers-color-scheme: light)").matches) theme = "daylight";
+        } catch (e) {}
+        document.documentElement.setAttribute("data-theme", theme);
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

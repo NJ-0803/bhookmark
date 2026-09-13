@@ -267,7 +267,7 @@ export default function LogFlow({
           {step === "verify" && (
             <div className="px-5">
               <div className="flex items-center gap-3 mb-4">
-                <DishThumb seed={workingDish.category} size="sm" />
+                <DishThumb category={workingDish.category} size="sm" />
                 <div>
                   <div className="font-semibold text-sm">{workingDish.name}</div>
                   <div className="text-faint text-xs">{workingDish.category} · {workingDish.subtype}</div>
@@ -302,12 +302,12 @@ export default function LogFlow({
             <div className="px-5">
               <h3 className="font-display font-bold text-xl mb-5">Ready to log</h3>
               <div className="bg-surface border border-line rounded-card p-4 flex items-center gap-3 mb-5">
-                <DishThumb seed={workingDish.category} photo={photoUrl ?? undefined} size="md" />
+                <DishThumb category={workingDish.category} photo={photoUrl ?? undefined} size="md" />
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-sm truncate">{workingDish.name}</div>
                   <div className="text-faint text-xs truncate">{workingDish.venue || "Venue not set"}</div>
                 </div>
-                <span className={`text-xs font-mono px-2 py-1 rounded ${locationCoords ? "bg-accentDim text-accent" : "bg-surface2 text-faint"}`}>
+                <span className={`text-xs font-mono px-2 py-1 rounded ${locationCoords ? "bg-accentDim text-rose" : "bg-surface2 text-faint"}`}>
                   {locationCoords ? "location shared" : "manual only"}
                 </span>
               </div>
@@ -391,7 +391,7 @@ export default function LogFlow({
                 {photoUrl ? (
                   <img src={photoUrl} alt="" className="w-full aspect-[16/10] object-cover rounded-xl" />
                 ) : (
-                  <DishThumb seed={workingDish.category} size="lg" />
+                  <DishThumb category={workingDish.category} size="lg" />
                 )}
                 <span className="dish-name text-[17px] text-ink mt-3">{workingDish.name}</span>
                 <div className="text-faint text-xs mt-1.5">{workingDish.venue}</div>
@@ -418,7 +418,7 @@ export default function LogFlow({
           )}
         </div>
       </div>
-      <style>{`.input { background: #161616; border: 1px solid #2A1518; border-radius: 10px; padding: 10px 14px; font-size: 14px; color: #EDE8E1; outline: none; } .input:focus { border-color: #9B1B24; }`}</style>
+      <style>{`.input { background: rgb(var(--surface2)); border: 1px solid rgb(var(--line)); border-radius: 12px; padding: 11px 14px; font-size: 16px; color: rgb(var(--ink)); outline: none; } .input:focus { border-color: rgb(var(--rose)); }`}</style>
     </motion.div>
   );
 }

@@ -33,13 +33,13 @@ function RadiusRing({ radius, onChange }: { radius: number; onChange: (v: number
       </motion.button>
       <div className="relative w-20 h-20 shrink-0">
         <svg viewBox="0 0 80 80" className="w-full h-full -rotate-90">
-          <circle cx="40" cy="40" r="34" fill="none" stroke="#1C1C1C" strokeWidth="7" />
+          <circle cx="40" cy="40" r="34" fill="none" className="stroke-surface2" strokeWidth="7" />
           <motion.circle
             cx="40"
             cy="40"
             r="34"
             fill="none"
-            stroke="#9B1B24"
+            className="stroke-accent"
             strokeWidth="7"
             strokeLinecap="round"
             strokeDasharray={circumference}
@@ -163,36 +163,55 @@ export default function CravingRoom() {
 
   if (mode === "lobby") {
     return (
-      <div className="px-5 pt-8 pb-32">
-        <p className="font-mono text-[11px] tracking-[0.14em] uppercase text-faint mb-2">Craving Room</p>
-        <h1 className="font-display font-extrabold text-2xl mb-1.5 text-gradient">Where are we eating?</h1>
-        <p className="text-muted text-sm mb-8">A real, temporary session — start one and share the code, or join one someone sent you.</p>
+      <div className="px-5 pt-6 pb-32">
+        <h1 className="font-display font-semibold text-[26px] leading-tight tracking-[-0.02em] text-ink mb-1.5">Where are we eating?</h1>
+        <p className="text-muted text-[15px] mb-6 leading-snug">Swipe the same shortlist with your table. Only dishes everyone likes make the final pick.</p>
 
-        <motion.button
-          onClick={() => setMode("create-setup")}
-          whileTap={TAP_SCALE}
-          transition={LIQUID_SPRING}
-          className="w-full gradient-primary text-white font-semibold rounded-xl py-4 mb-3"
-        >
-          Start a new room
-        </motion.button>
+        {/* Two distinct paths: hosting is the filled primary action, joining is
+            the outlined secondary one, so the next step is never ambiguous. */}
+        <section aria-labelledby="start-room" className="bg-surface border border-line rounded-card p-5 mb-4">
+          <p className="text-[13px] text-rose mb-1">Host</p>
+          <h2 id="start-room" className="text-[18px] font-medium text-ink">
+            Start a room
+          </h2>
+          <p className="text-[14px] text-muted mt-1 mb-4 leading-snug">Pick a vibe and a distance, then share the code with everyone eating.</p>
+          <motion.button
+            onClick={() => setMode("create-setup")}
+            whileTap={TAP_SCALE}
+            transition={LIQUID_SPRING}
+            className="w-full h-12 gradient-primary text-accentInk text-[15px] font-medium rounded-xl"
+          >
+            Start a new room
+          </motion.button>
+        </section>
 
-        <div className="bg-surface border border-line rounded-card p-4">
-          <p className="font-mono text-[10px] tracking-[0.08em] uppercase text-faint mb-2">Have a code?</p>
-          <div className="flex gap-2">
+        <section aria-labelledby="join-room" className="rounded-card border border-dashed border-line p-5">
+          <p className="text-[13px] text-muted mb-1">Guest</p>
+          <h2 id="join-room" className="text-[18px] font-medium text-ink">
+            Join with a code
+          </h2>
+          <p className="text-[14px] text-muted mt-1 mb-4 leading-snug">Someone already started one? Enter the code they sent you.</p>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              joinWithCode();
+            }}
+            className="flex gap-2"
+          >
             <input
               value={joinCode}
               onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-              placeholder="Room code"
+              placeholder="CODE"
               aria-label="Room code"
-              className="flex-1 bg-surface2 border border-line rounded-lg px-3 py-2.5 text-sm outline-none focus:border-accent font-mono uppercase"
+              autoCapitalize="characters"
+              className="flex-1 min-w-0 h-12 bg-surface border border-line rounded-xl px-4 text-[16px] text-ink font-mono uppercase tracking-[0.2em] outline-none focus:border-rose"
             />
-            <motion.button whileTap={TAP_SCALE} onClick={joinWithCode} className="gradient-primary text-white font-semibold rounded-lg px-4 text-sm">
+            <motion.button type="submit" whileTap={TAP_SCALE} className="h-12 px-5 rounded-xl border border-rose/60 text-rose text-[15px] font-medium">
               Join
             </motion.button>
-          </div>
-          {joinError && <p className="text-bad text-xs mt-2">{joinError}</p>}
-        </div>
+          </form>
+          {joinError && <p className="text-bad text-[13px] mt-2">{joinError}</p>}
+        </section>
       </div>
     );
   }
@@ -235,7 +254,7 @@ export default function CravingRoom() {
           whileTap={TAP_SCALE}
           transition={LIQUID_SPRING}
           disabled={creating}
-          className="w-full gradient-primary text-white font-semibold rounded-xl py-3.5 disabled:opacity-60"
+          className="w-full gradient-primary text-accentInk font-semibold rounded-xl py-3.5 disabled:opacity-60"
         >
           {creating ? "Starting…" : "Start swiping"}
           <span className="block text-xs font-normal opacity-80 mt-0.5">{matchCount} places match your group</span>
@@ -249,7 +268,7 @@ export default function CravingRoom() {
       <div className="px-5 pt-8 pb-32">
         <div className="flex items-center justify-center gap-2 mb-3">
           <span className="font-mono text-[11px] text-faint">Room</span>
-          <span className="font-mono text-sm font-bold tracking-widest text-gradient">{room.code}</span>
+          <span className="font-mono text-sm font-bold tracking-widest text-ink">{room.code}</span>
         </div>
         <p className="font-mono text-[11px] tracking-[0.1em] uppercase text-faint mb-4 text-center">
           Dish {idx + 1} of {candidates.length}
@@ -282,7 +301,7 @@ export default function CravingRoom() {
   const winner = reveal?.unanimous[0];
   return (
     <div className="px-5 pt-8 pb-32">
-      <p className="font-mono text-[11px] tracking-[0.14em] uppercase text-accent mb-2">Everyone's in</p>
+      <p className="font-mono text-[11px] tracking-[0.14em] uppercase text-rose mb-2">Everyone's in</p>
       <h1 className="font-display font-extrabold text-2xl mb-6">{winner ? "Table's set." : "Tonight's overlap"}</h1>
 
       {winner ? (
@@ -298,9 +317,9 @@ export default function CravingRoom() {
             transition={{ duration: 1.1, ease: "easeOut" }}
             className="absolute inset-0 rounded-card bg-accent/25"
           />
-          <DishThumb seed={winner.category} photo={winner.photo} size="card" />
+          <DishThumb category={winner.category} photo={winner.photo} size="card" />
           <div className="min-w-0 relative">
-            <span className="inline-block mb-1 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full gradient-primary text-white">
+            <span className="inline-block mb-1 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full gradient-primary text-accentInk">
               🎉 unanimous pick
             </span>
             <div className="font-display font-bold text-base truncate">{winner.name}</div>
@@ -315,11 +334,11 @@ export default function CravingRoom() {
         <div className="flex flex-col gap-2.5 mb-6">
           {reveal.unanimous.slice(1).map((d) => (
             <div key={d.id} className="flex gap-3 bg-surface border border-accent/40 rounded-xl p-3">
-              <DishThumb seed={d.category} photo={d.photo} size="md" />
+              <DishThumb category={d.category} photo={d.photo} size="md" />
               <div className="min-w-0">
                 <div className="font-semibold text-sm truncate">{d.name}</div>
                 <div className="text-faint text-xs truncate">{d.venue} · {d.area}</div>
-                <span className="inline-block mt-1.5 text-[10px] font-medium px-2 py-0.5 rounded-full bg-accentDim text-accent">
+                <span className="inline-block mt-1.5 text-[10px] font-medium px-2 py-0.5 rounded-full bg-accentDim text-rose">
                   everyone liked this
                 </span>
               </div>
@@ -334,7 +353,7 @@ export default function CravingRoom() {
           <div className="flex flex-col gap-2.5 mb-6">
             {reveal.partial.map((d) => (
               <div key={d.id} className="flex gap-3 bg-surface border border-line rounded-xl p-3">
-                <DishThumb seed={d.category} photo={d.photo} size="sm" />
+                <DishThumb category={d.category} photo={d.photo} size="sm" />
                 <div className="min-w-0">
                   <div className="font-semibold text-sm truncate">{d.name}</div>
                   <div className="text-faint text-xs truncate">{d.venue}</div>
@@ -345,7 +364,7 @@ export default function CravingRoom() {
         </>
       )}
 
-      <button onClick={backToLobby} className="w-full text-accent text-sm font-medium py-3">
+      <button onClick={backToLobby} className="w-full text-rose text-sm font-medium py-3">
         Start another room
       </button>
     </div>
@@ -391,14 +410,14 @@ function SwipeCard({ dish, onSwipe }: { dish: DishEntry; onSwipe: (like: boolean
       style={{ x, rotate, touchAction: "pan-y" }}
       className="absolute inset-0 bg-surface border border-line rounded-card p-4 cursor-grab active:cursor-grabbing"
     >
-      <motion.span style={{ opacity: likeOpacity }} className="absolute top-4 right-4 z-10 text-accent border-2 border-accent rounded-lg px-3 py-1 text-sm font-bold rotate-6">
+      <motion.span style={{ opacity: likeOpacity }} className="absolute top-4 right-4 z-10 text-rose border-2 border-accent rounded-lg px-3 py-1 text-sm font-bold rotate-6">
         LIKE
       </motion.span>
       <motion.span style={{ opacity: nopeOpacity }} className="absolute top-4 left-4 z-10 text-bad border-2 border-bad rounded-lg px-3 py-1 text-sm font-bold -rotate-6">
         NOPE
       </motion.span>
 
-      <DishThumb seed={dish.category} photo={dish.photo} size="lg" />
+      <DishThumb category={dish.category} photo={dish.photo} size="lg" />
       <div className="text-center mt-4 mb-6">
         <h3 className="dish-name text-[18px] text-ink">{dish.name}</h3>
         <p className="text-muted text-sm mt-1">{dish.venue} · {dish.area}</p>

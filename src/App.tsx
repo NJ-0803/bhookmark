@@ -64,6 +64,9 @@ export default function App() {
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -6 }}
         transition={LIQUID_SPRING}
+        // Home lays itself out across the desktop width; every other screen
+        // keeps a capped reading column.
+        className={tab === "home" ? "" : "lg:max-w-[620px] lg:mx-auto"}
       >
         {tab === "home" && <Home onLogDish={(dish) => setLogFlow({ open: true, prefill: dish })} />}
         {tab === "bhookmarks" && (
@@ -75,7 +78,7 @@ export default function App() {
         )}
         {tab === "circles" && <Circles />}
         {tab === "profile" && (
-          <Profile logs={remoteLogs ?? []} onSignOut={() => setAuthed(false)} />
+          <Profile logs={remoteLogs ?? []} onSignOut={() => setAuthed(false)} onLogFirst={() => setLogFlow({ open: true })} />
         )}
       </motion.div>
       </AnimatePresence>

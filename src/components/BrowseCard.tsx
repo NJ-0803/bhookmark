@@ -68,12 +68,12 @@ export default function BrowseCard({
       className={`relative cursor-grab active:cursor-grabbing ${className}`}
     >
       {canNext && (
-        <motion.span style={{ opacity: nextOpacity }} className="absolute top-3 right-3 z-10 text-accent text-lg pointer-events-none">
+        <motion.span style={{ opacity: nextOpacity }} className="absolute top-3 right-3 z-10 text-rose text-lg pointer-events-none">
           ›
         </motion.span>
       )}
       {canPrev && (
-        <motion.span style={{ opacity: prevOpacity }} className="absolute top-3 left-3 z-10 text-accent text-lg pointer-events-none">
+        <motion.span style={{ opacity: prevOpacity }} className="absolute top-3 left-3 z-10 text-rose text-lg pointer-events-none">
           ‹
         </motion.span>
       )}

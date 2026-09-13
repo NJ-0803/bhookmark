@@ -56,7 +56,7 @@ export default function SwipeCard({
       style={{ x, rotate, touchAction: "pan-y" }}
       className={`relative cursor-grab active:cursor-grabbing ${className}`}
     >
-      <motion.span style={{ opacity: rightOpacity }} className="absolute top-4 right-4 z-10 text-accent border-2 border-accent rounded-lg px-3 py-1 text-sm font-bold rotate-6 pointer-events-none">
+      <motion.span style={{ opacity: rightOpacity }} className="absolute top-4 right-4 z-10 text-rose border-2 border-accent rounded-lg px-3 py-1 text-sm font-bold rotate-6 pointer-events-none">
         {rightLabel}
       </motion.span>
       <motion.span style={{ opacity: leftOpacity }} className="absolute top-4 left-4 z-10 text-bad border-2 border-bad rounded-lg px-3 py-1 text-sm font-bold -rotate-6 pointer-events-none">
