@@ -4,13 +4,11 @@ import { LIQUID_SPRING, TAP_SCALE } from "../motion";
 import { cloneList, createList, getListsFeed, type DishList } from "../api";
 import { haptic } from "../haptics";
 import BottomSheet from "../components/BottomSheet";
-
-const ACCENTS = ["bg-accentDim text-accent", "bg-surface2 text-ink/85", "bg-accentDim text-accent", "bg-surface2 text-ink/85"];
+import Reveal from "../components/Reveal";
+import { DepthLayer, FloatCard } from "../components/CardStage";
 
 export default function RemixableLists() {
-  const [reacted, setReacted] = useState<Set<string>>(new Set());
   const [lists, setLists] = useState<DishList[] | null>(null);
-  const [cloning, setCloning] = useState<string | null>(null);
 
   const [showCreate, setShowCreate] = useState(false);
   const [title, setTitle] = useState("");
@@ -27,22 +25,13 @@ export default function RemixableLists() {
     getListsFeed().then((r) => r.ok && setLists(r.lists));
   }
 
-  function toggle(id: string) {
-    setReacted((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  }
-
-  async function handleClone(id: string) {
-    setCloning(id);
+  async function cloneAndRefresh(id: string): Promise<boolean> {
     const res = await cloneList(id);
-    setCloning(null);
     if (res.ok) {
       haptic("success");
       refresh();
     }
+    return !!res.ok;
   }
 
   function addItem() {
@@ -78,51 +67,33 @@ export default function RemixableLists() {
             <p className="text-muted text-sm">No lists yet — be the first to start one.</p>
           </div>
         ) : (
-          lists.map((l, i) => {
-            const accent = ACCENTS[i % ACCENTS.length];
-            return (
-              <motion.div
-                key={l.id}
-                initial={{ opacity: 0, y: 20, scale: 0.97 }}
-                whileInView={{ opacity: 1, y: 0, scale: 1 }}
-                viewport={{ once: true, margin: "-40px" }}
-                whileTap={{ scale: 0.98 }}
-                transition={{ ...LIQUID_SPRING, delay: Math.min(i, 4) * 0.05 }}
-                className="relative bg-surface border border-line rounded-card p-4 pl-5 overflow-hidden"
+          lists.map((l, i) => (
+            <Reveal key={l.id} delay={Math.min(i, 4) * 0.07}>
+              <FloatCard
+                id={`list-${l.id}`}
+                label={l.title}
+                className="bg-surface border border-line"
+                contentClassName="relative p-4 pl-5"
+                panel={() => <ListPanel list={l} onClone={cloneAndRefresh} />}
               >
-                <span className={`absolute left-0 top-0 bottom-0 w-1.5 ${accent}`} />
-                <div className="flex items-start justify-between gap-2 mb-0.5">
-                  <div className="font-display font-bold text-base">{l.title}</div>
-                  <span className={`shrink-0 font-mono text-[10px] font-semibold px-2 py-0.5 rounded-full tabular ${accent}`}>{l.clones} clones</span>
+                <span aria-hidden="true" className="absolute left-0 top-4 bottom-4 w-px bg-accent" />
+                <div className="flex items-start justify-between gap-2">
+                  <div className="text-[15px] font-medium text-ink">{l.title}</div>
+                  <span className="shrink-0 font-mono text-[10px] text-faint tabular mt-1">
+                    {l.clones} clone{l.clones === 1 ? "" : "s"}
+                  </span>
                 </div>
-                {l.parentListId && <div className="text-faint text-[10px] mb-1">remixed from another list</div>}
-                <ul className="flex flex-col gap-1 mb-3">
-                  {l.items.map((item, j) => (
-                    <li key={j} className="text-sm text-ink/85">· {item.dishName} · {item.venue}</li>
-                  ))}
-                </ul>
-                <div className="flex gap-2">
-                  <motion.button
-                    whileTap={TAP_SCALE}
-                    transition={LIQUID_SPRING}
-                    onClick={() => handleClone(l.id)}
-                    disabled={cloning === l.id}
-                    className="flex-1 gradient-primary text-white text-xs font-semibold rounded-lg py-2 disabled:opacity-60"
-                  >
-                    {cloning === l.id ? "Cloning…" : "Clone this list"}
-                  </motion.button>
-                  <motion.button
-                    whileTap={TAP_SCALE}
-                    transition={LIQUID_SPRING}
-                    onClick={() => toggle(l.id)}
-                    className={`px-3 rounded-lg text-xs font-medium border ${reacted.has(l.id) ? "bg-accentDim text-accent border-accent/40" : "bg-surface2 border-line text-muted"}`}
-                  >
-                    + Counter-pick
-                  </motion.button>
-                </div>
-              </motion.div>
-            );
-          })
+                {l.parentListId && <div className="text-faint text-[10px] mt-0.5">remixed from another list</div>}
+                <p className="text-muted text-xs mt-2 truncate">
+                  {l.items
+                    .slice(0, 3)
+                    .map((item) => item.dishName)
+                    .join(" · ")}
+                  {l.items.length > 3 ? `  +${l.items.length - 3}` : ""}
+                </p>
+              </FloatCard>
+            </Reveal>
+          ))
         )}
       </div>
 
@@ -176,6 +147,66 @@ export default function RemixableLists() {
           Publish list
         </motion.button>
       </BottomSheet>
+    </div>
+  );
+}
+
+function ListPanel({ list, onClone }: { list: DishList; onClone: (id: string) => Promise<boolean> }) {
+  const [cloneState, setCloneState] = useState<"idle" | "cloning" | "done" | "error">("idle");
+  const [counterPick, setCounterPick] = useState(false);
+
+  async function clone() {
+    setCloneState("cloning");
+    setCloneState((await onClone(list.id)) ? "done" : "error");
+  }
+
+  return (
+    <div className="p-5 pt-6">
+      <DepthLayer depth={6}>
+        <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-faint mb-2">
+          {list.clones} clone{list.clones === 1 ? "" : "s"}
+          {list.parentListId ? " · remixed" : ""}
+        </p>
+        <h2 className="font-display font-semibold text-[22px] leading-tight tracking-[-0.01em] text-ink pr-12">{list.title}</h2>
+      </DepthLayer>
+
+      <DepthLayer depth={10} className="mt-5">
+        <ol className="flex flex-col">
+          {list.items.map((item, j) => (
+            <li key={j} className="flex items-baseline gap-3 py-2.5 border-b border-line last:border-b-0">
+              <span className="font-mono text-[10px] text-faint tabular w-5 shrink-0">{String(j + 1).padStart(2, "0")}</span>
+              <div className="min-w-0">
+                <span className="dish-name text-[15px] text-ink">{item.dishName}</span>
+                <div className="text-faint text-xs mt-1">{item.venue}</div>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </DepthLayer>
+
+      <DepthLayer depth={14} className="mt-6">
+        <div className="flex gap-2">
+          <motion.button
+            whileTap={TAP_SCALE}
+            transition={LIQUID_SPRING}
+            onClick={clone}
+            disabled={cloneState === "cloning" || cloneState === "done"}
+            className="flex-1 bg-accent text-accentInk text-[13px] font-medium rounded-xl py-3 disabled:opacity-60"
+          >
+            {cloneState === "cloning" ? "Cloning…" : cloneState === "done" ? "Cloned to your lists" : "Clone this list"}
+          </motion.button>
+          <motion.button
+            whileTap={TAP_SCALE}
+            transition={LIQUID_SPRING}
+            onClick={() => setCounterPick((v) => !v)}
+            aria-pressed={counterPick}
+            className={`px-4 rounded-xl text-[13px] border ${counterPick ? "bg-accentDim text-ink border-accent" : "border-line text-muted"}`}
+          >
+            Counter-pick
+          </motion.button>
+        </div>
+        {cloneState === "error" && <p className="text-bad text-xs mt-2">Couldn't clone that list.</p>}
+      </DepthLayer>
     </div>
   );
 }

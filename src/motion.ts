@@ -9,5 +9,9 @@ export const LIQUID_SPRING = { type: "spring" as const, damping: 28, stiffness: 
 // settles in roughly half a second.
 export const FLOAT_SPRING = { type: "spring" as const, stiffness: 140, damping: 18, mass: 1 };
 
+// Scroll reveals: slow and slightly overdamped, so sections glide in with
+// no bounce.
+export const REVEAL_SPRING = { type: "spring" as const, stiffness: 70, damping: 20, mass: 1 };
+
 export const TAP_SCALE = { scale: 0.95 };
 export const HOVER_SCALE = { scale: 0.98 };

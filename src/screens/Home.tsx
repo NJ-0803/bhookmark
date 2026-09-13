@@ -8,6 +8,7 @@ import BrowseCard from "../components/BrowseCard";
 import TrendingStack, { type StackCard } from "../components/TrendingStack";
 import DishPanel from "../components/DishPanel";
 import { FloatCard, FloatMedia } from "../components/CardStage";
+import Reveal from "../components/Reveal";
 import {
   browseDishes,
   getDietProfile,
@@ -384,7 +385,7 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
         )}
 
         {digest && (digest.daysSinceLastLog === null || digest.daysSinceLastLog >= 1) && (
-          <div className="border-t border-line pt-4 mb-7">
+          <Reveal className="border-t border-line pt-4 mb-7">
             <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-faint mb-1.5">While you were away</p>
             {digest.logsThisWeek > 0 ? (
               <p className="text-[13px] text-ink/85 leading-relaxed">
@@ -400,7 +401,7 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
                   : `${digest.daysSinceLastLog} day${digest.daysSinceLastLog === 1 ? "" : "s"} since your last log.`}
               </p>
             )}
-          </div>
+          </Reveal>
         )}
 
         {picks === null ? (
@@ -418,7 +419,7 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
           </div>
         ) : (
           picks.length > 0 && (
-            <div className="mb-7">
+            <Reveal className="mb-7">
               <p className="font-mono text-[11px] tracking-[0.1em] uppercase text-faint mb-3">Recommended for you</p>
               <div className="flex gap-3 overflow-x-auto -mx-5 px-5 pb-1" style={{ scrollbarWidth: "none" }}>
                 {picks.map((p) => {
@@ -449,7 +450,7 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
                   );
                 })}
               </div>
-            </div>
+            </Reveal>
           )
         )}
 
@@ -520,7 +521,7 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
         )}
 
         {!query.trim() && stackCards.length > 0 && (
-          <div className="mt-8">
+          <Reveal className="mt-8">
             <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-faint mb-3">Worth a look</p>
             <TrendingStack
               cards={stackCards}
@@ -528,7 +529,7 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
                 <DishPanel dish={dish} mediaId={mediaId} photo={dish.photo} userAllergens={userAllergens} onLog={onLogDish} />
               )}
             />
-          </div>
+          </Reveal>
         )}
       </motion.div>
     );

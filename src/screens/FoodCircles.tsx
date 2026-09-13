@@ -17,6 +17,8 @@ import {
 } from "../api";
 import { haptic } from "../haptics";
 import BottomSheet from "../components/BottomSheet";
+import Reveal from "../components/Reveal";
+import { DepthLayer, FloatCard } from "../components/CardStage";
 
 // No display names exist yet, and — since F02 in the 2026-09-08 brief —
 // no phone number ever reaches the client for a friend/member either, so
@@ -27,14 +29,15 @@ function initialsFor(userId: string) {
   return userId.replace(/[^a-zA-Z0-9]/g, "").slice(-2).toUpperCase();
 }
 
-function MatchRing({ score }: { score: number }) {
+function MatchRing({ score, size = "sm" }: { score: number; size?: "sm" | "lg" }) {
+  const lg = size === "lg";
   return (
     <div
-      className="relative w-9 h-9 rounded-full shrink-0"
+      className={`relative rounded-full shrink-0 ${lg ? "w-14 h-14" : "w-9 h-9"}`}
       style={{ background: `conic-gradient(#9B1B24 ${score * 3.6}deg, #1C1C1C 0deg)` }}
     >
-      <div className="absolute inset-[3px] rounded-full bg-surface flex items-center justify-center">
-        <span className="font-mono text-[9px] font-semibold text-accent tabular">{score}</span>
+      <div className={`absolute rounded-full bg-surface flex items-center justify-center ${lg ? "inset-[4px]" : "inset-[3px]"}`}>
+        <span className={`font-mono font-semibold text-accent tabular ${lg ? "text-[12px]" : "text-[9px]"}`}>{score}</span>
       </div>
     </div>
   );
@@ -55,12 +58,10 @@ export default function FoodCircles() {
   const [addFriendNotice, setAddFriendNotice] = useState<string | null>(null);
   const [addingFriend, setAddingFriend] = useState(false);
 
-  const [sheet, setSheet] = useState<"create" | "detail" | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
   const [newCircleName, setNewCircleName] = useState("");
   const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(new Set());
   const [creatingCircle, setCreatingCircle] = useState(false);
-
-  const [detailCircle, setDetailCircle] = useState<{ circle: Circle; members: PublicUser[] } | null>(null);
 
   useEffect(() => {
     getPushSubscriptionState().then(setPushState);
@@ -144,25 +145,18 @@ export default function FoodCircles() {
     setCreatingCircle(false);
     if (res.ok) {
       haptic("success");
-      setSheet(null);
+      setShowCreate(false);
       setNewCircleName("");
       setSelectedMemberIds(new Set());
       refreshFriendsAndCircles();
     }
   }
 
-  async function openCircleDetail(circle: Circle) {
-    setSheet("detail");
-    setDetailCircle(null);
-    const res = await getCircleDetail(circle.id);
-    if (res.ok) setDetailCircle({ circle: { ...circle, matchScore: res.matchScore }, members: res.members });
-  }
-
   return (
     <div className="px-5 pt-6 pb-32">
       <p className="text-muted text-sm mb-5">Small, private groups — shared lists, a taste-match score, and a fast way to settle "where are we eating."</p>
 
-      <div className="bg-surface border border-line rounded-card p-4 mb-5">
+      <Reveal className="bg-surface border border-line rounded-card p-4 mb-5">
         <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-faint mb-2">Your friend code</p>
         <div className="flex items-center justify-between mb-3">
           <span className="font-mono text-2xl font-bold tabular text-gradient">{myCode ?? "········"}</span>
@@ -190,17 +184,17 @@ export default function FoodCircles() {
         {friends && friends.length > 0 && (
           <p className="text-faint text-[11px] mt-2">{friends.length} friend{friends.length === 1 ? "" : "s"} added</p>
         )}
-      </div>
+      </Reveal>
 
       {incomingRequests.length > 0 && (
-        <div className="bg-surface border border-accent/30 rounded-card p-4 mb-5">
+        <Reveal className="bg-surface border border-accent/30 rounded-card p-4 mb-5">
           <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-saffron mb-3">
             {incomingRequests.length} friend request{incomingRequests.length === 1 ? "" : "s"}
           </p>
           <div className="flex flex-col gap-2">
             {incomingRequests.map((r) => (
               <div key={r.id} className="flex items-center justify-between bg-surface2 rounded-lg px-3 py-2.5">
-                <span className="text-sm">👤 Friend {initialsFor(r.sender.id)} wants to connect</span>
+                <span className="text-sm">Friend {initialsFor(r.sender.id)} wants to connect</span>
                 <div className="flex gap-1.5 shrink-0">
                   <button
                     onClick={() => respond(r.id, true)}
@@ -220,10 +214,10 @@ export default function FoodCircles() {
               </div>
             ))}
           </div>
-        </div>
+        </Reveal>
       )}
 
-      <div className="bg-surface border border-line rounded-card p-4 mb-5">
+      <Reveal className="bg-surface border border-line rounded-card p-4 mb-5">
         <div className="flex items-center justify-between mb-1.5">
           <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-faint">Friend-nearby alerts</p>
           {pushState === "subscribed" && <span className="text-accent text-[11px] font-medium">on</span>}
@@ -258,7 +252,7 @@ export default function FoodCircles() {
             {simResult && <p className="text-faint text-[11px] mt-2 text-center">{simResult}</p>}
           </>
         )}
-      </div>
+      </Reveal>
 
       <div className="flex flex-col gap-2.5">
         {circles === null ? (
@@ -269,27 +263,31 @@ export default function FoodCircles() {
           </div>
         ) : (
           circles.map((c, i) => (
-            <motion.button
-              key={c.id}
-              initial={{ opacity: 0, y: 20, scale: 0.97 }}
-              whileInView={{ opacity: 1, y: 0, scale: 1 }}
-              viewport={{ once: true, margin: "-40px" }}
-              whileTap={{ scale: 0.98 }}
-              transition={{ ...LIQUID_SPRING, delay: Math.min(i, 4) * 0.05 }}
-              onClick={() => openCircleDetail(c)}
-              className="text-left bg-surface border border-line rounded-card p-4 hover:border-accent/50 transition-colors flex items-center gap-3"
-            >
-              <MatchRing score={c.matchScore} />
-              <div className="flex-1 min-w-0">
-                <span className="font-semibold text-sm truncate block">{c.name}</span>
-                <div className="text-faint text-xs truncate">{c.memberCount} member{c.memberCount === 1 ? "" : "s"} · {c.matchScore}% taste match</div>
-              </div>
-            </motion.button>
+            <Reveal key={c.id} delay={Math.min(i, 4) * 0.07}>
+              <FloatCard
+                id={`circle-${c.id}`}
+                label={c.name}
+                className="bg-surface border border-line"
+                contentClassName="flex items-center gap-3 p-4"
+                panel={() => <CirclePanel circle={c} />}
+              >
+                <MatchRing score={c.matchScore} />
+                <div className="flex-1 min-w-0">
+                  <span className="text-[14px] text-ink truncate block">{c.name}</span>
+                  <div className="text-faint text-xs truncate">
+                    {c.memberCount} member{c.memberCount === 1 ? "" : "s"} · {c.matchScore}% taste match
+                  </div>
+                </div>
+                <span className="text-faint shrink-0" aria-hidden="true">
+                  ›
+                </span>
+              </FloatCard>
+            </Reveal>
           ))
         )}
       </div>
       <button
-        onClick={() => setSheet("create")}
+        onClick={() => setShowCreate(true)}
         disabled={!friends || friends.length === 0}
         className="w-full mt-5 bg-surface border border-dashed border-line rounded-card py-3.5 text-sm font-medium text-muted disabled:opacity-40"
       >
@@ -297,7 +295,7 @@ export default function FoodCircles() {
       </button>
       {friends?.length === 0 && <p className="text-faint text-[11px] text-center mt-2">Add a friend first to start a circle</p>}
 
-      <BottomSheet open={sheet === "create"} onClose={() => setSheet(null)} title="Start a Food Circle">
+      <BottomSheet open={showCreate} onClose={() => setShowCreate(false)} title="Start a Food Circle">
         <input
           value={newCircleName}
           onChange={(e) => setNewCircleName(e.target.value)}
@@ -315,7 +313,7 @@ export default function FoodCircles() {
                 selectedMemberIds.has(f.id) ? "bg-accentDim border-accent/40" : "bg-surface2 border-line"
               }`}
             >
-              <span className="text-sm">👤 Friend {initialsFor(f.id)}</span>
+              <span className="text-sm">Friend {initialsFor(f.id)}</span>
               <span className={`text-xs ${selectedMemberIds.has(f.id) ? "text-accent" : "text-faint"}`}>
                 {selectedMemberIds.has(f.id) ? "added" : "add"}
               </span>
@@ -331,27 +329,69 @@ export default function FoodCircles() {
           Create circle
         </motion.button>
       </BottomSheet>
+    </div>
+  );
+}
 
-      <BottomSheet open={sheet === "detail"} onClose={() => setSheet(null)} title={detailCircle?.circle.name ?? "Circle"}>
-        {!detailCircle ? (
-          <p className="text-faint text-sm text-center py-6">Loading…</p>
+function CirclePanel({ circle }: { circle: Circle }) {
+  const [detail, setDetail] = useState<{ matchScore: number; members: PublicUser[] } | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getCircleDetail(circle.id)
+      .then((res) => {
+        if (cancelled) return;
+        if (res.ok) setDetail({ matchScore: res.matchScore, members: res.members });
+        else setFailed(true);
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [circle.id]);
+
+  const score = detail?.matchScore ?? circle.matchScore;
+
+  return (
+    <div className="p-5 pt-6">
+      <DepthLayer depth={6}>
+        <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-faint mb-2">
+          Food Circle · {circle.memberCount} member{circle.memberCount === 1 ? "" : "s"}
+        </p>
+        <h2 className="font-display font-semibold text-[22px] leading-tight tracking-[-0.01em] text-ink pr-12">{circle.name}</h2>
+      </DepthLayer>
+
+      <DepthLayer depth={10} className="mt-6">
+        <div className="flex items-center gap-4">
+          <MatchRing score={score} size="lg" />
+          <p className="text-[13px] text-ink/85 leading-relaxed">
+            {score}% real taste overlap — how many of the group's loved categories every member shares.
+          </p>
+        </div>
+      </DepthLayer>
+
+      <DepthLayer depth={13} className="mt-6">
+        <p className="font-mono text-[10px] tracking-[0.16em] uppercase text-faint mb-2.5">Members</p>
+        {failed ? (
+          <p className="text-bad text-[13px]">Couldn't load members.</p>
+        ) : !detail ? (
+          <p className="text-faint text-[13px]">Loading…</p>
         ) : (
-          <>
-            <div className="flex items-center gap-3 mb-4">
-              <MatchRing score={detailCircle.circle.matchScore} />
-              <p className="text-sm text-ink/90">
-                {detailCircle.circle.matchScore}% real taste overlap — how many of the group's loved categories every member shares.
-              </p>
-            </div>
-            <p className="font-mono text-[10px] tracking-[0.08em] uppercase text-faint mb-2">{detailCircle.members.length} members</p>
-            <div className="flex flex-col gap-2">
-              {detailCircle.members.map((m) => (
-                <div key={m.id} className="bg-surface2 rounded-lg px-3 py-2.5 text-sm">👤 Friend {initialsFor(m.id)}</div>
-              ))}
-            </div>
-          </>
+          <div className="flex flex-col gap-2">
+            {detail.members.map((m) => (
+              <div key={m.id} className="flex items-center gap-3 border border-line rounded-xl px-3 py-2.5">
+                <span className="w-8 h-8 rounded-full border border-accent/50 flex items-center justify-center font-mono text-[10px] text-ink/85">
+                  {initialsFor(m.id)}
+                </span>
+                <span className="text-[13px] text-ink/90">Friend {initialsFor(m.id)}</span>
+              </div>
+            ))}
+          </div>
         )}
-      </BottomSheet>
+      </DepthLayer>
     </div>
   );
 }
