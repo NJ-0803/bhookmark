@@ -1,5 +1,13 @@
 # Launch gates — real status
 
+> **Stale as of 2026-09-13 — `PROJECT_STATUS.md` is the source of truth.** This
+> file predates Phase 4 and the Phase 2 catalog rebuild. Known-wrong claims below:
+> the backend is **not** in-memory (Postgres on Neon, deployed on Vercel at
+> bhookmark.com); circles, Craving Rooms and lists are **real** backend features
+> (Phase 4), not mock data; JWT secrets come from env vars, not hardcoded strings;
+> AI auto-tagging was **removed entirely** (no-paid-APIs decision), not mocked;
+> a venue owner-claim flow exists; the Phase 5 accessibility audit is done.
+
 Maps the doc's Section 18 gates to what's actually built vs. what still
 needs a real decision, a paid vendor, or legal review before it can move
 past "designed" to "executed." Updated by hand — this is not generated from CI.

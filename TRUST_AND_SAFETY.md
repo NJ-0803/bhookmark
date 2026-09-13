@@ -1,5 +1,13 @@
 # Trust & safety — what's real, mapped to Section 13
 
+> **Stale as of 2026-09-13 — `PROJECT_STATUS.md` is the source of truth.** Since
+> this was written: the database is persistent (Neon Postgres); GPS verification
+> (`computeLocationMatch` / `isImpossibleTravel`) checks against the real venues
+> table server-side; ranking-manipulation and multi-account-network signals
+> exist in `routes/logs.ts`; venue owner claims are built. Photo persistence is
+> **closed by decision** (no object storage), so image-hash duplicate detection
+> stays off the roadmap rather than pending.
+
 ## Evidence ladder (implemented, simplified)
 `server/src/routes/logs.ts` computes one of four levels from client-reported
 signals: `declared`, `visit-consistent`, `live-capture`, `transaction-supported`.

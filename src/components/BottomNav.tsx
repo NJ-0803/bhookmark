@@ -22,7 +22,7 @@ export default function BottomNav({
 }) {
   return (
     <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[460px] z-40 px-4 pb-4 bg-bg">
-      <div className="relative flex items-end justify-between px-3 pb-3 pt-2.5 bg-bg/70 backdrop-blur-xl border border-line rounded-[28px] shadow-lift">
+      <div className="relative flex items-end justify-between px-3 pb-3 pt-2.5 bg-bg/75 backdrop-blur-md border border-line rounded-[28px] shadow-lift">
         {TABS.slice(0, 2).map((t) => (
           <NavItem key={t.id} tab={t} active={active === t.id} onClick={() => onChange(t.id)} />
         ))}
@@ -36,7 +36,7 @@ export default function BottomNav({
           whileHover={{ scale: 1.04 }}
           whileTap={TAP_SCALE}
           transition={LIQUID_SPRING}
-          className="gradient-primary relative -top-5 w-14 h-14 rounded-full text-white text-2xl font-bold flex items-center justify-center shadow-[0_0_28px_rgba(192,38,211,0.55)]"
+          className="gradient-primary relative -top-5 w-14 h-14 rounded-full text-white text-2xl font-bold flex items-center justify-center shadow-[0_0_28px_rgba(225,18,46,0.55)]"
           aria-label="Log a bite"
         >
           +

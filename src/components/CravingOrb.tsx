@@ -9,14 +9,14 @@ import { motion, useMotionValue, useReducedMotion, useSpring, useTransform } fro
 // effect for none of the bundle-size or battery cost, and respects
 // prefers-reduced-motion for free via useReducedMotion().
 const ORB_COLORS: Record<string, [string, string]> = {
-  default: ["#C026D3", "#FFB547"],
-  "Dosa & Idli": ["#FFB547", "#C026D3"],
-  Biryani: ["#FF6659", "#FFB547"],
-  Coffee: ["#FFB547", "#7B4A24"],
-  Burger: ["#FF6659", "#C026D3"],
-  Pizza: ["#FF6659", "#FFB547"],
-  Momos: ["#C026D3", "#FF6659"],
-  "Ice Cream": ["#38BDF8", "#C026D3"],
+  default: ["#E1122E", "#5A0008"],
+  "Dosa & Idli": ["#FF4D3D", "#8B0000"],
+  Biryani: ["#FF2A3D", "#8B0000"],
+  Coffee: ["#B00B1E", "#3A0A06"],
+  Burger: ["#FF4D3D", "#5A0008"],
+  Pizza: ["#FF2A3D", "#B00B1E"],
+  Momos: ["#E1122E", "#8B0000"],
+  "Ice Cream": ["#FF8A8A", "#B00B1E"],
 };
 
 export default function CravingOrb({ activeCategory }: { activeCategory?: string | null }) {

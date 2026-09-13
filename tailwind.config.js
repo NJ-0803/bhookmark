@@ -4,21 +4,21 @@ export default {
   theme: {
     extend: {
       colors: {
-        bg: "#070908",
-        surface: "#101513",
-        surface2: "#171E1B",
-        line: "#202826",
+        bg: "#080707",
+        surface: "#121010",
+        surface2: "#1A1717",
+        line: "#262121",
         ink: "#F5F1E8",
-        muted: "#8CA09C",
-        faint: "#7B8D89",
-        // Purple/pink/magenta gradient identity for actions (replaces the
-        // earlier flat turquoise) — saffron still carries discovery/
-        // trending, coral still carries social reactions. accent is the
-        // flat representative (text/borders); actual buttons use the
+        muted: "#A39B9A",
+        faint: "#8A8281",
+        // "Blood gradient" red-on-black identity (replaces the earlier
+        // purple/pink/magenta) — saffron still carries discovery/trending,
+        // coral still carries social reactions. accent is the flat
+        // representative (text/borders); actual buttons use the
         // .gradient-primary class from index.css for the full gradient.
-        accent: "#E879F9",
+        accent: "#E1122E",
         accentInk: "#FFFFFF",
-        accentDim: "#2A1033",
+        accentDim: "#2A0A0C",
         bad: "#FF7A63",
         badDim: "#2E1A16",
         saffron: "#FFB547",
@@ -46,7 +46,7 @@ export default {
         // Tailwind's shadow-* utilities all set the same CSS property, so
         // two separate shadow-* classes on one element can't combine; only
         // one wins. A combined value is the only way to actually get both.
-        accentGlow: "0 8px 24px -12px rgba(0,0,0,0.6), 0 12px 28px -10px rgba(232,121,249,0.55)",
+        accentGlow: "0 8px 24px -12px rgba(0,0,0,0.6), 0 12px 28px -10px rgba(225,18,46,0.55)",
         saffronGlow: "0 8px 24px -12px rgba(0,0,0,0.6), 0 12px 28px -10px rgba(255,181,71,0.55)",
         coralGlow: "0 8px 24px -12px rgba(0,0,0,0.6), 0 12px 28px -10px rgba(255,102,89,0.55)",
         // Baseline float for every card (brief: "every card should float").

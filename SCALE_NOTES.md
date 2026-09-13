@@ -1,5 +1,11 @@
 # Section 15 — why "1M users" isn't something run locally
 
+> **Stale as of 2026-09-13 — `PROJECT_STATUS.md` is the source of truth.** The
+> "single Node process with in-memory `Map`s" description below is no longer
+> true: the backend runs on Vercel against Neon Postgres. 1M-user-scale load
+> testing is now **permanently out of scope** by explicit decision, so the
+> "next real step" at the bottom is not planned work.
+
 The doc is right that "1M users" needs to be split into registered vs. DAU vs.
 concurrent — but none of the three scenarios (A/B/C/D in the doc) can be
 honestly tested against what's built here, for one structural reason:

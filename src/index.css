@@ -15,7 +15,7 @@ html, body, #root {
 
 body {
   margin: 0;
-  background: #070908;
+  background: #080707;
   color: #F5F1E8;
   font-family: "Hanken Grotesk", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -28,16 +28,17 @@ body {
   min-height: 100dvh;
   height: auto;
   position: relative;
-  background: #070908;
-  border-left: 1px solid #171E1B;
-  border-right: 1px solid #171E1B;
+  background: #080707;
+  border-left: 1px solid #1A1717;
+  border-right: 1px solid #1A1717;
   overflow-x: hidden;
   overflow-y: visible;
 }
 
-/* Ambient night-market glow — the purple/pink/magenta action gradient up
-   top, a much fainter saffron warmth low down (discovery/trending
-   territory). Both stay perceptible without drowning out food photography. */
+/* Ambient "blood gradient" glow — black stays the dominant surface; red only
+   shows up as a low-opacity wash top and bottom (~10-15% presence), never a
+   flat fill, so it reads as light bleeding into black rather than a red
+   background. */
 #root::before {
   content: "";
   position: fixed;
@@ -47,7 +48,7 @@ body {
   width: 140%;
   aspect-ratio: 1;
   max-width: 700px;
-  background: radial-gradient(circle, rgba(192, 38, 211, 0.34) 0%, rgba(124, 58, 237, 0.14) 35%, transparent 65%);
+  background: radial-gradient(circle, rgba(225, 18, 46, 0.28) 0%, rgba(139, 0, 0, 0.12) 35%, transparent 65%);
   pointer-events: none;
   z-index: 0;
 }
@@ -61,7 +62,7 @@ body {
   width: 120%;
   aspect-ratio: 1;
   max-width: 600px;
-  background: radial-gradient(circle, rgba(255, 181, 71, 0.16) 0%, transparent 60%);
+  background: radial-gradient(circle, rgba(139, 0, 0, 0.14) 0%, transparent 60%);
   pointer-events: none;
   z-index: 0;
 }
@@ -93,7 +94,7 @@ body {
    grids). Cut to 14px (still reads as glass at this app's card sizes) and
    scoped the paint/compositing work to each card's own box. */
 .bg-surface {
-  background-color: rgba(16, 21, 19, 0.55) !important;
+  background-color: rgba(18, 16, 16, 0.55) !important;
   backdrop-filter: blur(14px) saturate(150%);
   -webkit-backdrop-filter: blur(14px) saturate(150%);
   contain: paint;
@@ -105,19 +106,32 @@ body {
   box-shadow: 0 12px 36px -14px rgba(0, 0, 0, 0.65);
 }
 
-/* Purple/pink/magenta gradient identity for primary actions — replaces the
-   flat turquoise bg-accent on buttons/FABs that want the full gradient. */
+/* Blood-gradient identity for primary actions: oxidised dark red into
+   bright crimson, like the red ambient trim on black leather. */
 .gradient-primary {
-  background: linear-gradient(135deg, #7c3aed 0%, #c026d3 55%, #a21caf 100%);
+  background: linear-gradient(135deg, #5A0008 0%, #B00B1E 50%, #FF2A3D 100%);
 }
 
-/* Gradient-clipped headline text — a plain white/cream heading read as flat;
-   this is the "not boring" treatment for the app's primary H1s. */
+/* Gradient-clipped headline text — bright end first so it stays legible on
+   near-black. */
 .text-gradient {
-  background: linear-gradient(135deg, #c4b5fd 0%, #e879f9 55%, #f9a8d4 100%);
+  background: linear-gradient(135deg, #FF6B6B 0%, #FF2A3D 50%, #C4102A 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+}
+
+/* The brand word itself: gradient fill + stroke outline + emissive glow, so
+   it outshines the plain headline text around it. The glow lives on a
+   drop-shadow filter because text-shadow renders underneath a
+   background-clipped transparent fill and would muddy it. */
+.text-blood-outline {
+  background: linear-gradient(135deg, #FF8A8A 0%, #FF2A3D 45%, #B00B1E 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-stroke: 1px rgba(255, 90, 100, 0.85);
+  filter: drop-shadow(0 0 10px rgba(225, 18, 46, 0.55)) drop-shadow(0 0 24px rgba(139, 0, 0, 0.45));
 }
 
 @media (prefers-reduced-motion: reduce) {

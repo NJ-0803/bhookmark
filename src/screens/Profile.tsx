@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import type { RemoteLog, VenueClaim } from "../api";
 import { claimVenue, clearSession, currentDeviceId, getDietProfile, getMyVenueClaims, getSession, listSessions, revokeSession, setDietProfile } from "../api";
 import { signatureCraving, EARLY_LOGS_NEEDED } from "../evidenceThresholds";
@@ -63,6 +63,7 @@ export default function Profile({
   const repeatOrders = visibleLogs.filter((l) => l.verdict === "loved").length;
 
   const [sheet, setSheet] = useState<Sheet>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [phoneRevealed, setPhoneRevealed] = useState(false);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
@@ -207,50 +208,59 @@ export default function Profile({
         <p className="text-sm text-ink/90">Ranked by dish diversity, not visit count — logging the same burger ten times won't move you up.</p>
       </motion.div>
 
-      <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-faint mb-2 mt-2">Settings</p>
-      <div className="flex flex-col gap-2 mb-6">
-        <motion.button
-          {...fadeUp(0.2)}
-          onClick={() => setSheet("dietary")}
-          className="w-full flex items-center justify-between bg-surface border border-line rounded-card p-4"
+      <motion.div {...fadeUp(0.2)} className="bg-surface border border-line rounded-card mt-2 mb-6 overflow-hidden">
+        <button
+          onClick={() => setSettingsOpen((v) => !v)}
+          aria-expanded={settingsOpen}
+          aria-controls="account-settings"
+          className="w-full flex items-center justify-between p-4"
         >
-          <span className="text-sm font-medium">Dietary profile &amp; allergens</span>
-          <span className="text-faint">›</span>
-        </motion.button>
-
-        <motion.button
-          {...fadeUp(0.24)}
-          onClick={() => setSheet("claim")}
-          className="w-full flex items-center justify-between bg-surface border border-line rounded-card p-4"
-        >
-          <span className="text-sm font-medium">Run a restaurant?</span>
-          <span className="text-faint">›</span>
-        </motion.button>
-
-        <motion.button
-          {...fadeUp(0.28)}
-          onClick={() => setSheet("sessions")}
-          className="w-full flex items-center justify-between bg-surface border border-line rounded-card p-4"
-        >
-          <span className="text-sm font-medium">Devices &amp; sessions</span>
-          <span className="text-faint">›</span>
-        </motion.button>
-      </div>
-
-      <motion.div {...fadeUp(0.32)} className="bg-surface border border-line rounded-card p-4 mb-6">
-        <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-faint mb-2">Privacy</p>
-        <p className="text-sm text-ink/90">Your exact location is never shown publicly — only used to confirm a verified log at the moment you make it.</p>
+          <span className="text-sm font-medium">Account &amp; settings</span>
+          <motion.span animate={{ rotate: settingsOpen ? 90 : 0 }} transition={LIQUID_SPRING} className="text-faint inline-block">
+            ›
+          </motion.span>
+        </button>
+        <AnimatePresence initial={false}>
+          {settingsOpen && (
+            <motion.div
+              id="account-settings"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={LIQUID_SPRING}
+            >
+              <div className="border-t border-line">
+                {([
+                  ["dietary", "Dietary profile & allergens"],
+                  ["claim", "Run a restaurant?"],
+                  ["sessions", "Devices & sessions"],
+                ] as const).map(([id, label]) => (
+                  <button
+                    key={id}
+                    onClick={() => setSheet(id)}
+                    className="w-full flex items-center justify-between px-4 py-3.5 border-b border-line text-left"
+                  >
+                    <span className="text-sm">{label}</span>
+                    <span className="text-faint">›</span>
+                  </button>
+                ))}
+                <p className="text-faint text-xs px-4 pt-3.5 pb-2">
+                  Your exact location is never shown publicly — only used to confirm a verified log at the moment you make it.
+                </p>
+                <button
+                  onClick={() => {
+                    clearSession();
+                    onSignOut();
+                  }}
+                  className="w-full text-bad text-sm font-medium py-3"
+                >
+                  Sign out
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.div>
-
-      <button
-        onClick={() => {
-          clearSession();
-          onSignOut();
-        }}
-        className="w-full text-bad text-sm font-medium py-3"
-      >
-        Sign out
-      </button>
 
       <BottomSheet open={sheet === "dietary"} onClose={() => setSheet(null)} title="Dietary profile & allergens">
         <div className="flex items-center justify-between mb-2">

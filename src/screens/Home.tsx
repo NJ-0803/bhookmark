@@ -26,21 +26,6 @@ import {
 import { computeSmartOrder, type SmartOrderResult } from "../smartPicks";
 import NearMe from "./NearMe";
 
-// Real signal only (live weather beats a guess; local device time is a
-// real fact even weather isn't available) — never a fabricated mood.
-function contextualEmoji(weatherMood: SmartOrderResult["weatherMood"] | undefined): string {
-  if (weatherMood === "rain") return "🌧️";
-  if (weatherMood === "hot") return "🥵";
-  if (weatherMood === "cold") return "🥶";
-  const hour = new Date().getHours();
-  if (hour < 5) return "🌙";
-  if (hour < 11) return "🌅";
-  if (hour < 17) return "😋";
-  if (hour < 21) return "🌆";
-  return "🌃";
-}
-
-
 const SMART_ORDER_CACHE_KEY = "bhookmark.smartOrder";
 const SMART_ORDER_DISMISSED_KEY = "bhookmark.smartOrderDismissed";
 const SMART_ORDER_MAX_AGE_MS = 3 * 60 * 60 * 1000; // weather goes stale fast
@@ -412,16 +397,9 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
           ) : (
             <p className="font-mono text-[11px] tracking-[0.14em] uppercase text-faint mb-2">Bangalore · Today</p>
           )}
-          <h1 className="font-display font-extrabold text-3xl leading-tight mb-1 text-balance">
-            <span className="text-gradient">What are you<br />bhookmarking now?</span> <motion.span
-              key={contextualEmoji(smartOrder?.weatherMood)}
-              initial={{ scale: 0.5, rotate: -20, opacity: 0 }}
-              animate={{ scale: 1, rotate: 0, opacity: 1 }}
-              transition={LIQUID_SPRING}
-              className="inline-block"
-            >
-              {contextualEmoji(smartOrder?.weatherMood)}
-            </motion.span>
+          <h1 className="font-display font-extrabold text-3xl leading-tight mb-1 text-balance text-ink">
+            What are you<br />
+            <span className="text-blood-outline">Bhookmark</span>ing now?
           </h1>
           <p className="text-muted text-sm mb-4">Pick a craving. We'll do the rest.</p>
         </div>

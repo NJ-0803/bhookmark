@@ -33,13 +33,13 @@ function RadiusRing({ radius, onChange }: { radius: number; onChange: (v: number
       </motion.button>
       <div className="relative w-20 h-20 shrink-0">
         <svg viewBox="0 0 80 80" className="w-full h-full -rotate-90">
-          <circle cx="40" cy="40" r="34" fill="none" stroke="#202826" strokeWidth="7" />
+          <circle cx="40" cy="40" r="34" fill="none" stroke="#262121" strokeWidth="7" />
           <motion.circle
             cx="40"
             cy="40"
             r="34"
             fill="none"
-            stroke="#E879F9"
+            stroke="#E1122E"
             strokeWidth="7"
             strokeLinecap="round"
             strokeDasharray={circumference}

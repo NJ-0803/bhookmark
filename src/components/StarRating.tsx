@@ -25,7 +25,7 @@ export default function StarRating({ value, onChange }: Props) {
     <div className="flex flex-col items-center">
       <motion.div
         animate={{
-          filter: `drop-shadow(0 0 ${4 + glow * 26}px rgba(232,121,249,${0.25 + glow * 0.65})) drop-shadow(0 0 ${2 + glow * 10}px rgba(232,121,249,${0.4 + glow * 0.5}))`,
+          filter: `drop-shadow(0 0 ${4 + glow * 26}px rgba(225,18,46,${0.25 + glow * 0.65})) drop-shadow(0 0 ${2 + glow * 10}px rgba(225,18,46,${0.4 + glow * 0.5}))`,
         }}
         transition={LIQUID_SPRING}
         className="flex items-center gap-1.5"

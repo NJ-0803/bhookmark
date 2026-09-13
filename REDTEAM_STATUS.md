@@ -1,5 +1,12 @@
 # Section 17 — red-team plan, what was actually run
 
+> **Stale as of 2026-09-13 — `PROJECT_STATUS.md` is the source of truth.** The
+> 13/13 smoke result still holds (re-run 2026-09-12), but this file predates the
+> production deployment (Vercel + Neon Postgres) and the additional suites in
+> `server/scripts/` (privacy visibility, Phase 4, IP isolation, venue claims,
+> nearby). There is still no separate staging database — tests run against the
+> same database the live app reads.
+
 `server/scripts/redteam-smoke.mjs` is a real, runnable script — not a
 description of testing, an actual one. Run it yourself any time with the
 backend running:
