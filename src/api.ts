@@ -276,11 +276,31 @@ export async function getVenueCategories(): Promise<{ ok: boolean; categories: s
   return res.json();
 }
 
+export interface BrowseDish {
+  id: string;
+  category: string;
+  subtype: string;
+  name: string;
+  venue: string;
+  area: string;
+  photo: string | null;
+  community: { score: number | null; count: number };
+}
+
+// Backs Home's Crave-tab category browsing — the real venues/dishes
+// tables, no location required (unlike Near Me). Category resolved
+// through category_aliases server-side, same as everywhere else.
+export async function browseDishes(category: string): Promise<{ ok: boolean; category: string; categoryResolved: boolean; count: number; results: BrowseDish[] }> {
+  const res = await fetch(`/dishes/browse?${new URLSearchParams({ category })}`);
+  return res.json();
+}
+
 export interface VenueSearchResult {
   id: string;
   name: string;
   area: string;
   category: string | null;
+  subtype: string | null;
   dishName: string | null;
   photo: string | null;
   photoIsVerified: boolean;

@@ -1041,6 +1041,7 @@ export interface SearchVenueRow {
   photoUrl: string | null;
   photoIsVerified: boolean;
   category: string | null;
+  dishSubtype: string | null;
   dishName: string | null;
 }
 
@@ -1049,11 +1050,16 @@ export interface SearchVenueRow {
 // have no category yet, but they're real and should still be findable by
 // name). Expanded query terms (from dish_name_aliases, e.g. "dose" also
 // tries "dosa") are OR'd together at the SQL level so a single request
-// covers every spelling.
+// covers every spelling. Returns dish subtype alongside category/name —
+// a click-through needs the exact (venue, category, subtype, name) key
+// to look up real evidence via GET /dishes/score; without subtype a
+// caller would have to guess "General" and silently miss real logged
+// evidence on the dishes that have a specific one (the 12 Session C
+// seed dishes).
 export async function searchVenuesByName(terms: string[], limit = 20): Promise<SearchVenueRow[]> {
   const patterns = terms.map((t) => `%${t}%`);
   const rows = await sql()`
-    SELECT DISTINCT ON (v.id) v.id, v.name, v.area, v.lat, v.lng, v.photo_url, v.photo_is_verified, d.category, d.name AS dish_name
+    SELECT DISTINCT ON (v.id) v.id, v.name, v.area, v.lat, v.lng, v.photo_url, v.photo_is_verified, d.category, d.subtype AS dish_subtype, d.name AS dish_name
     FROM venues v
     LEFT JOIN dishes d ON d.venue_id = v.id AND d.status = 'active'
     WHERE v.status = 'active' AND lower(v.name) LIKE ANY(${patterns})
@@ -1068,6 +1074,7 @@ export async function searchVenuesByName(terms: string[], limit = 20): Promise<S
     photoUrl: r.photo_url ?? null,
     photoIsVerified: r.photo_is_verified,
     category: r.category ?? null,
+    dishSubtype: r.dish_subtype ?? null,
     dishName: r.dish_name ?? null,
   }));
 }
@@ -1251,4 +1258,66 @@ export async function listCatalogDishesWithScores(): Promise<CatalogDishRow[]> {
     evidenceScore: r.avg_score !== null ? Math.round(r.avg_score * 10) / 10 : null,
     evidenceCount: r.log_count ?? 0,
   }));
+}
+
+export interface BrowseDishRow {
+  id: string;
+  category: string;
+  subtype: string;
+  name: string;
+  venue: string;
+  area: string;
+  photoUrl: string | null;
+  evidenceScore: number | null;
+  evidenceCount: number;
+}
+
+// Phase 2 (2026-09-13): backs Home's Crave-tab category browsing (no
+// location required, unlike /venues/nearby) — real dishes/venues instead
+// of the old static src/data/dishes.ts array. Scoped to one category and
+// capped at `limit`, then real evidence is looked up in a SEPARATE small
+// aggregate query over `logs` (not a per-row LATERAL join over the whole
+// candidate set) — listCatalogDishesWithScores's own investigation found
+// that fetching the full ~2,250-row catalog costs seconds on Neon's
+// serverless HTTP driver regardless of join strategy; capping the row
+// count actually transferred is what matters, and a category-scoped
+// browse view never needs more than `limit` results on screen at once.
+export async function listCatalogDishesForBrowse(category: string, limit = 40): Promise<BrowseDishRow[]> {
+  const dishRows = await sql()`
+    SELECT d.id, d.category, d.subtype, d.name, v.name AS venue, v.area, v.photo_url
+    FROM dishes d
+    JOIN venues v ON v.id = d.venue_id
+    WHERE d.category = ${category} AND d.status = 'active' AND v.status = 'active'
+    LIMIT ${limit}`;
+  if (dishRows.length === 0) return [];
+
+  const scoreRows = await sql()`
+    SELECT venue, subtype, name, AVG(score)::float AS avg_score, COUNT(*)::int AS log_count
+    FROM logs
+    WHERE category = ${category} AND status = 'published' AND owner_disclosed = false AND visibility = 'public'
+    GROUP BY venue, subtype, name`;
+  const scoreByKey = new Map<string, { avgScore: number; count: number }>();
+  for (const r of scoreRows as any[]) {
+    scoreByKey.set(`${r.venue}|${r.subtype}|${r.name}`, { avgScore: r.avg_score, count: r.log_count });
+  }
+
+  const results = (dishRows as any[]).map((r) => {
+    const score = scoreByKey.get(`${r.venue}|${r.subtype}|${r.name}`);
+    return {
+      id: r.id,
+      category: r.category,
+      subtype: r.subtype,
+      name: r.name,
+      venue: r.venue,
+      area: r.area,
+      photoUrl: r.photo_url ?? null,
+      evidenceScore: score ? Math.round(score.avgScore * 10) / 10 : null,
+      evidenceCount: score?.count ?? 0,
+    };
+  });
+  // Real evidence first, same ranking principle as recommend.ts — a dish
+  // nobody's logged yet never gets to look more proven than one with a
+  // real, if lower, average.
+  results.sort((a, b) => (b.evidenceCount > 0 ? 1 : 0) - (a.evidenceCount > 0 ? 1 : 0) || (b.evidenceScore ?? 0) - (a.evidenceScore ?? 0));
+  return results;
 }

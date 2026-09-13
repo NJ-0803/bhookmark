@@ -1,10 +1,47 @@
 import { Router } from "express";
+import { z } from "zod";
 import * as db from "../db";
 import type { DishLog } from "../db";
 import { optionalAuth } from "../middleware";
 import { scoreConfidenceBand } from "../evidence";
+import { resolveCategory } from "../aliases";
 
 export const dishesRouter = Router();
+
+const browseSchema = z.object({ category: z.string() });
+
+// Backs Home's Crave-tab category browsing (no location required, unlike
+// /venues/nearby) — the real venues/dishes tables instead of the old
+// static src/data/dishes.ts array. Category resolved through
+// category_aliases first, same structural fix as /venues/nearby.
+dishesRouter.get("/browse", async (req, res) => {
+  const parsed = browseSchema.safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ ok: false, error: "Provide a category." });
+
+  const aliasMap = await db.getCategoryAliasMap();
+  const category = resolveCategory(parsed.data.category, aliasMap);
+  if (!category) {
+    return res.json({ ok: true, category: parsed.data.category, categoryResolved: false, count: 0, results: [] });
+  }
+
+  const rows = await db.listCatalogDishesForBrowse(category, 40);
+  res.json({
+    ok: true,
+    category,
+    categoryResolved: true,
+    count: rows.length,
+    results: rows.map((r) => ({
+      id: r.id,
+      category: r.category,
+      subtype: r.subtype,
+      name: r.name,
+      venue: r.venue,
+      area: r.area,
+      photo: r.photoUrl,
+      community: { score: r.evidenceScore, count: r.evidenceCount },
+    })),
+  });
+});
 
 // Public read: only published logs are ever visible outside the owner's
 // own account — a held or removed log never contributes to a public score.

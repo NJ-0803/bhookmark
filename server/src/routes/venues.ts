@@ -158,6 +158,7 @@ venuesRouter.get("/search", async (req, res) => {
     name: v.name,
     area: v.area,
     category: v.category,
+    subtype: v.dishSubtype,
     dishName: v.dishName,
     photo: v.photoUrl,
     photoIsVerified: v.photoIsVerified,

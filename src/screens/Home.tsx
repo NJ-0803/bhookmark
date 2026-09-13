@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { LIQUID_SPRING, TAP_SCALE } from "../motion";
-import { CATEGORIES, CATEGORY_ACCENT, CATEGORY_BORDER, CATEGORY_SHADOW, DISHES, categoryVisual, dishById, dishesForSubtype } from "../data/dishes";
+import { CATEGORY_ACCENT, CATEGORY_BORDER, CATEGORY_SHADOW, DISHES, categoryVisual, dishById } from "../data/dishes";
 import type { Category, DishEntry } from "../types";
 import DishThumb from "../components/DishThumb";
 import EvidenceScoreBadge from "../components/EvidenceScoreBadge";
@@ -9,7 +9,20 @@ import WhyThis from "../components/WhyThis";
 import BrowseCard from "../components/BrowseCard";
 import CravingOrb from "../components/CravingOrb";
 import TrendingStack, { type StackCard } from "../components/TrendingStack";
-import { getDietProfile, getDigest, getNextPicks, getDishScore, getTrending, type DishScoreResponse, type TrendingResponse } from "../api";
+import {
+  browseDishes,
+  getDietProfile,
+  getDigest,
+  getNextPicks,
+  getDishScore,
+  getTrending,
+  getVenueCategories,
+  searchVenues,
+  type BrowseDish,
+  type DishScoreResponse,
+  type TrendingResponse,
+  type VenueSearchResult,
+} from "../api";
 import { computeSmartOrder, type SmartOrderResult } from "../smartPicks";
 import NearMe from "./NearMe";
 
@@ -56,8 +69,13 @@ interface DigestData {
 
 type View =
   | { name: "search" }
-  | { name: "subtype"; category: Category }
-  | { name: "results"; category: Category; subtype: string }
+  // 2026-09-13: dropped the "subtype" sub-step for the real DB-backed
+  // catalog — almost every real (mostly OSM) dish has subtype "General"
+  // (OSM gives a cuisine/category, never a specific menu item), so a
+  // subtype picker would show one meaningless option for nearly every
+  // category. Category -> real results directly, matching how Near Me
+  // already works.
+  | { name: "results"; category: string }
   | { name: "profile"; dish: DishEntry }
   | { name: "nearby" };
 
@@ -74,23 +92,76 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
   // same /dishes/score endpoint the profile view already uses correctly.
   const [pickScores, setPickScores] = useState<Record<string, DishScoreResponse>>({});
   const [stackScores, setStackScores] = useState<Record<string, DishScoreResponse>>({});
-  const [resultScore, setResultScore] = useState<DishScoreResponse | null>(null);
   const [resultIndex, setResultIndex] = useState(0);
   const [smartOrder, setSmartOrder] = useState<SmartOrderResult | null>(null);
   const [trending, setTrending] = useState<TrendingResponse["trending"] | null>(null);
   const [smartLoading, setSmartLoading] = useState(false);
   const [smartDismissed, setSmartDismissed] = useState(() => localStorage.getItem(SMART_ORDER_DISMISSED_KEY) === "1");
   const [hoveredCategory, setHoveredCategory] = useState<string | null>(null);
+  // Real categories, fetched — not hardcoded — so this can never drift
+  // from the category_aliases table the way the old "Filter Coffee"
+  // array once did (see NearMe.tsx's identical fetch for the same reason).
+  const [realCategories, setRealCategories] = useState<string[]>([]);
+  // null = not searched yet, [] = searched, no real venues found.
+  const [nameSearchResults, setNameSearchResults] = useState<VenueSearchResult[] | null>(null);
+  // null = loading, [] = resolved but empty.
+  const [browseResults, setBrowseResults] = useState<BrowseDish[] | null>(null);
 
-  const resultsKey = view.name === "results" ? `${view.category}|${view.subtype}` : null;
+  const resultsKey = view.name === "results" ? view.category : null;
   useEffect(() => {
     setResultIndex(0);
   }, [resultsKey]);
 
+  useEffect(() => {
+    getVenueCategories().then((res) => res.ok && setRealCategories(res.categories));
+  }, []);
+
+  // Real venues/dishes for whichever category the user picked — no
+  // location required (unlike Near Me), the actual fix for Home's Crave
+  // tab still browsing the old ~36-dish static array while Near Me had
+  // already moved to the real ~4,900-venue catalog.
+  useEffect(() => {
+    if (view.name !== "results") {
+      setBrowseResults(null);
+      return;
+    }
+    let cancelled = false;
+    setBrowseResults(null);
+    browseDishes(view.category).then((res) => {
+      if (!cancelled) setBrowseResults(res.ok ? res.results : []);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [view]);
+
+  // Real venue/dish name search as the user types — the same fix Near Me
+  // already got: a real place is findable by name whether or not it has
+  // a resolved category. Debounced so every keystroke doesn't fire a
+  // request.
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) {
+      setNameSearchResults(null);
+      return;
+    }
+    let cancelled = false;
+    const timeout = setTimeout(() => {
+      searchVenues(q).then((res) => {
+        if (!cancelled) setNameSearchResults(res.ok ? res.results : []);
+      });
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
+  }, [query]);
+
   // Fetches the real evidence-gated score for each recommended pick — the
-  // recommendation ranking itself still uses the server's static catalog
-  // score internally (server/src/recommend.ts, a Phase 2 fix), but what's
-  // *displayed* here now only ever shows a number backed by real logs.
+  // recommendation ranking (server/src/recommend.ts) reads the real
+  // DB-backed catalog now (Phase 2 Session E), but what's *displayed*
+  // here is always fetched fresh so it never depends on that internal
+  // ranking detail.
   useEffect(() => {
     if (!picks || picks.length === 0) return;
     let cancelled = false;
@@ -168,44 +239,23 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
       .catch(() => setDishScore(null));
   }, [view]);
 
-  // Same honesty fix as the recommended carousel, for the one-at-a-time
-  // browse card in the "results" view (was showing the static seed score).
-  useEffect(() => {
-    if (view.name !== "results") {
-      setResultScore(null);
-      return;
-    }
-    const dishes = dishesForSubtype(view.category, view.subtype);
-    const safeIndex = Math.min(resultIndex, Math.max(dishes.length - 1, 0));
-    const current = dishes[safeIndex];
-    if (!current) {
-      setResultScore(null);
-      return;
-    }
-    let cancelled = false;
-    getDishScore(current.venue, current.category, current.subtype, current.name)
-      .then((res) => !cancelled && setResultScore(res.ok ? res : null))
-      .catch(() => !cancelled && setResultScore(null));
-    return () => {
-      cancelled = true;
-    };
-  }, [view, resultIndex]);
-
+  // Real categories (fetched from GET /venues/categories), reordered by
+  // smartOrder's weather/location priority where it knows a category —
+  // smartOrder's own list (src/smartPicks.ts) predates the 6 new Session
+  // B/D categories (Bars & Pubs, Street Food & Chaat, etc.), so anything
+  // it doesn't recognize is appended after the ones it does, rather than
+  // silently dropped.
   const orderedCategories = useMemo(() => {
-    if (!smartOrder) return CATEGORIES;
-    const byName = new Map(CATEGORIES.map((c) => [c.name, c]));
-    const ordered = smartOrder.categories.map((name) => byName.get(name)).filter((c): c is (typeof CATEGORIES)[number] => !!c);
-    return ordered.length === CATEGORIES.length ? ordered : CATEGORIES;
-  }, [smartOrder]);
+    if (!smartOrder) return realCategories;
+    const known: string[] = smartOrder.categories.filter((name) => realCategories.includes(name));
+    const rest = realCategories.filter((name) => !known.includes(name));
+    return [...known, ...rest];
+  }, [smartOrder, realCategories]);
 
   const filteredCategories = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (q === "") return orderedCategories;
-    return orderedCategories.filter((c) => {
-      if (c.name.toLowerCase().includes(q)) return true;
-      if (c.subtypes.some((s) => s.toLowerCase().includes(q))) return true;
-      return DISHES.some((d) => d.category === c.name && (d.name.toLowerCase().includes(q) || d.venue.toLowerCase().includes(q)));
-    });
+    return orderedCategories.filter((name) => name.toLowerCase().includes(q));
   }, [query, orderedCategories]);
 
   // Fallback spotlight when there's no real trending signal yet (the
@@ -255,7 +305,7 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
   // handful of legacy dishes that happen to match), falling back to a
   // synthetic DishEntry built from the pick's own real fields — same
   // pattern already used above for trendingSpotlight's non-catalog case.
-  function pickToDishEntry(p: Pick): DishEntry {
+  function toDishEntry(p: { id: string; category: string; subtype: string; name: string; venue: string; area: string; photo?: string | null }): DishEntry {
     const catalogMatch = dishById(p.id);
     if (catalogMatch) return catalogMatch;
     const visual = categoryVisual(p.category);
@@ -274,7 +324,36 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
       priceRs: 0,
       tasteNotes: [],
       allergens: [],
-      photo: visual.photo,
+      photo: p.photo ?? visual.photo,
+    } satisfies DishEntry;
+  }
+
+  // Name-search results are venues, not dishes — a venue can have no
+  // resolved category yet (Session B inserts every real, named venue
+  // unconditionally; ~2,700 have no category), so there's no dish name or
+  // subtype either. Falls back to the venue's own name as the "dish" and
+  // "General" as the subtype so the profile view has something to render
+  // and getDishScore still has a lookup key — an honest "no logs yet" for
+  // an uncategorized venue is the correct result, not a bug.
+  function venueToDishEntry(v: VenueSearchResult): DishEntry {
+    const category = v.category ?? "Uncategorized";
+    const visual = categoryVisual(category);
+    return {
+      id: v.id,
+      category: category as Category,
+      subtype: v.subtype ?? "General",
+      name: v.dishName ?? v.name,
+      venue: v.name,
+      area: v.area,
+      emoji: visual.emoji,
+      tint: visual.tint,
+      score: 0,
+      verifiedPct: 0,
+      logCount: 0,
+      priceRs: 0,
+      tasteNotes: [],
+      allergens: [],
+      photo: v.photo ?? visual.photo,
     } satisfies DishEntry;
   }
 
@@ -286,7 +365,7 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
     const cards: StackCard[] = [{ dish: front, badge: trendingSpotlight ? `🔥 Trending — ${trending?.count ?? 0} logs this week` : "⭐ Top rated" }];
     for (const p of picks ?? []) {
       if (cards.length >= 3) break;
-      const dish = pickToDishEntry(p);
+      const dish = toDishEntry(p);
       if (dish.id !== front.id) cards.push({ dish, badge: "✨ For you" });
     }
     return cards;
@@ -348,22 +427,22 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
         </div>
 
         <div className="flex gap-4 overflow-x-auto mb-5 -mx-5 px-5" style={{ scrollbarWidth: "none" }}>
-          {orderedCategories.map((c) => {
-            const visual = categoryVisual(c.name);
+          {orderedCategories.map((name) => {
+            const visual = categoryVisual(name);
             return (
               <motion.button
-                key={c.name}
+                key={name}
                 whileTap={{ ...TAP_SCALE, y: -2 }}
                 transition={LIQUID_SPRING}
-                onPointerDown={() => setHoveredCategory(c.name)}
-                onPointerEnter={() => setHoveredCategory(c.name)}
+                onPointerDown={() => setHoveredCategory(name)}
+                onPointerEnter={() => setHoveredCategory(name)}
                 onPointerLeave={() => setHoveredCategory(null)}
-                onClick={() => setView({ name: "subtype", category: c.name })}
+                onClick={() => setView({ name: "results", category: name })}
                 className="shrink-0 flex flex-col items-center gap-1.5 w-16"
               >
                 <div
                   className={`w-16 h-16 rounded-full overflow-hidden border-2 relative transition-colors ${
-                    hoveredCategory === c.name ? "border-accent" : "border-line"
+                    hoveredCategory === name ? "border-accent" : "border-line"
                   }`}
                 >
                   {visual.photo ? (
@@ -374,7 +453,7 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
                     </div>
                   )}
                 </div>
-                <span className="text-[11px] font-medium text-muted truncate w-full text-center">{c.name}</span>
+                <span className="text-[11px] font-medium text-muted truncate w-full text-center">{name}</span>
               </motion.button>
             );
           })}
@@ -477,7 +556,7 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
                       className={`shrink-0 w-64 bg-surface border rounded-card overflow-hidden ${CATEGORY_BORDER[p.category as Category] ?? "border-line"} ${CATEGORY_SHADOW[p.category as Category] ?? ""}`}
                     >
                       <button
-                        onClick={() => setView({ name: "profile", dish: pickToDishEntry(p) })}
+                        onClick={() => setView({ name: "profile", dish: toDishEntry(p) })}
                         className="block w-full text-left"
                       >
                         <div className="relative aspect-[4/3]">
@@ -489,7 +568,7 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
                             </div>
                           )}
                           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
-                          <span className={`absolute top-2 left-2 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${CATEGORY_ACCENT[p.category as Category]}`}>
+                          <span className={`absolute top-2 left-2 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${CATEGORY_ACCENT[p.category as Category] ?? "bg-surface2 text-ink/80"}`}>
                             {p.category}
                           </span>
                           <EvidenceScoreBadge community={pickScores[p.id]?.community} size="sm" className="absolute top-2 right-2" />
@@ -513,99 +592,104 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
 
         {query.trim() && (
           <>
-        <p className="font-mono text-[11px] tracking-[0.1em] uppercase text-faint mb-3">
-          Matching "{query.trim()}"
-        </p>
-        {filteredCategories.length === 0 ? (
-          <div className="border border-dashed border-line rounded-card px-6 py-10 text-center">
-            <div className="text-3xl mb-3">🔍</div>
-            <h3 className="font-display font-bold text-lg mb-1.5">Nothing matches "{query.trim()}" yet</h3>
-            <p className="text-muted text-sm mb-2 max-w-[30ch] mx-auto">
-              Not one of our categories, and not a subtype or dish name either.
-            </p>
-            <p className="text-faint text-xs max-w-[32ch] mx-auto">
-              Tap the <span className="text-accent font-semibold">+</span> below, and choose "Other — not listed" as the category — Bhookmark learns new categories from real logs.
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-3">
-            {filteredCategories.map((c, i) => {
-              const visual = categoryVisual(c.name);
-              return (
-                <motion.button
-                  key={c.name}
-                  onClick={() => setView({ name: "subtype", category: c.name })}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ ...LIQUID_SPRING, delay: i * 0.05 }}
-                  whileTap={TAP_SCALE}
-                  className="relative aspect-[4/5] rounded-card overflow-hidden text-left border border-line"
-                >
-                  {visual.photo && (
-                    <img src={visual.photo} alt="" className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
-                  )}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-black/10" />
-                  <div className="relative h-full flex flex-col justify-end p-4">
-                    <div className="text-2xl mb-2 drop-shadow">{c.emoji}</div>
-                    <div className="font-display font-bold text-base text-white leading-tight">{c.name}</div>
-                    <div className="text-white/60 text-xs mt-0.5">{c.subtypes.length} subtypes</div>
-                  </div>
-                </motion.button>
-              );
-            })}
-          </div>
-        )}
+            {filteredCategories.length > 0 && (
+              <>
+                <p className="font-mono text-[11px] tracking-[0.1em] uppercase text-faint mb-3">Categories matching "{query.trim()}"</p>
+                <div className="flex gap-2 flex-wrap mb-5">
+                  {filteredCategories.map((name) => (
+                    <button
+                      key={name}
+                      onClick={() => setView({ name: "results", category: name })}
+                      className="flex items-center gap-1.5 bg-surface border border-line rounded-full px-3.5 py-2 text-sm font-medium"
+                    >
+                      <span>{categoryVisual(name).emoji}</span>
+                      {name}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            <p className="font-mono text-[11px] tracking-[0.1em] uppercase text-faint mb-3">Places matching "{query.trim()}"</p>
+            {nameSearchResults === null ? (
+              <div className="flex flex-col gap-2.5">
+                {[0, 1].map((i) => (
+                  <div key={i} className="h-[72px] rounded-card bg-surface2 animate-pulse" />
+                ))}
+              </div>
+            ) : nameSearchResults.length === 0 ? (
+              <div className="border border-dashed border-line rounded-card px-6 py-10 text-center">
+                <div className="text-3xl mb-3">🔍</div>
+                <h3 className="font-display font-bold text-lg mb-1.5">Nothing matches "{query.trim()}" yet</h3>
+                <p className="text-faint text-xs max-w-[32ch] mx-auto">
+                  It might be a real place we don't have yet — tap Near Me to search and add it.
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2.5">
+                {nameSearchResults.map((v) => {
+                  const visual = categoryVisual(v.category ?? "");
+                  return (
+                    <button
+                      key={v.id}
+                      onClick={() => setView({ name: "profile", dish: venueToDishEntry(v) })}
+                      className="flex items-center gap-3 bg-surface border border-line rounded-card p-3.5 text-left"
+                    >
+                      <div className="relative w-14 h-14 rounded-lg overflow-hidden shrink-0">
+                        {v.photo ? (
+                          <img src={v.photo} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                        ) : (
+                          <div className={`absolute inset-0 bg-gradient-to-br ${visual.tint} bg-surface2 flex items-center justify-center text-xl`}>{visual.emoji}</div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-semibold text-sm truncate">{v.name}</div>
+                        <div className="text-faint text-xs truncate">{v.area}</div>
+                      </div>
+                      {v.category ? (
+                        <span className="text-[10px] font-mono uppercase text-accent bg-accentDim rounded-full px-2 py-1 shrink-0">{v.category}</span>
+                      ) : (
+                        <span className="text-[10px] font-mono uppercase text-faint bg-surface2 rounded-full px-2 py-1 shrink-0">uncategorized</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </>
         )}
       </motion.div>
     );
   }
 
-  if (view.name === "subtype") {
-    const cat = CATEGORIES.find((c) => c.name === view.category)!;
-    return (
-      <motion.div key={`subtype-${view.category}`} initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={LIQUID_SPRING} className="px-5 pt-6 pb-32">
-        <BackRow label={view.category} onBack={() => setView({ name: "search" })} />
-        <p className="text-muted text-sm mb-5">Narrow it down so duels stay fair — a benne dosa never has to compete with a set dosa.</p>
-        <div className="flex flex-col gap-2.5">
-          {cat.subtypes.map((s) => (
-            <button
-              key={s}
-              onClick={() => setView({ name: "results", category: view.category, subtype: s })}
-              className="flex items-center justify-between bg-surface border border-line rounded-xl px-4 py-3.5 text-left hover:border-accent/50 transition-colors"
-            >
-              <span className="font-medium text-sm">{s}</span>
-              <span className="text-faint">›</span>
-            </button>
-          ))}
-        </div>
-      </motion.div>
-    );
-  }
-
   if (view.name === "results") {
-    const dishes = dishesForSubtype(view.category, view.subtype);
+    const dishes = browseResults ?? [];
     const safeIndex = Math.min(resultIndex, Math.max(dishes.length - 1, 0));
     const current = dishes[safeIndex];
     const canPrev = safeIndex > 0;
     const canNext = safeIndex < dishes.length - 1;
+    const visual = categoryVisual(view.category);
 
     return (
-      <motion.div key={`results-${view.category}-${view.subtype}`} initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={LIQUID_SPRING} className="px-5 pt-6 pb-32">
-        <BackRow label={view.subtype} onBack={() => setView({ name: "subtype", category: view.category })} />
+      <motion.div key={`results-${view.category}`} initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={LIQUID_SPRING} className="px-5 pt-6 pb-32">
+        <BackRow label={view.category} onBack={() => setView({ name: "search" })} />
         <div className="flex items-center justify-between mb-4">
           <p className="font-mono text-[11px] tracking-[0.1em] uppercase text-faint">
-            {dishes.length} {view.subtype.toLowerCase()} spot{dishes.length === 1 ? "" : "s"} in Bangalore
+            {browseResults === null
+              ? "Loading…"
+              : `${dishes.length} ${view.category.toLowerCase()} spot${dishes.length === 1 ? "" : "s"} in Bangalore`}
           </p>
           {dishes.length > 1 && (
             <p className="font-mono text-[11px] text-faint tabular">{safeIndex + 1} / {dishes.length}</p>
           )}
         </div>
 
-        {dishes.length === 0 ? (
+        {browseResults === null ? (
+          <div className="aspect-[4/3] rounded-card bg-surface2 animate-pulse" />
+        ) : dishes.length === 0 ? (
           <div className="border border-dashed border-line rounded-card px-6 py-10 text-center">
             <div className="text-3xl mb-3">🍽️</div>
-            <h3 className="font-display font-bold text-lg mb-1.5">Nothing logged here yet</h3>
+            <h3 className="font-display font-bold text-lg mb-1.5">Nothing here yet</h3>
             <p className="text-muted text-sm">Be the first — tap the + below to log one.</p>
           </div>
         ) : (
@@ -619,15 +703,15 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
               onSwipePrev={() => setResultIndex((i) => Math.max(i - 1, 0))}
               className="bg-surface border border-line rounded-card overflow-hidden"
             >
-              <button onClick={() => setView({ name: "profile", dish: current })} className="block w-full text-left">
-                <DishThumb emoji={current.emoji} tint={current.tint} photo={current.photo} size="lg" scrim />
+              <button onClick={() => setView({ name: "profile", dish: toDishEntry(current) })} className="block w-full text-left">
+                <DishThumb emoji={visual.emoji} tint={visual.tint} photo={current.photo ?? visual.photo} size="lg" scrim />
                 <div className="p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="font-display font-bold text-lg leading-tight truncate">{current.name}</div>
                       <div className="text-faint text-sm mt-0.5 truncate">{current.venue} · {current.area}</div>
                     </div>
-                    <EvidenceScoreBadge community={resultScore?.community} />
+                    <EvidenceScoreBadge community={current.community} />
                   </div>
                 </div>
               </button>
@@ -677,7 +761,11 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
         <BackRow
           label="Dish"
           onBack={() =>
-            setView({ name: "results", category: d.category, subtype: d.subtype })
+            // A venue reached via name search can have no real category
+            // (see venueToDishEntry) — there's no "results" screen to
+            // browse back into for one of those, so land on search
+            // instead of an always-empty "Uncategorized" results screen.
+            setView((d.category as string) === "Uncategorized" ? { name: "search" } : { name: "results", category: d.category })
           }
         />
       </div>
