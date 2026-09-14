@@ -12,6 +12,7 @@
     { "source": "/circles/:path*", "destination": "/api" },
     { "source": "/rooms/:path*", "destination": "/api" },
     { "source": "/lists/:path*", "destination": "/api" },
+    { "source": "/saves/:path*", "destination": "/api" },
     { "source": "/health", "destination": "/api" }
   ]
 }
