@@ -3,6 +3,7 @@ import { getDishScore, type DishScoreResponse } from "../api";
 import type { DishEntry } from "../types";
 import { placeLine } from "../format";
 import WhyThis from "./WhyThis";
+import SaveButton from "./SaveButton";
 import { DepthLayer, FloatMedia, useCardStage } from "./CardStage";
 
 /** The expanded dish: the same artwork and name as the card, the logging
@@ -66,15 +67,18 @@ export default function DishPanel({
         )}
 
         <DepthLayer depth={10} className="mt-5">
-          <button
-            onClick={() => {
-              close();
-              onLog(dish);
-            }}
-            className="w-full h-12 gradient-primary text-accentInk text-[15px] font-medium rounded-xl active:scale-[0.98] transition-transform"
-          >
-            I ate this — log it
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                close();
+                onLog(dish);
+              }}
+              className="flex-1 min-w-0 h-12 gradient-primary text-accentInk text-[15px] font-medium rounded-xl active:scale-[0.98] transition-transform"
+            >
+              I ate this — log it
+            </button>
+            <SaveButton dish={{ name: dish.name, venue: dish.venue, area: dish.area, category: dish.category, subtype: dish.subtype }} />
+          </div>
         </DepthLayer>
 
         {score && score.community.count > 0 && (

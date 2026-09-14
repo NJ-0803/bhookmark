@@ -1321,3 +1321,56 @@ export async function listCatalogDishesForBrowse(category: string, limit = 40): 
   results.sort((a, b) => (b.evidenceCount > 0 ? 1 : 0) - (a.evidenceCount > 0 ? 1 : 0) || (b.evidenceScore ?? 0) - (a.evidenceScore ?? 0));
   return results;
 }
+
+// ===== Saved for later (2026-09-14) =====
+
+export interface SavedDish {
+  name: string;
+  venue: string;
+  area: string;
+  category: string;
+  subtype: string;
+  savedAt: number;
+}
+
+export const MAX_SAVED_DISHES = 500;
+
+/** Case- and whitespace-insensitive identity for a dish at a venue — the
+ * same key whichever card (catalog, photo catalog, venue search) saved it. */
+export function savedDishKey(name: string, venue: string): string {
+  const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+  return `${norm(name)}|${norm(venue)}`;
+}
+
+function savedFromRow(r: any): SavedDish {
+  return { name: r.name, venue: r.venue, area: r.area, category: r.category, subtype: r.subtype, savedAt: Number(r.created_at) };
+}
+
+export async function listSavedDishes(userId: string): Promise<SavedDish[]> {
+  const rows = await sql()`SELECT * FROM saved_dishes WHERE user_id = ${userId} ORDER BY created_at DESC`;
+  return rows.map(savedFromRow);
+}
+
+export async function countSavedDishes(userId: string): Promise<number> {
+  const rows = await sql()`SELECT COUNT(*)::int AS n FROM saved_dishes WHERE user_id = ${userId}`;
+  return rows[0]?.n ?? 0;
+}
+
+/** Idempotent: saving an already-saved dish keeps the original save time. */
+export async function saveDish(userId: string, dish: Omit<SavedDish, "savedAt">): Promise<{ save: SavedDish; created: boolean }> {
+  const db = sql();
+  const key = savedDishKey(dish.name, dish.venue);
+  const inserted = await db`
+    INSERT INTO saved_dishes (user_id, dish_key, name, venue, area, category, subtype, created_at)
+    VALUES (${userId}, ${key}, ${dish.name}, ${dish.venue}, ${dish.area}, ${dish.category}, ${dish.subtype}, ${Date.now()})
+    ON CONFLICT (user_id, dish_key) DO NOTHING
+    RETURNING *`;
+  if (inserted[0]) return { save: savedFromRow(inserted[0]), created: true };
+  const existing = await db`SELECT * FROM saved_dishes WHERE user_id = ${userId} AND dish_key = ${key}`;
+  return { save: savedFromRow(existing[0]), created: false };
+}
+
+export async function unsaveDish(userId: string, name: string, venue: string): Promise<boolean> {
+  const rows = await sql()`DELETE FROM saved_dishes WHERE user_id = ${userId} AND dish_key = ${savedDishKey(name, venue)} RETURNING dish_key`;
+  return rows.length > 0;
+}

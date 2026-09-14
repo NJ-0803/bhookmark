@@ -3,6 +3,11 @@ import { motion } from "framer-motion";
 import type { RemoteLog } from "../api";
 import { findDishPhoto } from "../data/dishes";
 import { DepthLayer, FloatCard, FloatMedia } from "../components/CardStage";
+import DishPanel from "../components/DishPanel";
+import { CardSaveButton } from "../components/SaveButton";
+import { savedToDishEntry, useSaves } from "../saves";
+import { placeLine } from "../format";
+import type { DishEntry } from "../types";
 import { ratingVerdict } from "../components/RatingPicker";
 import { LIQUID_SPRING, TAP_SCALE } from "../motion";
 import { VERDICT_COPY } from "../verdictCopy";
@@ -14,10 +19,12 @@ export default function Bhookmarks({
   logs,
   logsError,
   onLogFirst,
+  onLogDish,
 }: {
   logs: RemoteLog[] | null;
   logsError: string | null;
   onLogFirst: () => void;
+  onLogDish: (dish: DishEntry) => void;
 }) {
   const [previewEmpty, setPreviewEmpty] = useState(false);
   const visibleLogs = (logs ?? []).filter((l) => l.status !== "removed");
@@ -40,6 +47,8 @@ export default function Bhookmarks({
       {logsError && (
         <div className="bg-badDim border border-bad/30 rounded-xl px-4 py-3 text-sm text-bad mb-5">{logsError}</div>
       )}
+
+      <SavedForLater onLogDish={onLogDish} />
 
       {loading ? (
         <div className="border border-line rounded-card px-6 py-10 text-center text-faint text-sm">Loading your Bhookmarks…</div>
@@ -119,6 +128,44 @@ export default function Bhookmarks({
         </>
       )}
     </div>
+  );
+}
+
+/** Dishes saved from any card, newest first. A card lifts into the full dish
+ * panel, where it can be logged or unsaved. */
+function SavedForLater({ onLogDish }: { onLogDish: (dish: DishEntry) => void }) {
+  const { saves } = useSaves();
+  if (saves.length === 0) return null;
+  return (
+    <section aria-labelledby="saved-for-later" className="mb-7">
+      <h2 id="saved-for-later" className="text-[16px] font-medium text-ink mb-2.5">
+        Saved for later <span className="text-muted font-normal">· {saves.length}</span>
+      </h2>
+      <div className="flex gap-3 overflow-x-auto -mx-5 px-5 pb-1" style={{ scrollbarWidth: "none" }}>
+        {saves.map((s) => {
+          const dish = savedToDishEntry(s);
+          const id = `saved-${dish.id}`;
+          return (
+            <div key={dish.id} className="relative shrink-0 w-44">
+              <FloatCard
+                id={id}
+                label={s.name}
+                wide
+                className="bg-surface border border-line"
+                panel={() => <DishPanel dish={dish} mediaId={`${id}-media`} photo={dish.photo} userAllergens={[]} onLog={onLogDish} />}
+              >
+                <FloatMedia id={`${id}-media`} photo={dish.photo} category={s.category} className="aspect-square" />
+                <div className="p-3">
+                  <span className="dish-name text-[17px] text-ink line-clamp-2">{s.name}</span>
+                  <span className="block text-muted text-[13px] mt-0.5 truncate">{placeLine(s)}</span>
+                </div>
+              </FloatCard>
+              <CardSaveButton cardId={id} dish={s} className="absolute top-2 right-2 z-10" />
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 

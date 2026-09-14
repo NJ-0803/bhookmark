@@ -40,6 +40,7 @@ export default defineConfig({
       '/circles': 'http://localhost:4001',
       '/rooms': 'http://localhost:4001',
       '/lists': 'http://localhost:4001',
+      '/saves': 'http://localhost:4001',
       '/dev': 'http://localhost:4001',
     },
   },

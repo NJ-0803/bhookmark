@@ -245,6 +245,24 @@ CREATE TABLE IF NOT EXISTS list_items (
 CREATE INDEX IF NOT EXISTS idx_list_items_list ON list_items(list_id);
 CREATE INDEX IF NOT EXISTS idx_lists_parent ON lists(parent_list_id);
 
+-- Saved for later (2026-09-14): a person's private bookmark of a dish at a
+-- venue. Keyed by normalised name + venue rather than a dish id, because
+-- cards come from sources whose ids never line up (DB catalog dishes, the
+-- static photo catalog, venue search). The display fields are a snapshot
+-- taken at save time. Never public, never part of any score.
+CREATE TABLE IF NOT EXISTS saved_dishes (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  dish_key TEXT NOT NULL,
+  name TEXT NOT NULL,
+  venue TEXT NOT NULL,
+  area TEXT NOT NULL DEFAULT '',
+  category TEXT NOT NULL DEFAULT '',
+  subtype TEXT NOT NULL DEFAULT '',
+  created_at BIGINT NOT NULL,
+  PRIMARY KEY (user_id, dish_key)
+);
+CREATE INDEX IF NOT EXISTS idx_saved_dishes_user ON saved_dishes(user_id, created_at DESC);
+
 -- ===== Phase 2 (2026-09-11): real venue/dish catalog =====
 -- Replaces the three hardcoded, drifting arrays (server/src/catalog.ts,
 -- server/src/venues.ts, src/data/dishes.ts) that caused the "Coffee search

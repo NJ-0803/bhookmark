@@ -437,3 +437,21 @@ export async function cloneList(id: string, title?: string): Promise<{ ok: boole
   const res = await api(`/lists/${id}/clone`, { method: "POST", body: JSON.stringify(title ? { title } : {}) });
   return res.json();
 }
+
+// ===== Saved for later =====
+
+export interface SavedDish { name: string; venue: string; area: string; category: string; subtype: string; savedAt: number }
+
+export async function getSaves(): Promise<{ ok: boolean; saves: SavedDish[]; error?: string }> {
+  return (await api("/saves")).json();
+}
+
+export async function saveDish(dish: Omit<SavedDish, "savedAt">): Promise<{ ok: boolean; save?: SavedDish; created?: boolean; error?: string }> {
+  const res = await api("/saves", { method: "POST", body: JSON.stringify(dish) });
+  return res.json();
+}
+
+export async function unsaveDish(name: string, venue: string): Promise<{ ok: boolean; removed?: boolean; error?: string }> {
+  const res = await api("/saves", { method: "DELETE", body: JSON.stringify({ name, venue }) });
+  return res.json();
+}

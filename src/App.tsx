@@ -13,6 +13,7 @@ import type { DishEntry, JournalLog } from "./types";
 import { getMyLogs, getSession, type RemoteLog } from "./api";
 import { LIQUID_SPRING } from "./motion";
 import { CardStageProvider, StageShell } from "./components/CardStage";
+import { SavesProvider } from "./saves";
 
 export default function App() {
   const [authed, setAuthed] = useState(() => !!getSession());
@@ -53,7 +54,10 @@ export default function App() {
   if (!authed) return <Login onSignedIn={() => setAuthed(true)} />;
   if (showOnboarding) return <Onboarding onDone={() => setShowOnboarding(false)} />;
 
+  // SavesProvider wraps CardStageProvider: floating panels render through the
+  // stage's portal, and their Save buttons need the saves context.
   return (
+    <SavesProvider>
     <CardStageProvider>
     <div className="min-h-dvh">
       <StageShell>
@@ -74,6 +78,7 @@ export default function App() {
             logs={remoteLogs}
             logsError={logsError}
             onLogFirst={() => setLogFlow({ open: true })}
+            onLogDish={(dish) => setLogFlow({ open: true, prefill: dish })}
           />
         )}
         {tab === "circles" && <Circles />}
@@ -97,5 +102,6 @@ export default function App() {
       </AnimatePresence>
     </div>
     </CardStageProvider>
+    </SavesProvider>
   );
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import CategoryArt from "../components/CategoryArt";
+import SaveButton from "../components/SaveButton";
 import { DepthLayer, FloatCard, FloatMedia } from "../components/CardStage";
 import { getNearbyVenues, getVenueCategories, searchVenues, submitVenue, type NearbyVenue, type VenueSearchResult } from "../api";
 import { LIQUID_SPRING, TAP_SCALE } from "../motion";
@@ -335,14 +336,19 @@ function VenuePanel({ venue, category, mediaId }: { venue: NearbyVenue; category
         </DepthLayer>
 
         <DepthLayer depth={14} className="mt-6">
-          <a
-            href={mapsHref}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center justify-center w-full bg-accent text-accentInk font-medium rounded-xl py-3.5"
-          >
-            Open in Maps
-          </a>
+          <div className="flex gap-2">
+            <a
+              href={mapsHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex-1 min-w-0 h-12 flex items-center justify-center gradient-primary text-accentInk text-[15px] font-medium rounded-xl"
+            >
+              Open in Maps
+            </a>
+            {/* A venue saves under its own name, the same identity venue
+                search already uses when a place has no named dish. */}
+            <SaveButton dish={{ name: venue.name, venue: venue.name, area: venue.area, category, subtype: "General" }} />
+          </div>
         </DepthLayer>
       </div>
     </div>

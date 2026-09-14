@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import type { DishEntry } from "../types";
 import { FloatCard, FloatMedia } from "./CardStage";
 import CategoryArt from "./CategoryArt";
+import { CardSaveButton } from "./SaveButton";
 import { LIQUID_SPRING } from "../motion";
 import { placeLine } from "../format";
 
@@ -82,17 +83,24 @@ export default function TrendingStack({
             className="absolute inset-x-0 top-0 aspect-[16/11] lg:aspect-[16/10] cursor-grab active:cursor-grabbing"
           >
             {isFront ? (
-              <FloatCard
-                id={id}
-                label={dish.name}
-                wide
-                className="absolute inset-0 bg-surface2 border border-line"
-                contentClassName="absolute inset-0"
-                panel={() => renderPanel(dish, `${id}-media`)}
-              >
-                <FloatMedia id={`${id}-media`} photo={dish.photo} category={dish.category} className="absolute inset-0" />
-                {overlay}
-              </FloatCard>
+              <>
+                <FloatCard
+                  id={id}
+                  label={dish.name}
+                  wide
+                  className="absolute inset-0 bg-surface2 border border-line"
+                  contentClassName="absolute inset-0"
+                  panel={() => renderPanel(dish, `${id}-media`)}
+                >
+                  <FloatMedia id={`${id}-media`} photo={dish.photo} category={dish.category} className="absolute inset-0" />
+                  {overlay}
+                </FloatCard>
+                <CardSaveButton
+                  cardId={id}
+                  dish={{ name: dish.name, venue: dish.venue, area: dish.area, category: dish.category, subtype: dish.subtype }}
+                  className="absolute top-2.5 right-2.5 z-10"
+                />
+              </>
             ) : (
               <div className="absolute inset-0 rounded-card overflow-hidden border border-line bg-surface2" aria-hidden="true">
                 {dish.photo ? (

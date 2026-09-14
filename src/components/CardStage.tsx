@@ -70,10 +70,6 @@ const DepthContext = createContext<{ px: MotionValue<number>; py: MotionValue<nu
 // further than this is a swipe, not a request to open.
 const TAP_SLOP_PX = 10;
 
-// About twice the longest closing movement (~0.5s).
-// Natural exits measured at ~830ms in headless Chrome; this is the fallback.
-const EXIT_WATCHDOG_MS = 1200;
-
 export function CardStageProvider({ children }: { children: ReactNode }) {
   const [entry, setEntry] = useState<StageEntry | null>(null);
   const [exitInfo, setExitInfo] = useState<ExitInfo>({ sourceGone: false });
@@ -81,20 +77,11 @@ export function CardStageProvider({ children }: { children: ReactNode }) {
   // True while a closed panel is still animating out (see open/close).
   const exiting = useRef(false);
   const lastTrigger = useRef<HTMLElement | null>(null);
-  const exitWatchdog = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Remounting AnimatePresence drops any exiting panel immediately.
   const [presenceKey, setPresenceKey] = useState(0);
 
   const finishExit = useCallback(() => {
-    if (exitWatchdog.current) {
-      clearTimeout(exitWatchdog.current);
-      exitWatchdog.current = null;
-    }
     exiting.current = false;
-  }, []);
-
-  useEffect(() => () => {
-    if (exitWatchdog.current) clearTimeout(exitWatchdog.current);
   }, []);
 
   const open = useCallback((next: StageEntry) => {
@@ -119,17 +106,7 @@ export function CardStageProvider({ children }: { children: ReactNode }) {
     exiting.current = true;
     setExitInfo({ sourceGone: !current.trigger?.isConnected });
     setEntry(null);
-    // Framer's shared-layout exit sometimes never reports completion (headless
-    // QA: roughly 1 close in 2–6 leaves the already-faded panel in the DOM).
-    // The leftover ignores pointer events (see StagePanel); this removes it
-    // and unblocks the next open.
-    exitWatchdog.current = setTimeout(() => {
-      exitWatchdog.current = null;
-      if (!exiting.current) return;
-      setPresenceKey((k) => k + 1);
-      finishExit();
-    }, EXIT_WATCHDOG_MS);
-  }, [finishExit]);
+  }, []);
 
   useEffect(() => {
     if (!entry) return;
@@ -548,7 +525,14 @@ export function FloatMedia({
 }
 
 /** Panel content on its own depth plane: a staggered entrance and a small
- * pointer-parallax offset proportional to `depth`. */
+ * pointer-parallax offset proportional to `depth`.
+ *
+ * Deliberately no `exit`: the panel's scene wrapper already fades/moves the
+ * whole panel out. A layer with its own exit that mounts after the panel
+ * opened (e.g. ratings arriving from the network) and is closed while its
+ * entrance is still running never resolves its exit in Framer Motion 13, so
+ * AnimatePresence kept the closed panel in the DOM — reproduced 100% in
+ * headless QA, 0 hangs across all close timings once removed. */
 export function DepthLayer({ depth, className = "", children }: { depth: number; className?: string; children: ReactNode }) {
   const { px, py, reduce } = useContext(DepthContext);
   const x = useTransform(px, (v) => v * depth * 0.6);
@@ -558,7 +542,6 @@ export function DepthLayer({ depth, className = "", children }: { depth: number;
       className={className}
       initial={reduce ? { opacity: 0 } : { opacity: 0, y: 6 + depth * 0.4 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, transition: { duration: 0.1 } }}
       transition={reduce ? { duration: 0.18 } : { ...FLOAT_SPRING, delay: 0.06 + depth * 0.01 }}
     >
       <motion.div style={reduce ? undefined : { x, y }}>{children}</motion.div>

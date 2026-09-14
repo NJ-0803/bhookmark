@@ -1,58 +1,103 @@
+import type { ReactNode } from "react";
 import { motion } from "framer-motion";
 import { LIQUID_SPRING, TAP_SCALE } from "../motion";
 
 export const ONBOARDING_KEY = "bhookmark.onboarded";
 
+const iconProps = {
+  viewBox: "0 0 24 24",
+  className: "w-5 h-5",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 1.6,
+  strokeLinecap: "round" as const,
+  strokeLinejoin: "round" as const,
+  "aria-hidden": true,
+};
+
+// What the app actually does today: discovery, saving, and manual logging.
+const STEPS: { title: string; body: string; icon: ReactNode }[] = [
+  {
+    title: "Find a dish worth the trip",
+    body: "Search a craving or a place, or share your location once to see what's close.",
+    icon: (
+      <svg {...iconProps}>
+        <circle cx="11" cy="11" r="6.5" />
+        <path d="M16 16l4 4" />
+      </svg>
+    ),
+  },
+  {
+    title: "Save it for later",
+    body: "Tap the bookmark on any dish. Everything you save waits in Bhookmarks.",
+    icon: (
+      <svg {...iconProps}>
+        <path d="M7 3.5h10a1 1 0 0 1 1 1V20l-6-3.6L6 20V4.5a1 1 0 0 1 1-1z" />
+      </svg>
+    ),
+  },
+  {
+    title: "Log it, and rate it yourself",
+    body: "Tap + after you eat. You choose the score out of 10 — Bhookmark never picks it for you.",
+    icon: (
+      <svg {...iconProps}>
+        <path d="M12 5v14M5 12h14" />
+      </svg>
+    ),
+  },
+];
+
+function rise(i: number) {
+  return { initial: { opacity: 0, y: 12 }, animate: { opacity: 1, y: 0 }, transition: { ...LIQUID_SPRING, delay: 0.05 + i * 0.07 } };
+}
+
 export default function Onboarding({ onDone }: { onDone: () => void }) {
   return (
-    <div className="fixed inset-0 z-[60] bg-bg flex flex-col items-center justify-center px-8 text-center">
-      <p className="font-mono text-[11px] tracking-[0.14em] uppercase text-faint mb-2">Before you start</p>
-      <h1 className="font-display font-extrabold text-2xl mb-8 text-balance">Two ways to answer</h1>
-
-      <div className="relative w-full max-w-[240px] h-64 mb-10">
-        <motion.div
-          animate={{ x: [0, 90, 0, -90, 0], rotate: [0, 10, 0, -10, 0] }}
-          transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute inset-0 bg-surface border border-line rounded-card flex flex-col items-center justify-center gap-2"
-        >
-          <span className="text-4xl">🍔</span>
-          <span className="text-sm font-medium text-muted">Peri Peri Chicken Burger</span>
+    <div
+      className="fixed inset-0 z-[60] bg-bg overflow-y-auto"
+      style={{ paddingTop: "max(24px, env(safe-area-inset-top))", paddingBottom: "max(24px, env(safe-area-inset-bottom))" }}
+    >
+      <div className="min-h-full max-w-[380px] mx-auto px-6 flex flex-col justify-center">
+        <motion.div {...rise(0)} className="relative aspect-[16/10] rounded-card overflow-hidden border border-line mb-7">
+          <img src="/dishes/d1.jpg" alt="" className="absolute inset-0 w-full h-full object-cover" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent" />
+          <div className="absolute inset-x-0 bottom-0 p-4">
+            <span className="dish-name text-[24px] text-white">Benne Masala Dosa</span>
+            <span className="block text-white/75 text-[14px] mt-0.5">CTR (Shri Sagar) · Malleshwaram</span>
+          </div>
         </motion.div>
-        <motion.span
-          animate={{ opacity: [0, 0, 1, 0, 0, 0, 0, 0] }}
-          transition={{ duration: 4, repeat: Infinity, times: [0, 0.15, 0.25, 0.4, 0.5, 0.65, 0.85, 1] }}
-          className="absolute top-3 right-3 text-rose border-2 border-accent rounded-lg px-2.5 py-1 text-xs font-bold rotate-6"
-        >
-          YEAH
-        </motion.span>
-        <motion.span
-          animate={{ opacity: [0, 0, 0, 0, 0, 1, 0, 0] }}
-          transition={{ duration: 4, repeat: Infinity, times: [0, 0.15, 0.25, 0.4, 0.5, 0.65, 0.85, 1] }}
-          className="absolute top-3 left-3 text-bad border-2 border-bad rounded-lg px-2.5 py-1 text-xs font-bold -rotate-6"
-        >
-          NAH
-        </motion.span>
-      </div>
 
-      <div className="flex flex-col gap-4 mb-10 text-left max-w-[300px]">
-        <div className="flex items-center gap-3">
-          <span className="w-9 h-9 rounded-full bg-accentDim text-rose flex items-center justify-center text-lg shrink-0">→</span>
-          <p className="text-sm text-ink/90"><span className="text-rose font-semibold">Swipe right</span> for a yeah — loved it, or this one wins a duel.</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="w-9 h-9 rounded-full bg-badDim text-bad flex items-center justify-center text-lg shrink-0">←</span>
-          <p className="text-sm text-ink/90"><span className="text-bad font-semibold">Swipe left</span> for a nah — not for you, or the other one wins.</p>
-        </div>
-      </div>
+        <motion.p {...rise(1)} className="text-[13px] text-rose mb-1.5">
+          Welcome to Bhookmark
+        </motion.p>
+        <motion.h1 {...rise(1)} className="font-display font-semibold text-[28px] leading-[1.12] tracking-[-0.02em] text-ink mb-6">
+          Remember every dish worth going back for.
+        </motion.h1>
 
-      <motion.button
-        onClick={() => { localStorage.setItem(ONBOARDING_KEY, "1"); onDone(); }}
-        whileTap={TAP_SCALE}
-        transition={LIQUID_SPRING}
-        className="w-full max-w-[300px] bg-accent text-accentInk font-semibold rounded-xl py-3.5"
-      >
-        Got it
-      </motion.button>
+        <ol className="flex flex-col gap-4 mb-8">
+          {STEPS.map((step, i) => (
+            <motion.li key={step.title} {...rise(i + 2)} className="flex gap-3.5">
+              <span className="w-10 h-10 rounded-full bg-accentDim text-rose flex items-center justify-center shrink-0">{step.icon}</span>
+              <div className="min-w-0">
+                <p className="text-[16px] font-medium text-ink">{step.title}</p>
+                <p className="text-[14px] text-muted leading-snug mt-0.5">{step.body}</p>
+              </div>
+            </motion.li>
+          ))}
+        </ol>
+
+        <motion.button
+          {...rise(5)}
+          onClick={() => {
+            localStorage.setItem(ONBOARDING_KEY, "1");
+            onDone();
+          }}
+          whileTap={TAP_SCALE}
+          className="w-full h-12 gradient-primary text-accentInk text-[15px] font-medium rounded-xl"
+        >
+          Start exploring
+        </motion.button>
+      </div>
     </div>
   );
 }

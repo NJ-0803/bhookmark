@@ -7,6 +7,7 @@ import { CategoryGlyph } from "../components/CategoryArt";
 import BrowseCard from "../components/BrowseCard";
 import TrendingStack, { type StackCard } from "../components/TrendingStack";
 import DishPanel from "../components/DishPanel";
+import { CardSaveButton } from "../components/SaveButton";
 import { FloatCard, FloatMedia } from "../components/CardStage";
 import Reveal from "../components/Reveal";
 import { placeLine } from "../format";
@@ -498,22 +499,28 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
                           const photo = dishById(p.id)?.photo ?? DISHES.find((d) => d.name === p.name && d.venue === p.venue)?.photo;
                           const id = `pick-${p.id}`;
                           return (
-                            <FloatCard
-                              key={p.id}
-                              id={id}
-                              label={p.name}
-                              wide
-                              className="shrink-0 w-[15.5rem] lg:w-auto bg-surface border border-line"
-                              panel={() => (
-                                <DishPanel dish={toDishEntry(p)} mediaId={`${id}-media`} photo={photo} reason={p.reason} userAllergens={userAllergens} onLog={onLogDish} />
-                              )}
-                            >
-                              <FloatMedia id={`${id}-media`} photo={photo} category={p.category} className="aspect-[4/3]" />
-                              <div className="p-3.5">
-                                <span className="dish-name text-[20px] text-ink line-clamp-2">{p.name}</span>
-                                <span className="block text-muted text-[14px] mt-1 truncate">{placeLine(p)}</span>
-                              </div>
-                            </FloatCard>
+                            <div key={p.id} className="relative shrink-0 w-[15.5rem] lg:w-auto">
+                              <FloatCard
+                                id={id}
+                                label={p.name}
+                                wide
+                                className="bg-surface border border-line"
+                                panel={() => (
+                                  <DishPanel dish={toDishEntry(p)} mediaId={`${id}-media`} photo={photo} reason={p.reason} userAllergens={userAllergens} onLog={onLogDish} />
+                                )}
+                              >
+                                <FloatMedia id={`${id}-media`} photo={photo} category={p.category} className="aspect-[4/3]" />
+                                <div className="p-3.5">
+                                  <span className="dish-name text-[20px] text-ink line-clamp-2">{p.name}</span>
+                                  <span className="block text-muted text-[14px] mt-1 truncate">{placeLine(p)}</span>
+                                </div>
+                              </FloatCard>
+                              <CardSaveButton
+                                cardId={id}
+                                dish={{ name: p.name, venue: p.venue, area: p.area, category: p.category, subtype: p.subtype }}
+                                className="absolute top-2.5 right-2.5 z-10"
+                              />
+                            </div>
                           );
                         })}
                       </div>
@@ -600,6 +607,11 @@ export default function Home({ onLogDish }: { onLogDish: (dish: DishEntry) => vo
                   <span className="block text-muted text-[15px] mt-1">{placeLine(current)}</span>
                 </div>
               </FloatCard>
+              <CardSaveButton
+                cardId={`result-${current.id}`}
+                dish={{ name: current.name, venue: current.venue, area: current.area, category: current.category, subtype: current.subtype }}
+                className="absolute top-3 right-3 z-20"
+              />
             </BrowseCard>
 
             {dishes.length > 1 ? (

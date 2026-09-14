@@ -15,6 +15,7 @@ import { friendsRouter } from "./routes/friends";
 import { circlesRouter } from "./routes/circles";
 import { roomsRouter } from "./routes/rooms";
 import { listsRouter } from "./routes/lists";
+import { savesRouter } from "./routes/saves";
 
 const app = express();
 const isProd = process.env.NODE_ENV === "production";
@@ -69,6 +70,7 @@ app.use("/friends", friendsRouter);
 app.use("/circles", circlesRouter);
 app.use("/rooms", roomsRouter);
 app.use("/lists", listsRouter);
+app.use("/saves", savesRouter);
 if (!isProd) app.use("/dev", devRouter);
 
 export default app;
