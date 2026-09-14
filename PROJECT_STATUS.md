@@ -153,6 +153,36 @@ Previously fully mocked. Now a real backend, zero paid APIs (polling instead of 
       - Headless Chrome Save checks: card save is optimistic and confirmed without opening the card; persists across reload; the panel toggle works; the Bhookmarks strip shows it; unsaving from a saved card's own panel removes the source while open and the panel fades out in 334ms (the source-gone path, now exercised); offline goes saved → rolled back with a readable message and nothing stored; Onboarding shows the new steps.
       - Full motion regression re-run clean on the final code.
     - **Noticed, not changed:** Bhookmarks' header still uses the old uppercase mono label and shows a "preview: new account" debug toggle to users.
+  - **Round 3: Flavor DNA fix, multi-dish visits, public photos, taste game (2026-09-14, uncommitted, NOT deployed)** — from the user's feedback after logging 3 real dishes. Decisions the user made: multi-dish = "Add another dish from this visit"; photos = Vercel Blob free Hobby tier; taste game AI = free Groq model with a no-AI fallback.
+    - **Flavor DNA:** not a counting bug. The user's 3 logs were Matcha, Burger and Coffee, one each, and Flavor DNA counts per category, so "1 of 3" was accurate but the copy never said "in one category". Bhookmarks also used a different rule (loved-only) and claimed "eaten fresh off the counter — not delivered" with no data behind it. Now one shared `FlavorDnaCard` on You and Bhookmarks, one rule (all logs per category), copy naming the closest category ("Closest: Coffee, 1 of 3"). `evidenceThresholds.ts` exports thresholds and `categoryCounts`.
+    - **Multi-dish visits:**
+      - `logs.visit_id` column plus optional `visitId` on POST /logs.
+      - The burst check counts visits, not dishes: a dish continuing a visit already logged at that venue adds no hit, so a real 6-dish order publishes. One visit is held past 12 dishes, and a visit id reused at another venue counts as a new visit.
+      - BiteLog adds "+ Add another dish from this visit", which keeps the venue, location check and privacy; later dishes skip the location step, and the finish screen lists the visit's dishes. The stale "enter duels" offline copy is fixed.
+      - Tests: `visits-test.mjs` 12/12.
+    - **Public photos:**
+      - Storage: Vercel Blob store `bhookmark-photos` (public, bom1), created and connected to production, preview and development; `BLOB_READ_WRITE_TOKEN` is on the Vercel project. `@vercel/blob` is in root and server package.json.
+      - Upload: `POST /photos` (server upload, not browser-direct) takes a JPEG/PNG/WebP up to 1.5 MB, checks the magic bytes, stores it under `logs/{userId}/`, and records it in `photo_uploads`.
+      - Caps: 30/user/day, and uploads pause at 1,800/month, under the Hobby plan's verified 2,000 uploads/month, 1 GB and 10 GB transfer; exceeding a limit stops Blob for 30 days.
+      - Attaching: a log can only attach a photo its own account uploaded.
+      - Showing: `/dishes/score` returns `photos` from public logs only; Near Me reviews carry `photoUrl`.
+      - Moderation: `POST /photos/report` hides a photo after 2 different reporters; you can't report your own.
+      - Frontend: compresses to 1280px JPEG (`src/compressImage.ts`, ~41 KB in the browser check); a failed upload never blocks the log. DishPanel gets a "Photos from real visits" strip with Report; the journal and Recent bites use the log's own photo.
+      - Tests: `photos-test.mjs` 18/18 (it deletes its test blobs).
+    - **Taste game:**
+      - Unlock: 7 logs in a category from at least 2 places.
+      - `/taste/status|round|answer|results`: 2–3-option "which place does {category} better?" questions about the person's own logged places, and "too close to call".
+      - Storage: `taste_answers` holds pairwise rows; the ranking is Bradley–Terry with a half-win prior (`server/src/tasteRank.ts`); scores are never read or changed.
+      - Suggestions: untried catalog places, cached in `taste_suggestions` until answers change or 24h pass. The AI step is optional: Groq `llama-3.1-8b-instant` (listed as production on Groq's model page), JSON mode, 4s timeout, picks validated against real candidate ids, and any failure falls back to ranking by community logs. The UI labels the source honestly.
+      - **Groq free-tier limits are from third-party write-ups** (30 RPM, 14,400/day, 6,000 TPM, no card) and are not verified on Groq's own site. **No `GROQ_API_KEY` exists yet — the user has to create one; until then the game runs in fallback mode.**
+      - UI: `TasteGameCard` on You and a full-screen `TasteGame`.
+      - Tests: `taste-test.mjs` 23/23; `taste-ai-check.ts` 4/4 failure paths, with the live check skipped without a key.
+    - **Routing:** `vercel.json` rewrites and dev proxy entries for `/photos` and `/taste`.
+    - **Verification:**
+      - Full backend regression green on the test branch: visits 12, photos 18, saves 21, nearby 16, qa-brief 24, recommendations 11, notifications 7, phase4 38, privacy-visibility 11, venue-claims 16, redteam 13, taste 23. Two runs hit "fetch failed" connecting to Neon (a network blip, including on untouched auth routes) and passed on rerun.
+      - Headless browser: Flavor DNA copy, taste game card, a full round with 3-option and 2-option questions, results with ranking and 3 suggestions, clean close; BiteLog with a real photo, uploaded, compressed and served; dish 2 from the same visit (venue prefilled, location step skipped); a visit summary with both dishes; server confirms a shared visit id, the photo on dish 1 only, and the journal showing the uploaded photo.
+      - Browser-posted logs show "held" because every request comes from 127.0.0.1 and trips the real multi-account-network hold; real users on distinct networks don't. Test scripts must send a per-user `X-Forwarded-For` on every request.
+    - **Before deploy:** run `migrate.mjs` against production (visit_id, photo tables, taste tables) and get the user's go-ahead; add `GROQ_API_KEY` to Vercel when the user has one.
 - Bhookmarks redesign (calendar, taste fingerprint, notes search), Bite Buddy / Taste Pulse (not built at all).
 - ~~Phase 4: Craving Rooms / Food Circles / Lists~~ — **built and shipped** (2026-09-05). See the Phase 4 section above.
 - ~~Phase 5 remainder: accessibility audit~~ — **done** (2026-09-04). Phase 5 is now fully closed.

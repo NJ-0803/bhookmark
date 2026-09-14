@@ -76,6 +76,9 @@ export interface DishLog {
   locationVerified: boolean;
   ownerDisclosed: boolean;
   visibility: LogVisibility;
+  visitId: string | null;
+  photoUrl: string | null;
+  photoHidden: boolean;
 }
 
 export type VenueClaimStatus = "pending" | "approved" | "rejected";
@@ -135,6 +138,9 @@ function logFromRow(r: any): DishLog {
     locationVerified: r.location_verified ?? false,
     ownerDisclosed: r.owner_disclosed ?? false,
     visibility: r.visibility ?? "public",
+    visitId: r.visit_id ?? null,
+    photoUrl: r.photo_url ?? null,
+    photoHidden: r.photo_hidden ?? false,
   };
 }
 
@@ -254,8 +260,8 @@ export async function listDevicesForUser(userId: string): Promise<Device[]> {
 
 export async function createLog(log: DishLog): Promise<void> {
   await sql()`
-    INSERT INTO logs (id, user_id, category, subtype, name, venue, verdict, score, note, evidence_level, verified, status, device_id, created_at, location_verified, owner_disclosed, visibility)
-    VALUES (${log.id}, ${log.userId}, ${log.category}, ${log.subtype}, ${log.name}, ${log.venue}, ${log.verdict}, ${log.score}, ${log.note}, ${log.evidenceLevel}, ${log.verified}, ${log.status}, ${log.deviceId}, ${log.createdAt}, ${log.locationVerified}, ${log.ownerDisclosed}, ${log.visibility})`;
+    INSERT INTO logs (id, user_id, category, subtype, name, venue, verdict, score, note, evidence_level, verified, status, device_id, created_at, location_verified, owner_disclosed, visibility, visit_id, photo_url)
+    VALUES (${log.id}, ${log.userId}, ${log.category}, ${log.subtype}, ${log.name}, ${log.venue}, ${log.verdict}, ${log.score}, ${log.note}, ${log.evidenceLevel}, ${log.verified}, ${log.status}, ${log.deviceId}, ${log.createdAt}, ${log.locationVerified}, ${log.ownerDisclosed}, ${log.visibility}, ${log.visitId}, ${log.photoUrl})`;
 }
 
 export async function getLogById(id: string): Promise<DishLog | undefined> {
@@ -411,16 +417,25 @@ export async function setIdempotent(key: string, status: number, body: unknown):
 
 // ---------- Venue velocity (burst detection) ----------
 
-export async function recordVenueHit(key: string, now: number, windowMs: number): Promise<number> {
+/** Counts hits for `key` inside the window. `record` false counts without
+ * adding one — used when a log continues a visit that already counted. */
+export async function recordVenueHit(key: string, now: number, windowMs: number, record = true): Promise<number> {
   const db = sql();
   const rows = await db`SELECT hits FROM venue_velocity WHERE key = ${key}`;
   const existing: number[] = rows[0]?.hits?.map(Number) ?? [];
   const recent = existing.filter((t) => now - t < windowMs);
-  recent.push(now);
+  if (record) recent.push(now);
   await db`
     INSERT INTO venue_velocity (key, hits) VALUES (${key}, ${recent})
     ON CONFLICT (key) DO UPDATE SET hits = ${recent}`;
   return recent.length;
+}
+
+/** Dishes this person already logged in one visit at one venue. A visit id
+ * reused at a different venue matches nothing, so it counts as a new visit. */
+export async function countLogsInVisit(userId: string, visitId: string, venue: string): Promise<number> {
+  const rows = await sql()`SELECT COUNT(*)::int AS n FROM logs WHERE user_id = ${userId} AND visit_id = ${visitId} AND venue = ${venue}`;
+  return rows[0]?.n ?? 0;
 }
 
 // ---------- Security events ----------
@@ -1368,6 +1383,80 @@ export async function saveDish(userId: string, dish: Omit<SavedDish, "savedAt">)
   if (inserted[0]) return { save: savedFromRow(inserted[0]), created: true };
   const existing = await db`SELECT * FROM saved_dishes WHERE user_id = ${userId} AND dish_key = ${key}`;
   return { save: savedFromRow(existing[0]), created: false };
+}
+
+// ===== Taste game (2026-09-14) =====
+
+export interface TasteAnswer {
+  winner: string;
+  loser: string;
+  tie: boolean;
+}
+
+export async function insertTasteAnswers(userId: string, category: string, rows: TasteAnswer[]): Promise<void> {
+  const db = sql();
+  const now = Date.now();
+  for (const r of rows) {
+    await db`INSERT INTO taste_answers (user_id, category, winner, loser, tie, created_at) VALUES (${userId}, ${category}, ${r.winner}, ${r.loser}, ${r.tie}, ${now})`;
+  }
+}
+
+export async function listTasteAnswers(userId: string, category: string): Promise<TasteAnswer[]> {
+  const rows = await sql()`SELECT winner, loser, tie FROM taste_answers WHERE user_id = ${userId} AND category = ${category} ORDER BY id ASC`;
+  return rows.map((r: any) => ({ winner: r.winner, loser: r.loser, tie: r.tie }));
+}
+
+export async function countTasteAnswersByCategory(userId: string): Promise<Map<string, number>> {
+  const rows = await sql()`SELECT category, COUNT(*)::int AS n FROM taste_answers WHERE user_id = ${userId} GROUP BY category`;
+  return new Map(rows.map((r: any) => [r.category as string, r.n as number]));
+}
+
+export async function countTasteAnswersSince(userId: string, since: number): Promise<number> {
+  const rows = await sql()`SELECT COUNT(*)::int AS n FROM taste_answers WHERE user_id = ${userId} AND created_at >= ${since}`;
+  return rows[0]?.n ?? 0;
+}
+
+export async function getTasteSuggestions(userId: string, category: string): Promise<{ answersCount: number; source: string; payload: string; createdAt: number } | undefined> {
+  const rows = await sql()`SELECT answers_count, source, payload, created_at FROM taste_suggestions WHERE user_id = ${userId} AND category = ${category}`;
+  const r = rows[0];
+  return r ? { answersCount: r.answers_count, source: r.source, payload: r.payload, createdAt: Number(r.created_at) } : undefined;
+}
+
+export async function setTasteSuggestions(userId: string, category: string, answersCount: number, source: string, payload: string): Promise<void> {
+  await sql()`
+    INSERT INTO taste_suggestions (user_id, category, answers_count, source, payload, created_at)
+    VALUES (${userId}, ${category}, ${answersCount}, ${source}, ${payload}, ${Date.now()})
+    ON CONFLICT (user_id, category) DO UPDATE SET answers_count = EXCLUDED.answers_count, source = EXCLUDED.source, payload = EXCLUDED.payload, created_at = EXCLUDED.created_at`;
+}
+
+// ===== Log photos (2026-09-14) =====
+
+export async function recordPhotoUpload(userId: string, url: string, bytes: number): Promise<void> {
+  await sql()`INSERT INTO photo_uploads (url, user_id, bytes, created_at) VALUES (${url}, ${userId}, ${bytes}, ${Date.now()}) ON CONFLICT (url) DO NOTHING`;
+}
+
+/** Uploads since `since` — for one person when `userId` is given, else across the whole app. */
+export async function countPhotoUploadsSince(since: number, userId?: string): Promise<number> {
+  const rows = userId
+    ? await sql()`SELECT COUNT(*)::int AS n FROM photo_uploads WHERE user_id = ${userId} AND created_at >= ${since}`
+    : await sql()`SELECT COUNT(*)::int AS n FROM photo_uploads WHERE created_at >= ${since}`;
+  return rows[0]?.n ?? 0;
+}
+
+export async function isPhotoUploadedBy(userId: string, url: string): Promise<boolean> {
+  const rows = await sql()`SELECT 1 FROM photo_uploads WHERE url = ${url} AND user_id = ${userId}`;
+  return rows.length > 0;
+}
+
+/** One report per person per photo; the photo is hidden from everyone else
+ * once `hideAt` different people have reported it. */
+export async function reportLogPhoto(logId: string, reporterId: string, hideAt: number): Promise<{ reports: number; hidden: boolean }> {
+  const db = sql();
+  await db`INSERT INTO photo_reports (log_id, reporter_id, created_at) VALUES (${logId}, ${reporterId}, ${Date.now()}) ON CONFLICT DO NOTHING`;
+  const rows = await db`SELECT COUNT(*)::int AS n FROM photo_reports WHERE log_id = ${logId}`;
+  const reports = rows[0]?.n ?? 0;
+  if (reports >= hideAt) await db`UPDATE logs SET photo_hidden = true WHERE id = ${logId}`;
+  return { reports, hidden: reports >= hideAt };
 }
 
 export async function unsaveDish(userId: string, name: string, venue: string): Promise<boolean> {

@@ -107,7 +107,8 @@ async function refresh(): Promise<boolean> {
 export async function api(path: string, opts: RequestInit = {}) {
   const session = getSession();
   const headers = new Headers(opts.headers);
-  headers.set("Content-Type", "application/json");
+  // JSON unless the caller sends something else (photo uploads send image bytes).
+  if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   if (session) headers.set("Authorization", `Bearer ${session.accessToken}`);
 
   let res = await fetch(`${BASE}${path}`, { ...opts, headers });
@@ -115,7 +116,7 @@ export async function api(path: string, opts: RequestInit = {}) {
     const refreshed = await refresh();
     if (refreshed) {
       const retryHeaders = new Headers(opts.headers);
-      retryHeaders.set("Content-Type", "application/json");
+      if (!retryHeaders.has("Content-Type")) retryHeaders.set("Content-Type", "application/json");
       retryHeaders.set("Authorization", `Bearer ${getSession()!.accessToken}`);
       res = await fetch(`${BASE}${path}`, { ...opts, headers: retryHeaders });
     }
@@ -168,6 +169,8 @@ export interface RemoteLog {
   createdAt: number;
   ownerDisclosed?: boolean;
   visibility?: "private" | "public";
+  visitId?: string | null;
+  photoUrl?: string | null;
 }
 
 export async function getMyLogs(): Promise<{ ok: boolean; logs: RemoteLog[]; error?: string }> {
@@ -213,11 +216,13 @@ export interface NearbyVenue {
   // Real evidence-gated rating (Phase 1's honesty fix, applied to real
   // data) — score is null when count is 0, never a fabricated baseline.
   community: { score: number | null; count: number };
-  reviews: { verdict: string; note: string; score: number; createdAt: number }[];
+  reviews: { logId: string; verdict: string; note: string; score: number; createdAt: number; photoUrl: string | null }[];
 }
 
 export interface DishScoreResponse {
   ok: boolean;
+  /** Real photos from public logs of this dish (reported-and-hidden ones excluded). */
+  photos: { logId: string; url: string; createdAt: number }[];
   community: { score: number | null; count: number };
   verifiedOnly: { score: number | null; count: number };
   yours: { score: number; verdict: string } | null;
@@ -454,4 +459,61 @@ export async function saveDish(dish: Omit<SavedDish, "savedAt">): Promise<{ ok: 
 export async function unsaveDish(name: string, venue: string): Promise<{ ok: boolean; removed?: boolean; error?: string }> {
   const res = await api("/saves", { method: "DELETE", body: JSON.stringify({ name, venue }) });
   return res.json();
+}
+
+// ===== Log photos =====
+
+export async function uploadPhoto(photo: Blob): Promise<{ ok: boolean; url?: string; error?: string }> {
+  const res = await api("/photos", { method: "POST", headers: { "Content-Type": photo.type || "image/jpeg" }, body: photo });
+  try {
+    return await res.json();
+  } catch {
+    return { ok: false, error: "Couldn't upload that photo." };
+  }
+}
+
+export async function reportPhoto(logId: string): Promise<{ ok: boolean; hidden?: boolean; error?: string }> {
+  return (await api("/photos/report", { method: "POST", body: JSON.stringify({ logId }) })).json();
+}
+
+// ===== Taste game =====
+
+export interface TasteStatus {
+  ok: boolean;
+  minLogs: number;
+  minPlaces: number;
+  categories: { category: string; logs: number; places: number; answers: number; eligible: boolean }[];
+  error?: string;
+}
+
+export interface TasteQuestion {
+  id: string;
+  options: string[];
+}
+
+export interface TasteResults {
+  ok: boolean;
+  category: string;
+  answers: number;
+  ranking: { venue: string; strength: number; wins: number; losses: number; comparisons: number; yourLogs: number; yourAverage: number }[];
+  suggestions: { id: string; name: string; venue: string; area: string; subtype: string; communityAverage: number | null; logCount: number; reason: string }[];
+  source: "ai" | "community";
+  model: string | null;
+  error?: string;
+}
+
+export async function getTasteStatus(): Promise<TasteStatus> {
+  return (await api("/taste/status")).json();
+}
+
+export async function getTasteRound(category: string): Promise<{ ok: boolean; questions: TasteQuestion[]; error?: string }> {
+  return (await api(`/taste/round?category=${encodeURIComponent(category)}`)).json();
+}
+
+export async function answerTaste(category: string, options: string[], winner: string | null): Promise<{ ok: boolean; error?: string }> {
+  return (await api("/taste/answer", { method: "POST", body: JSON.stringify({ category, options, winner }) })).json();
+}
+
+export async function getTasteResults(category: string): Promise<TasteResults> {
+  return (await api(`/taste/results?category=${encodeURIComponent(category)}`)).json();
 }

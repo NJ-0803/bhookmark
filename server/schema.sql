@@ -76,6 +76,12 @@ ALTER TABLE logs ADD COLUMN IF NOT EXISTS owner_disclosed BOOLEAN NOT NULL DEFAU
 -- this is a deliberate product call, not an oversight) — private is an
 -- explicit opt-in per log, never silently applied.
 ALTER TABLE logs ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'public';
+-- Multi-dish visits (2026-09-14): logs posted from one BiteLog session at one
+-- venue share a client-generated visit id, so the burst check can treat a
+-- six-dish order as one visit instead of six suspicious logs. Null for logs
+-- posted before this existed (each counts as its own visit).
+ALTER TABLE logs ADD COLUMN IF NOT EXISTS visit_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_logs_visit ON logs(user_id, visit_id) WHERE visit_id IS NOT NULL;
 
 -- Ranking-manipulation control (brief 1.5: "repeated delete-and-repost
 -- behaviour"). Deliberately separate from the logs table itself — a log
@@ -262,6 +268,55 @@ CREATE TABLE IF NOT EXISTS saved_dishes (
   PRIMARY KEY (user_id, dish_key)
 );
 CREATE INDEX IF NOT EXISTS idx_saved_dishes_user ON saved_dishes(user_id, created_at DESC);
+
+-- Log photos (2026-09-14): stored in the public Vercel Blob store
+-- (bhookmark-photos) and shown to other users on public logs. Every upload
+-- is recorded so a log can only attach a photo its own account uploaded,
+-- and so uploads can pause before the free plan's monthly limit.
+-- photo_hidden flips once enough different people report a photo.
+ALTER TABLE logs ADD COLUMN IF NOT EXISTS photo_url TEXT;
+ALTER TABLE logs ADD COLUMN IF NOT EXISTS photo_hidden BOOLEAN NOT NULL DEFAULT false;
+CREATE TABLE IF NOT EXISTS photo_uploads (
+  url TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  bytes INT NOT NULL,
+  created_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_photo_uploads_user_time ON photo_uploads(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_photo_uploads_time ON photo_uploads(created_at);
+CREATE TABLE IF NOT EXISTS photo_reports (
+  log_id TEXT NOT NULL REFERENCES logs(id) ON DELETE CASCADE,
+  reporter_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at BIGINT NOT NULL,
+  PRIMARY KEY (log_id, reporter_id)
+);
+
+-- Taste game (2026-09-14): after 7 logs in a category, head-to-head "which
+-- place does it better" answers between places the person actually logged.
+-- One row per pairwise outcome (a 3-option question stores the winner vs
+-- each other option; a tie stores one row with tie = true). Never touches
+-- anyone's scores.
+CREATE TABLE IF NOT EXISTS taste_answers (
+  id SERIAL PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  category TEXT NOT NULL,
+  winner TEXT NOT NULL,
+  loser TEXT NOT NULL,
+  tie BOOLEAN NOT NULL DEFAULT false,
+  created_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_taste_answers_user_category ON taste_answers(user_id, category);
+-- Suggestions are cached until the person answers more (or for a day), so
+-- the free AI tier is called rarely.
+CREATE TABLE IF NOT EXISTS taste_suggestions (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  category TEXT NOT NULL,
+  answers_count INT NOT NULL,
+  source TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  created_at BIGINT NOT NULL,
+  PRIMARY KEY (user_id, category)
+);
 
 -- ===== Phase 2 (2026-09-11): real venue/dish catalog =====
 -- Replaces the three hardcoded, drifting arrays (server/src/catalog.ts,

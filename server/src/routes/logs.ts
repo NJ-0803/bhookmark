@@ -27,6 +27,10 @@ const createSchema = z.object({
   // not a private-first diary) — private is an explicit per-log opt-in,
   // never silently applied.
   visibility: z.enum(["private", "public"]).default("public"),
+  // Shared by every dish logged in one BiteLog session at one venue.
+  visitId: z.string().uuid().optional(),
+  // A photo this account uploaded through POST /photos (checked below).
+  photoUrl: z.string().url().max(500).optional(),
   evidence: z.object({
     // F05: these two used to be trusted as real verification signals —
     // livePhoto just meant "some image file is attached" (including one
@@ -79,10 +83,20 @@ function evidenceLevel(liveLocationMatch: boolean): EvidenceLevel {
 // same device in a short window gets held for review instead of published.
 // This is a deliberately naive stand-in for the real system's multi-signal
 // (device + network + text-similarity + image-hash + graph) detection.
-async function isBurst(deviceId: string, venue: string): Promise<boolean> {
+//
+// Multi-dish visits (2026-09-14): the window counts VISITS, not dishes. A
+// log continuing a visit already logged at this venue adds no hit, so one
+// real six-dish order publishes normally; a single visit is only held once
+// it passes MAX_DISHES_PER_VISIT, so a visit id can't be used to post
+// unlimited logs either. A log without a visit id counts as its own visit.
+const MAX_VISITS_PER_WINDOW = 5;
+const MAX_DISHES_PER_VISIT = 12;
+async function isBurst(deviceId: string, venue: string, userId: string, visitId: string | undefined): Promise<boolean> {
+  const dishesAlreadyInVisit = visitId ? await db.countLogsInVisit(userId, visitId, venue) : 0;
+  if (dishesAlreadyInVisit >= MAX_DISHES_PER_VISIT) return true;
   const key = `${deviceId}:${venue}`;
-  const count = await db.recordVenueHit(key, Date.now(), 10 * 60 * 1000);
-  return count > 5;
+  const visits = await db.recordVenueHit(key, Date.now(), 10 * 60 * 1000, dishesAlreadyInVisit === 0);
+  return visits > MAX_VISITS_PER_WINDOW;
 }
 
 // Brief 1.5: "multiple accounts from the same device or network." Fires
@@ -157,6 +171,11 @@ logsRouter.post("/", requireAuth, async (req, res) => {
     return res.status(400).json(body);
   }
   const data = parsed.data;
+  if (data.photoUrl && !(await db.isPhotoUploadedBy(req.user!.sub, data.photoUrl))) {
+    const body = { ok: false, error: "That photo wasn't uploaded from this account." };
+    if (idKey) await db.setIdempotent(idKey, 400, body);
+    return res.status(400).json(body);
+  }
   const now = Date.now();
 
   const liveLocationMatch = await computeLocationMatch(data.venue, data.evidence.location);
@@ -171,7 +190,7 @@ logsRouter.post("/", requireAuth, async (req, res) => {
   // each stays individually inspectable in security_events.
   const userId = req.user!.sub;
   const [burstHeld, networkHeld, deleteRepostHeld, travelHeld, ownerDisclosed] = await Promise.all([
-    isBurst(deviceId, data.venue),
+    isBurst(deviceId, data.venue, userId, data.visitId),
     isMultiAccountNetwork(req.ip),
     isRepeatedDeleteRepost(userId, data.venue),
     liveLocationMatch ? isImpossibleTravel(userId, data.venue, now) : Promise.resolve(false),
@@ -210,6 +229,9 @@ logsRouter.post("/", requireAuth, async (req, res) => {
     locationVerified: liveLocationMatch,
     ownerDisclosed,
     visibility: data.visibility,
+    visitId: data.visitId ?? null,
+    photoUrl: data.photoUrl ?? null,
+    photoHidden: false,
   };
   await db.createLog(log);
 

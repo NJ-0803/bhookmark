@@ -5,7 +5,8 @@ import type { Category, DishEntry, JournalLog, Verdict } from "../types";
 import DishThumb from "../components/DishThumb";
 import WhyThis from "../components/WhyThis";
 import RatingPicker, { ratingVerdict } from "../components/RatingPicker";
-import { api, currentDeviceId } from "../api";
+import { api, currentDeviceId, uploadPhoto } from "../api";
+import { compressImage } from "../compressImage";
 import { LIQUID_SPRING, TAP_SCALE } from "../motion";
 
 // Manual entry only, by deliberate product decision — not a placeholder for
@@ -28,8 +29,14 @@ export default function LogFlow({
   onClose: () => void;
   onComplete: (log: JournalLog, dish: DishEntry) => void;
 }) {
+  // Cleared after the first dish, so "add another dish from this visit"
+  // starts a fresh dish at the same place.
+  const [prefill, setPrefill] = useState<DishEntry | undefined>(prefillDish);
   const [step, setStep] = useState<Step>(prefillDish ? "verify" : "capture");
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoNotice, setPhotoNotice] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [category, setCategory] = useState<Category | "Other">(prefillDish?.category ?? CATEGORIES[0].name);
   const [subtype, setSubtype] = useState(prefillDish?.subtype ?? CATEGORIES[0].subtypes[0]);
   const [customCategory, setCustomCategory] = useState("");
@@ -47,11 +54,15 @@ export default function LogFlow({
   const [revealScore, setRevealScore] = useState(0);
   const [rating, setRating] = useState<number | null>(null);
   const idempotencyKey = useRef(crypto.randomUUID());
+  // One visit can hold several dishes; the server counts them as one visit
+  // in its burst check, and the finish screen lists them together.
+  const visitId = useRef(crypto.randomUUID());
+  const [visitDishes, setVisitDishes] = useState<{ name: string; score: number }[]>([]);
 
   const resolvedCategory = (category === "Other" ? customCategory || "Other" : category) as Category;
 
   const workingDish: DishEntry =
-    prefillDish ?? {
+    prefill ?? {
       id: `new-${Date.now()}`,
       category: resolvedCategory,
       subtype: category === "Other" ? subtype || "General" : subtype,
@@ -71,6 +82,7 @@ export default function LogFlow({
   function attachPhoto(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    setPhotoFile(file);
     setPhotoUrl(URL.createObjectURL(file));
   }
 
@@ -103,6 +115,21 @@ export default function LogFlow({
   }
 
   async function finishLog(score: number, verdict: Verdict) {
+    setSaving(true);
+    setPhotoNotice(null);
+    // Compressed on the phone, then stored so public logs can show it to
+    // others. A failed upload never blocks the log itself.
+    let uploadedPhotoUrl: string | undefined;
+    if (photoFile) {
+      try {
+        const res = await uploadPhoto(await compressImage(photoFile));
+        if (res.ok && res.url) uploadedPhotoUrl = res.url;
+        else setPhotoNotice(res.error ?? "Your photo couldn't be uploaded, but the log is saved.");
+      } catch {
+        setPhotoNotice("Your photo couldn't be uploaded, but the log is saved.");
+      }
+    }
+
     const log: JournalLog = {
       id: `log-${Date.now()}`,
       dishId: workingDish.id,
@@ -131,6 +158,8 @@ export default function LogFlow({
           note,
           deviceId: currentDeviceId() ?? "unknown-device",
           visibility: isPrivate ? "private" : "public",
+          visitId: visitId.current,
+          photoUrl: uploadedPhotoUrl,
           evidence: { livePhoto: !!photoUrl, receipt: false, location: locationCoords },
         }),
       });
@@ -148,8 +177,26 @@ export default function LogFlow({
     }
 
     onComplete(log, { ...workingDish, score });
+    setVisitDishes((prev) => [...prev, { name: workingDish.name, score }]);
     setRevealScore(score);
+    setSaving(false);
     setStep("done");
+  }
+
+  function startAnotherDish() {
+    // Same place, same location check and privacy; everything about the dish resets.
+    setVenue(workingDish.venue);
+    setPrefill(undefined);
+    setPhotoUrl(null);
+    setPhotoFile(null);
+    setPhotoNotice(null);
+    setName("");
+    setNote("");
+    setRating(null);
+    setCopied(false);
+    setServerStatus("local-only");
+    idempotencyKey.current = crypto.randomUUID();
+    setStep("capture");
   }
 
   function shareText() {
@@ -187,8 +234,13 @@ export default function LogFlow({
         <div className="flex-1 overflow-y-auto pt-6">
           {step === "capture" && (
             <div className="px-5">
+              {visitDishes.length > 0 && (
+                <p className="text-[13px] text-rose mb-1">
+                  Dish {visitDishes.length + 1} at {venue}
+                </p>
+              )}
               <h3 className="font-display font-bold text-xl mb-1">Snap the dish</h3>
-              <p className="text-muted text-sm mb-5">Optional, for your own Taste Receipt — Bhookmark doesn't analyze it, so you'll fill in the details next either way. Not eating right now? Pick one from your gallery instead — a log doesn't have to happen at the table.</p>
+              <p className="text-muted text-sm mb-5">Optional. On a public log your photo is shown to others on this dish; a private log keeps it to you. Bhookmark never analyzes it, so you'll fill in the details next either way. Not eating right now? Pick one from your gallery instead.</p>
               <div className="aspect-[4/3] rounded-card border-2 border-dashed border-line overflow-hidden relative">
                 {photoUrl ? (
                   <img src={photoUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
@@ -255,7 +307,7 @@ export default function LogFlow({
                 <input value={venue} onChange={(e) => setVenue(e.target.value)} placeholder="e.g. Truffles, Koramangala" className="input" />
               </Field>
               <button
-                onClick={() => setStep("verify")}
+                onClick={() => setStep(visitDishes.length > 0 ? "confirm" : "verify")}
                 disabled={!name.trim() || !venue.trim()}
                 className="w-full bg-accent text-accentInk font-semibold rounded-xl py-3.5 mt-2 disabled:opacity-40 active:scale-[0.98] transition-transform"
               >
@@ -313,7 +365,7 @@ export default function LogFlow({
               </div>
               <WhyThis
                 title="What does this badge mean?"
-                body="Bhookmark never calls a log “verified” from a client-side toggle — including a photo. A photo is only ever for your own Taste Receipt; it's never checked or used as evidence, since there's no way to confirm where or when it was taken. The one real signal is location: if your shared coordinates match this venue's known location, the log posts as “location-consistent.” Everything else posts as “declared.” Both post — matched location just carries a little more weight in the public score, and neither is “proof you ate this,” since even real GPS can be spoofed."
+                body="Bhookmark never calls a log “verified” from a client-side toggle — including a photo. A photo is shown with public logs but is never checked or used as evidence, since there's no way to confirm where or when it was taken. The one real signal is location: if your shared coordinates match this venue's known location, the log posts as “location-consistent.” Everything else posts as “declared.” Both post — matched location just carries a little more weight in the public score, and neither is “proof you ate this,” since even real GPS can be spoofed."
               />
 
               <div className="mb-4" />
@@ -341,7 +393,7 @@ export default function LogFlow({
 
               {showOfflineBanner && (
                 <div className="mt-4 bg-badDim border border-bad/30 rounded-xl px-4 py-3 text-sm text-bad">
-                  No connection — saved to your device. It'll sync and enter duels automatically once you're back online.
+                  No connection — saved to your device. It'll sync automatically once you're back online.
                   <button onClick={() => { setShowOfflineBanner(false); onClose(); }} className="block mt-2 text-xs underline text-bad/80">
                     Got it
                   </button>
@@ -363,11 +415,11 @@ export default function LogFlow({
               <p className="text-muted text-[13px] mb-8">You set the number. Bhookmark only tells you what it thinks of it.</p>
               <RatingPicker value={rating} onChange={setRating} />
               <button
-                onClick={() => rating !== null && finishLog(rating, ratingVerdict(rating).verdict)}
-                disabled={rating === null}
+                onClick={() => rating !== null && !saving && finishLog(rating, ratingVerdict(rating).verdict)}
+                disabled={rating === null || saving}
                 className="w-full bg-accent text-accentInk font-medium rounded-xl py-3.5 mt-8 disabled:opacity-40 active:scale-[0.98] transition-transform"
               >
-                Add to Bhookmarks
+                {saving ? (photoFile ? "Uploading photo…" : "Saving…") : "Add to Bhookmarks"}
               </button>
             </div>
           )}
@@ -386,6 +438,7 @@ export default function LogFlow({
                 <p className="text-muted text-sm mb-5">You'll see this instantly when you're deciding whether to bhookmark it again.</p>
               )}
 
+              {photoNotice && <p className="text-muted text-[13px] mb-4">{photoNotice}</p>}
               <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-faint mb-2 text-left">Taste Receipt</p>
               <div className="bg-gradient-to-b from-surface2 to-surface border border-line rounded-card p-5 mb-5 text-left">
                 {photoUrl ? (
@@ -405,6 +458,25 @@ export default function LogFlow({
                 <p className="text-[13px] text-muted mt-1.5">{ratingVerdict(revealScore).line}</p>
               </div>
 
+              {visitDishes.length > 1 && (
+                <div className="text-left border border-line rounded-card p-4 mb-5">
+                  <p className="text-[14px] font-medium text-ink mb-2">This visit · {workingDish.venue}</p>
+                  <ul className="flex flex-col gap-1.5">
+                    {visitDishes.map((d, i) => (
+                      <li key={i} className="flex items-baseline justify-between gap-3 text-[14px]">
+                        <span className="text-ink/90 truncate">{d.name}</span>
+                        <span className="font-mono text-muted tabular shrink-0">{d.score.toFixed(1)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <button
+                onClick={startAnotherDish}
+                className="w-full h-12 border border-rose/60 text-rose rounded-xl text-[15px] font-medium mb-2.5 active:scale-[0.98] transition-transform"
+              >
+                + Add another dish from this visit
+              </button>
               <button
                 onClick={() => { navigator.clipboard?.writeText(shareText()); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
                 className="w-full bg-surface border border-line rounded-xl py-3 text-sm font-medium mb-2.5"

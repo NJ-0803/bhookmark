@@ -109,7 +109,14 @@ venuesRouter.get("/nearby", async (req, res) => {
     const reviews = matchingLogs
       .filter((l) => l.note.trim().length > 0)
       .slice(0, 3)
-      .map((l) => ({ verdict: l.verdict, note: l.note, score: l.score, createdAt: l.createdAt }));
+      .map((l) => ({
+        logId: l.id,
+        verdict: l.verdict,
+        note: l.note,
+        score: l.score,
+        createdAt: l.createdAt,
+        photoUrl: l.photoHidden ? null : l.photoUrl,
+      }));
 
     return {
       id: venue.id,

@@ -41,6 +41,8 @@ export default defineConfig({
       '/rooms': 'http://localhost:4001',
       '/lists': 'http://localhost:4001',
       '/saves': 'http://localhost:4001',
+      '/photos': 'http://localhost:4001',
+      '/taste': 'http://localhost:4001',
       '/dev': 'http://localhost:4001',
     },
   },

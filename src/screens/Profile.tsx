@@ -2,13 +2,14 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import type { RemoteLog, VenueClaim } from "../api";
 import { claimVenue, clearSession, currentDeviceId, getDietProfile, getMyVenueClaims, getSession, listSessions, revokeSession, setDietProfile } from "../api";
-import { signatureCraving, EARLY_LOGS_NEEDED } from "../evidenceThresholds";
+import { signatureCraving } from "../evidenceThresholds";
 import { findDishPhoto } from "../data/dishes";
 import { LIQUID_SPRING } from "../motion";
 import { getThemePref, setThemePref, type ThemePref } from "../theme";
 import PassportCard from "../components/PassportCard";
 import BottomSheet from "../components/BottomSheet";
-import FlavorPrint from "../components/FlavorPrint";
+import FlavorDnaCard from "../components/FlavorDnaCard";
+import TasteGameCard from "../components/TasteGameCard";
 import CategoryArt from "../components/CategoryArt";
 
 function fadeUp(delay: number) {
@@ -147,8 +148,6 @@ export default function Profile({
   }
 
   const phone = session?.user.phone ?? null;
-  const logsToUnlock = cravingResult.tier === "unlocked" ? 0 : Math.max(0, EARLY_LOGS_NEEDED - cravingResult.logsSeen);
-  const flavorSeed = cravingResult.tier === "unlocked" || cravingResult.tier === "early" ? cravingResult.category : "bhookmark";
 
   return (
     <div className="px-5 pt-8 pb-32">
@@ -167,49 +166,13 @@ export default function Profile({
         </button>
       )}
 
-      <motion.section {...fadeUp(0.08)} aria-labelledby="flavor-dna" className="bg-surface border border-line rounded-card p-4 mb-3 mt-2">
-        <div className="flex gap-4">
-          <FlavorPrint seed={flavorSeed} faded={cravingResult.tier !== "unlocked"} className="w-[72px] h-[72px] shrink-0" />
-          <div className="min-w-0 flex-1">
-            <h2 id="flavor-dna" className="text-[16px] font-medium text-ink">
-              Flavor DNA
-            </h2>
-            {cravingResult.tier === "unlocked" ? (
-              <p className="text-[14px] text-muted mt-1 leading-snug">
-                <span className="text-rose">{cravingResult.category}</span> shows up more than anything else in your Bhookmarks
-                {cravingResult.band === "strong" ? " — a real, repeated pattern by now." : "."}
-              </p>
-            ) : cravingResult.tier === "early" ? (
-              <p className="text-[14px] text-muted mt-1 leading-snug">
-                An early signal: you might be into <span className="text-rose">{cravingResult.category}</span>, based on {cravingResult.logsSeen} logs so
-                far. Not enough for a real pattern yet.
-              </p>
-            ) : (
-              <p className="text-[14px] text-muted mt-1 leading-snug">
-                A fingerprint of what you actually eat, built only from your own logs. It starts after {EARLY_LOGS_NEEDED} logs
-                {logsToUnlock > 0 ? ` — ${logsToUnlock} to go.` : "."}
-              </p>
-            )}
-          </div>
-        </div>
-        {cravingResult.tier !== "unlocked" && cravingResult.tier !== "early" && (
-          <div className="mt-3.5">
-            <div
-              className="w-full h-1.5 rounded-full bg-surface2 overflow-hidden"
-              role="progressbar"
-              aria-valuemin={0}
-              aria-valuemax={EARLY_LOGS_NEEDED}
-              aria-valuenow={cravingResult.logsSeen}
-              aria-label="Logs toward Flavor DNA"
-            >
-              <div className="h-full bg-accent" style={{ width: `${Math.min(100, (cravingResult.logsSeen / EARLY_LOGS_NEEDED) * 100)}%` }} />
-            </div>
-            <p className="text-muted text-[12px] tabular mt-1.5">
-              {cravingResult.logsSeen} of {EARLY_LOGS_NEEDED} logs
-            </p>
-          </div>
-        )}
-      </motion.section>
+      <motion.div {...fadeUp(0.08)} className="mb-3 mt-2">
+        <FlavorDnaCard logs={visibleLogs} />
+      </motion.div>
+
+      <motion.div {...fadeUp(0.1)} className="mb-3">
+        <TasteGameCard logCount={visibleLogs.length} />
+      </motion.div>
 
       {visibleLogs.length > 0 && (
         <motion.section {...fadeUp(0.12)} aria-labelledby="recent-bites" className="mb-3">
@@ -218,7 +181,7 @@ export default function Profile({
           </h2>
           <div className="flex gap-3 overflow-x-auto -mx-5 px-5 pb-1" style={{ scrollbarWidth: "none" }}>
             {visibleLogs.slice(0, 8).map((log) => {
-              const photo = findDishPhoto(log.category, log.subtype, log.name, log.venue);
+              const photo = log.photoUrl ?? findDishPhoto(log.category, log.subtype, log.name, log.venue);
               return (
                 <div key={log.id} className="shrink-0 w-32">
                   <div className="relative aspect-square rounded-2xl overflow-hidden border border-line bg-surface2">

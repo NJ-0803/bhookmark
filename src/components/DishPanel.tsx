@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getDishScore, type DishScoreResponse } from "../api";
+import { getDishScore, reportPhoto, type DishScoreResponse } from "../api";
 import type { DishEntry } from "../types";
 import { placeLine } from "../format";
 import WhyThis from "./WhyThis";
@@ -81,6 +81,17 @@ export default function DishPanel({
           </div>
         </DepthLayer>
 
+        {score && score.photos?.length > 0 && (
+          <DepthLayer depth={11} className="mt-6">
+            <p className="text-[14px] font-medium text-ink mb-2">Photos from real visits</p>
+            <div className="flex gap-2.5 overflow-x-auto -mx-5 px-5 lg:-mx-7 lg:px-7 pb-1" style={{ scrollbarWidth: "none" }}>
+              {score.photos.map((ph) => (
+                <CommunityPhoto key={ph.logId} logId={ph.logId} url={ph.url} />
+              ))}
+            </div>
+          </DepthLayer>
+        )}
+
         {score && score.community.count > 0 && (
           <DepthLayer depth={12} className="mt-6">
             <div className="border border-line rounded-2xl p-4">
@@ -116,6 +127,45 @@ export default function DishPanel({
         )}
       </div>
     </div>
+  );
+}
+
+/** A photo someone attached to a public log, with a way to flag it. Two
+ * reports from different people hide it for everyone. */
+function CommunityPhoto({ logId, url }: { logId: string; url: string }) {
+  const [state, setState] = useState<"idle" | "sending" | "reported" | "error">("idle");
+  const [message, setMessage] = useState("");
+
+  async function report() {
+    setState("sending");
+    try {
+      const res = await reportPhoto(logId);
+      if (res.ok) {
+        setState("reported");
+        setMessage(res.hidden ? "Hidden" : "Reported");
+      } else {
+        setState("error");
+        setMessage(res.error ?? "Couldn't report");
+      }
+    } catch {
+      setState("error");
+      setMessage("Couldn't report");
+    }
+  }
+
+  return (
+    <figure className="shrink-0 w-32">
+      <img src={url} alt="" loading="lazy" className="w-32 h-32 object-cover rounded-xl border border-line bg-surface2" />
+      <figcaption>
+        {state === "idle" || state === "sending" ? (
+          <button onClick={report} disabled={state === "sending"} className="h-9 text-[12px] text-muted underline underline-offset-2 disabled:opacity-50">
+            Report photo
+          </button>
+        ) : (
+          <span className="block h-9 leading-9 text-[12px] text-muted">{message}</span>
+        )}
+      </figcaption>
+    </figure>
   );
 }
 

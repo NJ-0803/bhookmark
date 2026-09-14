@@ -11,7 +11,7 @@ import type { DishEntry } from "../types";
 import { ratingVerdict } from "../components/RatingPicker";
 import { LIQUID_SPRING, TAP_SCALE } from "../motion";
 import { VERDICT_COPY } from "../verdictCopy";
-import { signatureCraving } from "../evidenceThresholds";
+import FlavorDnaCard from "../components/FlavorDnaCard";
 
 const REACTIONS = ["Ordering this", "Cap", "Take me"];
 
@@ -30,7 +30,6 @@ export default function Bhookmarks({
   const visibleLogs = (logs ?? []).filter((l) => l.status !== "removed");
   const loading = logs === null && !logsError;
   const empty = previewEmpty || (!loading && visibleLogs.length === 0);
-  const flavorNote = deriveFlavorNote(visibleLogs.filter((l) => l.verdict === "loved"));
 
   return (
     <div className="px-5 pt-8 pb-32">
@@ -64,33 +63,10 @@ export default function Bhookmarks({
         </div>
       ) : (
         <>
-          {flavorNote && (
-            <div className="bg-surface border border-line rounded-card px-4 py-3.5 mb-5">
-              <p className="font-mono text-[11px] tracking-[0.08em] uppercase text-saffron mb-1">Flavor DNA</p>
-              {flavorNote.kind === "note" ? (
-                <p className="text-sm text-ink/90">{flavorNote.text}</p>
-              ) : flavorNote.kind === "early" ? (
-                <p className="text-sm text-ink/90">
-                  <span className="text-saffron font-semibold">Early signal</span> — leaning toward{" "}
-                  <span className="text-rose font-semibold">{flavorNote.category}</span>, based on {flavorNote.logsSeen} loved logs.
-                  Not a real pattern yet.
-                </p>
-              ) : (
-                <>
-                  <p className="text-sm text-ink/90 mb-2">Log a few more loved dishes and a real pattern shows up here — not a guess from one good meal.</p>
-                  <div className="w-full h-1.5 rounded-full bg-surface2 overflow-hidden mb-1.5">
-                    <div className="h-full bg-accent" style={{ width: `${Math.min(100, (flavorNote.logsSeen / flavorNote.logsNeeded) * 100)}%` }} />
-                  </div>
-                  <p className="text-faint text-[11px]">
-                    {flavorNote.logsSeen}/{flavorNote.logsNeeded} loved logs · {flavorNote.venuesSeen}/{flavorNote.venuesNeeded} venues
-                  </p>
-                </>
-              )}
-            </div>
-          )}
+          <FlavorDnaCard logs={visibleLogs} className="mb-5" />
           <div className="flex flex-col gap-2.5">
             {visibleLogs.map((log, i) => {
-              const photo = findDishPhoto(log.category, log.subtype, log.name, log.venue);
+              const photo = log.photoUrl ?? findDishPhoto(log.category, log.subtype, log.name, log.venue);
               const id = `log-${log.id}`;
               return (
                 <motion.div
@@ -243,26 +219,3 @@ function Chip({ label, tone }: { label: string; tone: "accent" | "neutral" | "wa
   return <span className={`text-[10px] font-medium px-2 py-1 rounded-full ${toneClass}`}>{label}</span>;
 }
 
-type FlavorNote =
-  | { kind: "note"; text: string }
-  | { kind: "early"; category: string; logsSeen: number }
-  | { kind: "progress"; logsSeen: number; logsNeeded: number; venuesSeen: number; venuesNeeded: number };
-
-// Evidence-gated (brief 1.1 + evidence table): "you consistently rank X
-// highest" is a claim about a pattern, and a pattern isn't one good meal.
-// Loved dishes only — the threshold applies to conviction, not frequency.
-// Three tiers: nothing yet, an early hedged hint, or the full claim.
-function deriveFlavorNote(loved: RemoteLog[]): FlavorNote | null {
-  if (loved.length === 0) return null;
-  const result = signatureCraving(loved);
-  if (result.tier === "unlocked") {
-    return {
-      kind: "note",
-      text: `You consistently rank ${result.category} highest when it's verified and eaten fresh off the counter — not delivered.`,
-    };
-  }
-  if (result.tier === "early") {
-    return { kind: "early", category: result.category, logsSeen: result.logsSeen };
-  }
-  return { kind: "progress", logsSeen: result.logsSeen, logsNeeded: result.logsNeeded, venuesSeen: result.venuesSeen, venuesNeeded: result.venuesNeeded };
-}

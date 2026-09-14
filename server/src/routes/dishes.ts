@@ -102,8 +102,17 @@ dishesRouter.get("/score", optionalAuth, async (req, res) => {
     .slice(0, 3)
     .map((l) => ({ verdict: l.verdict, note: l.note, score: l.score, createdAt: l.createdAt }));
 
+  // Real photos people attached to their logs of this exact dish. Published
+  // logs only exclude private ones already; reported-and-hidden photos are
+  // dropped here.
+  const photos = matches
+    .filter((l) => l.photoUrl && !l.photoHidden)
+    .slice(0, 8)
+    .map((l) => ({ logId: l.id, url: l.photoUrl as string, createdAt: l.createdAt }));
+
   res.json({
     ok: true,
+    photos,
     community: { score: avg(matches), count: matches.length },
     verifiedOnly: { score: avg(verified), count: verified.length },
     yours: yours ? { score: yours.score, verdict: yours.verdict } : null,

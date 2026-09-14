@@ -324,6 +324,7 @@ function VenuePanel({ venue, category, mediaId }: { venue: NearbyVenue; category
             <div className="flex flex-col gap-2">
               {venue.reviews.map((r, i) => (
                 <div key={i} className="border border-line rounded-xl p-3">
+                  {r.photoUrl && <img src={r.photoUrl} alt="" loading="lazy" className="w-full aspect-[4/3] object-cover rounded-lg mb-2 bg-surface2" />}
                   <div className="flex items-center justify-between mb-1">
                     <span className="font-mono text-[12px] text-ink tabular">{r.score.toFixed(1)}</span>
                     <span className="text-[11px] text-faint">{r.verdict === "loved" ? "Loved it" : r.verdict === "fine" ? "It was fine" : "Not for them"}</span>
