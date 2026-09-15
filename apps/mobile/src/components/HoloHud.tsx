@@ -1,6 +1,5 @@
-import { StyleSheet, View } from 'react-native';
+import { Image, StyleSheet, View } from 'react-native';
 import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
-import Svg, { Circle, Path } from 'react-native-svg';
 import { flightPeak } from '../motion/policy';
 
 // Jarvis-style hologram layer for the opening dish, in Bhookmark's own rose
@@ -8,6 +7,16 @@ import { flightPeak } from '../motion/policy';
 // line exist only in flight; faint frame corners remain on arrival so the
 // reading surface stays clear. It sits on its own depth plane: tilting the
 // phone moves it against the photo. Decorative only, never text.
+//
+// The rings are pre-rendered white PNGs (assets/hud) tinted at runtime and
+// the corners are plain bordered views. The first version drew dashed SVG
+// circles that Android re-tessellated every frame while they rotated and
+// scaled; together with the SVG category art that saturated the render
+// thread and caused input ANRs on a Pixel 4a. The scan line has no shadow
+// for the same reason.
+
+const RING_INNER = require('../../assets/hud/ring-inner.png');
+const RING_OUTER = require('../../assets/hud/ring-outer.png');
 
 const clamp01 = (v: number) => {
   'worklet';
@@ -80,52 +89,40 @@ export default function HoloHud({
 
   if (!enabled) return null;
 
-  const c = 14; // corner arm length
+  const corner = { borderColor: color };
   return (
     <View pointerEvents="none" style={styles.layer} accessible={false} importantForAccessibility="no-hide-descendants">
       <Animated.View style={[styles.abs, { left: (width - outer) / 2, top: (height - outer) / 2, width: outer, height: outer }, outerStyle]}>
-        <Svg width={outer} height={outer}>
-          <Circle cx={outer / 2} cy={outer / 2} r={outer / 2 - 2} stroke={color} strokeWidth={1} fill="none" strokeDasharray={`${outer * 0.9} ${outer * 3}`} strokeLinecap="round" />
-          <Circle cx={outer / 2} cy={outer / 2} r={outer / 2 - 8} stroke={color} strokeWidth={0.8} fill="none" strokeDasharray="2 9" />
-        </Svg>
+        <Image source={RING_OUTER} style={{ width: outer, height: outer, tintColor: color }} accessible={false} />
       </Animated.View>
 
       <Animated.View style={[styles.abs, { left: (width - ring) / 2, top: (height - ring) / 2, width: ring, height: ring }, ringStyle]}>
-        <Svg width={ring} height={ring}>
-          <Circle cx={ring / 2} cy={ring / 2} r={ring / 2 - 2} stroke={color} strokeWidth={1.4} fill="none" strokeDasharray="5 11" />
-          <Circle cx={ring / 2} cy={ring / 2} r={ring / 2 - 12} stroke={color} strokeWidth={2} fill="none" strokeDasharray={`${ring * 0.6} ${ring * 2.4}`} strokeLinecap="round" />
-        </Svg>
+        <Image source={RING_INNER} style={{ width: ring, height: ring, tintColor: color }} accessible={false} />
       </Animated.View>
 
-      <Animated.View style={[StyleSheet.absoluteFill, cornersStyle]}>
-        <Svg width={width} height={height}>
-          <Path
-            d={`M2 ${c + 2}V2h${c} M${width - c - 2} 2h${c}v${c} M${width - 2} ${height - c - 2}v${c}h-${c} M${c + 2} ${height - 2}H2v-${c}`}
-            stroke={color}
-            strokeWidth={1.6}
-            fill="none"
-            strokeLinecap="round"
-          />
-        </Svg>
+      <Animated.View style={[styles.corners, cornersStyle]}>
+        <View style={[styles.corner, styles.topLeft, corner]} />
+        <View style={[styles.corner, styles.topRight, corner]} />
+        <View style={[styles.corner, styles.bottomRight, corner]} />
+        <View style={[styles.corner, styles.bottomLeft, corner]} />
       </Animated.View>
 
-      <Animated.View style={[styles.scan, { backgroundColor: color, shadowColor: color }, scanStyle]} />
+      <Animated.View style={[styles.scan, { backgroundColor: color }, scanStyle]} />
     </View>
   );
 }
 
+const ARM = 14;
+const LINE = 1.6;
+
 const styles = StyleSheet.create({
   layer: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'visible' },
   abs: { position: 'absolute' },
-  scan: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    height: 1.5,
-    shadowOpacity: 0.9,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 4,
-  },
+  corners: { position: 'absolute', top: 2, right: 2, bottom: 2, left: 2 },
+  corner: { position: 'absolute', width: ARM, height: ARM },
+  topLeft: { top: 0, left: 0, borderTopWidth: LINE, borderLeftWidth: LINE, borderTopLeftRadius: 2 },
+  topRight: { top: 0, right: 0, borderTopWidth: LINE, borderRightWidth: LINE, borderTopRightRadius: 2 },
+  bottomRight: { bottom: 0, right: 0, borderBottomWidth: LINE, borderRightWidth: LINE, borderBottomRightRadius: 2 },
+  bottomLeft: { bottom: 0, left: 0, borderBottomWidth: LINE, borderLeftWidth: LINE, borderBottomLeftRadius: 2 },
+  scan: { position: 'absolute', left: 0, right: 0, top: 0, height: 1.5 },
 });

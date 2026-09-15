@@ -363,6 +363,10 @@ export function OverlayStage({ children }: { children: ReactNode }) {
       style={[styles.fill, style]}
       importantForAccessibility={hidden ? 'no-hide-descendants' : 'auto'}
       accessibilityElementsHidden={hidden}
+      // While a panel is open the page behind it doesn't change: cache it as
+      // one GPU texture so recession and tilt don't redraw every card.
+      renderToHardwareTextureAndroid={hidden}
+      shouldRasterizeIOS={hidden}
     >
       {children}
     </Animated.View>
@@ -475,15 +479,12 @@ function OverlayScene({ entry }: { entry: Entry }) {
     };
   });
 
-  // The detaching surface swings in 3D, flat again on arrival.
+  // The detaching surface swings in 3D, flat again on arrival. Its corner
+  // radius is fixed: animating borderRadius re-clipped the layer every frame
+  // on Android's render thread (measured on a Pixel 4a).
   const shellInner = useAnimatedStyle(() => {
-    const t = reduce ? 1 : progress.value;
     const peak = fx.perspective ? flightPeak(progress.value) : 0;
-    const sx = cardRatioX + (1 - cardRatioX) * t;
-    const sy = cardRatioY + (1 - cardRatioY) * t;
     return {
-      // Keep the visual corner radius close to 22 while the shell is scaled.
-      borderRadius: PANEL_RADIUS / ((sx + sy) / 2),
       transform: [
         { perspective: 1100 },
         { rotateX: `${flight.shellRotateXDeg * peak}deg` },
@@ -508,13 +509,10 @@ function OverlayScene({ entry }: { entry: Entry }) {
   // and rises past the panel's top edge mid-flight, and is flat on arrival.
   const heroFlight = useAnimatedStyle(() => {
     const p = progress.value;
-    const t = reduce ? 1 : p;
     const peak = fx.perspective ? flightPeak(p) : 0;
     const warp = fx.distortion ? flightPeak(p) : 0;
     const over = 1 + flight.artExtraScale * peak;
-    const scale = photoRatio + (1 - photoRatio) * t;
     return {
-      borderRadius: (photoRadius + (PANEL_PHOTO_RADIUS - photoRadius) * t) / scale,
       transform: [
         { perspective: 900 },
         { translateY: -flight.artExtraLiftDp * 1.6 * peak },
@@ -693,7 +691,9 @@ function OverlayScene({ entry }: { entry: Entry }) {
       <Animated.View pointerEvents="none" style={[styles.abs, styles.originTopLeft, rect(photo), heroTravel]}>
         <Animated.View style={[styles.fill, styles.clip, heroFlight]}>
           {dish.photo ? (
-            <Image source={dish.photo} resizeMode="cover" style={styles.fill} accessible={false} />
+            <View style={styles.fill} renderToHardwareTextureAndroid>
+              <Image source={dish.photo} resizeMode="cover" style={styles.fill} accessible={false} />
+            </View>
           ) : (
             <CategoryArt category={dish.category} style={styles.fill} />
           )}
@@ -725,8 +725,8 @@ const styles = StyleSheet.create({
   stretch: { width: '100%', height: '100%' },
   abs: { position: 'absolute', left: 0, top: 0 },
   originTopLeft: { transformOrigin: 'left top' },
-  shell: { borderWidth: 1 },
-  clip: { overflow: 'hidden' },
+  shell: { borderWidth: 1, borderRadius: PANEL_RADIUS },
+  clip: { overflow: 'hidden', borderRadius: PANEL_PHOTO_RADIUS },
   clipPanel: { overflow: 'hidden', borderRadius: PANEL_RADIUS },
   sweep: { position: 'absolute', top: -60, bottom: -60, left: 0, width: 70, backgroundColor: '#FFFFFF' },
   dishFont: { fontFamily: fonts.dish },

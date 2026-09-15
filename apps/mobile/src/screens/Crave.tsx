@@ -49,6 +49,10 @@ export default function CraveScreen() {
   const [browse, setBrowse] = useState<OverlayDish[] | null>(null);
   const [search, setSearch] = useState<OverlayDish[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // A failed category load is shown as an error with a retry, never as
+  // "0 spots" — an empty result and a failed request are different facts.
+  const [browseError, setBrowseError] = useState<string | null>(null);
+  const [browseAttempt, setBrowseAttempt] = useState(0);
   const q = query.trim();
 
   useEffect(() => {
@@ -65,18 +69,19 @@ export default function CraveScreen() {
     if (!category) return;
     let live = true;
     setBrowse(null);
+    setBrowseError(null);
     browseDishes(category).then((res) => {
       if (!live) return;
       if (res.ok && 'results' in res) setBrowse(res.results.map(browseToDish));
       else {
         setBrowse([]);
-        setError(res.error ?? "Couldn't load that craving.");
+        setBrowseError(res.error ?? "Couldn't load that craving.");
       }
     });
     return () => {
       live = false;
     };
-  }, [category]);
+  }, [category, browseAttempt]);
 
   // Debounced name search, as on the web.
   useEffect(() => {
@@ -117,11 +122,20 @@ export default function CraveScreen() {
           <Pressable onPress={() => setCategory(null)} accessibilityRole="button" accessibilityLabel="Back" style={styles.back}>
             <Text style={[styles.backText, { color: c.ink }]}>‹  {category}</Text>
           </Pressable>
-          <Text style={[styles.meta, { color: c.muted }]}>
-            {browse === null
-              ? 'Loading…'
-              : `${browse.length} ${category!.toLowerCase()} spot${browse.length === 1 ? '' : 's'} in Bangalore`}
-          </Text>
+          {browseError ? (
+            <View style={[styles.errorBox, { borderColor: c.bad, backgroundColor: c.badDim }]}>
+              <Text style={[styles.errorText, { color: c.bad }]}>{browseError}</Text>
+              <Pressable onPress={() => setBrowseAttempt((n) => n + 1)} accessibilityRole="button" style={styles.retry}>
+                <Text style={[styles.retryText, { color: c.bad }]}>Try again</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <Text style={[styles.meta, { color: c.muted }]}>
+              {browse === null
+                ? 'Loading…'
+                : `${browse.length} ${category!.toLowerCase()} spot${browse.length === 1 ? '' : 's'} in Bangalore`}
+            </Text>
+          )}
         </>
       ) : (
         <>
@@ -194,7 +208,7 @@ export default function CraveScreen() {
         <View key={i} style={[styles.tileSkeleton, { width: tileWidth, backgroundColor: c.surface2 }]} />
       ))}
     </View>
-  ) : mode === 'idle' ? null : (
+  ) : mode === 'idle' || (mode === 'category' && browseError) ? null : (
     <View style={[styles.emptyBox, { borderColor: c.line }]}>
       <Text style={[styles.emptyTitle, { color: c.ink }]}>{mode === 'search' ? `Nothing matches “${q}” yet` : 'Nothing here yet'}</Text>
       <Text style={[styles.emptyBody, { color: c.muted }]}>
@@ -243,6 +257,10 @@ const styles = StyleSheet.create({
   back: { minHeight: 44, justifyContent: 'center', marginBottom: 4 },
   backText: { fontFamily: fonts.display, fontSize: 21 },
   meta: { fontFamily: fonts.body, fontSize: 14, marginBottom: 14 },
+  errorBox: { borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 14, gap: 4 },
+  errorText: { fontFamily: fonts.body, fontSize: 14, lineHeight: 20 },
+  retry: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start' },
+  retryText: { fontFamily: fonts.bodyMedium, fontSize: 14, textDecorationLine: 'underline' },
   grid: { flexDirection: 'row', gap: 12 },
   tileSkeleton: { height: 200, borderRadius: radius.card },
   emptyBox: { borderWidth: 1, borderStyle: 'dashed', borderRadius: radius.card, paddingHorizontal: 24, paddingVertical: 36, alignItems: 'center' },

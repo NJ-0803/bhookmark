@@ -68,7 +68,36 @@ expo ~57.0.22, react-native 0.86.3, react 19.2.3, react-native-reanimated 4.5.1,
 - No transparent dish cutout asset exists, so the hero is a framed rectangular lift of a real photo.
 - The light sweep reads as a translucent diagonal wedge mid-flight. It may need tuning on a real screen.
 - There's no animated-duration scaling by quality tier yet, and no automatic downgrade after missed deadlines (Step 5).
-- App icon, splash and adaptive icon are still Expo template defaults; no Bhookmark icon exists. `android.package` / `ios.bundleIdentifier` are not set; they're permanent store identifiers, so they need the user's decision.
+- **App icon:** "Plate Wink", chosen by the user (2026-09-15). It's an ivory field with a burgundy plate ring, a fork forming a "!" with its dot, and a rose wink inside the plate. Installed files in `assets/`: `icon.png`, the adaptive foreground/background/monochrome layers, `splash-icon.png` and `favicon.png`; the 512 px Play icon is in `assets/store/`. The adaptive background is `#F3EEE7`. `android.package` is `com.bhookmark.app`; `ios.bundleIdentifier` isn't set yet.
+- **Performance on the Pixel 4a is over budget and still being diagnosed.** All numbers are 20 dish open/close cycles, measured with `gfxinfo`:
+  - *Debug native build, production-minified JS, full effects:* p50 31 ms, p90 69 ms, 23% janky.
+  - *Same build, Reduce effects on* (no 3D, holograms or shadows): p50 31 ms, p90 57 ms, 28% janky.
+  - The GPU is fine (p50 ~10 ms); the main UI thread is the bottleneck.
+  - Removing the effects didn't help, so the cost is the baseline transition work on an unoptimised debug native build.
+  - Next: a local-only release APK. Cleartext to the local test API is enabled only in the generated, ignored `android/` manifest, and the build is never shipped.
+  - A release APK pointed at production can't sign in (no dev OTP there).
+- **Crave error state (fixed 2026-09-15):** a failed category load used to render "0 … spots in Bangalore / Nothing here yet", which reads as a real empty result. It now shows the error with a "Try again" retry, and the empty state appears only for a successful response with no results. Found on the Pixel 4a when USB port forwarding dropped during a reconnect.
+- **Input ANRs, root cause and fix (2026-09-15):**
+  - **Symptom:** the release build hit two "Input dispatching timed out" ANRs during repeated dish open/close (`am_anr` at 18:09 and 18:16).
+  - **Evidence:**
+    - The ANR traces (from an Android bug report) show the main thread blocked in `ThreadedRenderer.syncAndDrawFrame`, waiting on the render thread.
+    - Per-thread CPU over 20 cycles was RenderThread ≈4127, main ≈937, JS ≈445, and each `hwuiTask` ≈434. Unit: the sum of 1 s `top` samples.
+  - **Cause:** live SVG (category art with a radial gradient, dashed HUD rings) and an animated `borderRadius` clip, inside layers that scale and tilt every frame, so Android re-tessellated and re-clipped them each frame.
+  - **Fix:**
+    - Category glyphs, the tint gradient and the HUD rings are pre-rendered white PNGs, tinted at runtime.
+    - The HUD corners are plain bordered views, and the scan line no longer has a shadow.
+    - Corner radii are fixed.
+    - `renderToHardwareTextureAndroid` caches the page behind an open panel, each category art tile and the hero photo.
+  - **After the fix** (same debug-native / production-JS setup, 20 cycles on the 40-card Bars & Pubs grid):
+    - RenderThread CPU ≈932 (−77%), 0 ANRs.
+    - Frame times: p50 23 ms, p90 42 ms, p99 61 ms (p99 was up to 400 ms before). 11.3% janky.
+    - The main thread (≈3125, where Reanimated worklets run on Android) is now the largest cost. It is expected to drop in a release native build.
+  - **Release build with the fix** (local-only APK pointed at the test API; Pixel 4a, 60 Hz; 20 cycles on Bars & Pubs, full effects):
+    - Frame times: p50 17 ms, p90 26 ms, p95 28 ms, p99 34 ms.
+    - 3.8% janky; 21 slow-UI-thread frames and 78 slow-draw-command frames.
+    - Per-thread CPU: main ≈1095, RenderThread ≈961, JS ≈466. 0 ANRs.
+    - Compared with the release build before the fix: janky 14% → 3.8%, p50 30 → 17 ms, p99 400 → 34 ms, freezes gone.
+    - **Still short of the 60 Hz target:** the median sits right at the 16.7 ms budget, and 1 frame in 10 takes 26 ms or more. Not yet tuned: stroke-heavy HUD compositing, layer count during flight, image decode on first open.
 - The redistribution rights of the two catalog photos are unconfirmed.
 
 ## Next executable step
