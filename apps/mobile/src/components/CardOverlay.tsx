@@ -429,29 +429,10 @@ function OverlayScene({ entry }: { entry: Entry }) {
   // low-pass filtered and clamped; mounted only while a panel is open; off
   // with reduced motion. Text and controls never move with it. (Hands-free
   // mode will drive the same values from front-camera head tracking.)
-  const sensor = useAnimatedSensor(SensorType.ROTATION, { interval: 33 });
-  const baseline = useSharedValue<{ pitch: number; roll: number } | null>(null);
+  // The sensor itself lives in <TiltSensor>, mounted only after arrival, so
+  // no sensor callbacks compete with the transition for the UI thread.
   const tiltX = useSharedValue(0);
   const tiltY = useSharedValue(0);
-  useAnimatedReaction(
-    () => sensor.sensor.value,
-    (v) => {
-      if (!fx.parallax || progress.value < 0.98) {
-        baseline.value = null;
-        tiltX.value += (0 - tiltX.value) * 0.25;
-        tiltY.value += (0 - tiltY.value) * 0.25;
-        return;
-      }
-      if (!baseline.value) {
-        baseline.value = { pitch: v.pitch, roll: v.roll };
-        return;
-      }
-      const nx = Math.max(-1, Math.min(1, (v.roll - baseline.value.roll) / 0.35));
-      const ny = Math.max(-1, Math.min(1, (v.pitch - baseline.value.pitch) / 0.35));
-      tiltX.value += (nx - tiltX.value) * 0.2;
-      tiltY.value += (ny - tiltY.value) * 0.2;
-    },
-  );
 
   const scrimStyle = useAnimatedStyle(() => ({ opacity: 0.6 * progress.value }));
 
@@ -538,43 +519,35 @@ function OverlayScene({ entry }: { entry: Entry }) {
     };
   });
 
-  const srcNameTravel = useAnimatedStyle(() => {
+  // Each name layer is one animated style (travel + in-flight drift/tip),
+  // so a frame updates one view per name instead of two.
+  const srcName = useAnimatedStyle(() => {
     const t = reduce ? 1 : progress.value;
+    const peak = fx.textFlight ? flightPeak(progress.value) : 0;
     return {
-      opacity: reduce ? 0 : 1 - clamp01(t / 0.4),
+      opacity: (reduce ? 0 : 1 - clamp01(t / 0.4)) * (1 - flight.textDim * peak),
       transform: [
+        { perspective: 700 },
         { translateX: (name.x - src.name.x) * t },
-        { translateY: (name.y - src.name.y) * t },
+        { translateY: (name.y - src.name.y) * t + flight.textDriftDp * peak },
         { scale: 1 + (1 / nameRatio - 1) * t },
+        { rotateX: `${flight.textRotateXDeg * peak}deg` },
       ],
     };
   });
 
-  const dstNameTravel = useAnimatedStyle(() => {
+  const dstName = useAnimatedStyle(() => {
     const t = reduce ? 1 : progress.value;
+    const peak = fx.textFlight ? flightPeak(progress.value) : 0;
     return {
-      opacity: reduce ? progress.value : clamp01((t - 0.25) / 0.4),
+      opacity: (reduce ? progress.value : clamp01((t - 0.25) / 0.4)) * (1 - flight.textDim * peak),
       transform: [
+        { perspective: 700 },
         { translateX: (src.name.x - name.x) * (1 - t) },
-        { translateY: (src.name.y - name.y) * (1 - t) },
+        { translateY: (src.name.y - name.y) * (1 - t) + flight.textDriftDp * peak },
         { scale: nameRatio + (1 - nameRatio) * t },
+        { rotateX: `${flight.textRotateXDeg * peak}deg` },
       ],
-    };
-  });
-
-  const srcNameFlight = useAnimatedStyle(() => {
-    const peak = fx.textFlight ? flightPeak(progress.value) : 0;
-    return {
-      opacity: 1 - flight.textDim * peak,
-      transform: [{ perspective: 700 }, { translateY: flight.textDriftDp * peak }, { rotateX: `${flight.textRotateXDeg * peak}deg` }],
-    };
-  });
-
-  const dstNameFlight = useAnimatedStyle(() => {
-    const peak = fx.textFlight ? flightPeak(progress.value) : 0;
-    return {
-      opacity: 1 - flight.textDim * peak,
-      transform: [{ perspective: 700 }, { translateY: flight.textDriftDp * peak }, { rotateX: `${flight.textRotateXDeg * peak}deg` }],
     };
   });
 
@@ -601,6 +574,8 @@ function OverlayScene({ entry }: { entry: Entry }) {
       <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: c.scrim }, scrimStyle]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={close} accessible={false} importantForAccessibility="no" />
       </Animated.View>
+
+      {phase === 'open' && fx.parallax && <TiltSensor tiltX={tiltX} tiltY={tiltY} />}
 
       {/* Floating shadow */}
       <Animated.View pointerEvents="none" style={[styles.abs, rect(shadowRect), shadowStyle]}>
@@ -666,25 +641,24 @@ function OverlayScene({ entry }: { entry: Entry }) {
         pointerEvents="none"
         importantForAccessibility="no-hide-descendants"
         accessibilityElementsHidden
-        style={[styles.abs, styles.originTopLeft, { left: src.name.x, top: src.name.y, width: src.name.width }, srcNameTravel]}
+        renderToHardwareTextureAndroid
+        style={[styles.abs, styles.originTopLeft, { left: src.name.x, top: src.name.y, width: src.name.width }, srcName]}
       >
-        <Animated.View style={srcNameFlight}>
-          <Text style={[styles.dishFont, nameMetrics, { color: c.ink }]} numberOfLines={2}>
-            {dish.name}
-          </Text>
-        </Animated.View>
+        <Text style={[styles.dishFont, nameMetrics, { color: c.ink }]} numberOfLines={2}>
+          {dish.name}
+        </Text>
       </Animated.View>
 
       {/* Panel title, growing in from the card and crisp on arrival. */}
       <Animated.View
         pointerEvents="none"
-        style={[styles.abs, styles.originTopLeft, { left: name.x, top: name.y, width: name.width }, dstNameTravel]}
+        // Cached while it moves so glyphs aren't re-rasterised at each scale.
+        renderToHardwareTextureAndroid={phase !== 'open'}
+        style={[styles.abs, styles.originTopLeft, { left: name.x, top: name.y, width: name.width }, dstName]}
       >
-        <Animated.View style={dstNameFlight}>
-          <Text style={[styles.panelName, { color: c.ink }]} numberOfLines={3} accessibilityRole="header">
-            {dish.name}
-          </Text>
-        </Animated.View>
+        <Text style={[styles.panelName, { color: c.ink }]} numberOfLines={3} accessibilityRole="header">
+          {dish.name}
+        </Text>
       </Animated.View>
 
       {/* Photo: a sibling above the surface, so it can break past the panel edge. */}
@@ -714,6 +688,38 @@ function OverlayScene({ entry }: { entry: Entry }) {
       </Animated.View>
     </Animated.View>
   );
+}
+
+// "Window" depth once the panel has arrived: tilting the phone moves the
+// artwork against the hologram layer. Calibrated to the pose on mount, low-pass
+// filtered and clamped. Mounted only while a panel is open and full motion is
+// allowed; on unmount the tilt eases back to rest. Text and controls never
+// move with it. (Hands-free mode will drive the same values from front-camera
+// head tracking.)
+function TiltSensor({ tiltX, tiltY }: { tiltX: SharedValue<number>; tiltY: SharedValue<number> }) {
+  const sensor = useAnimatedSensor(SensorType.ROTATION, { interval: 33 });
+  const baseline = useSharedValue<{ pitch: number; roll: number } | null>(null);
+  useAnimatedReaction(
+    () => sensor.sensor.value,
+    (v) => {
+      if (!baseline.value) {
+        baseline.value = { pitch: v.pitch, roll: v.roll };
+        return;
+      }
+      const nx = Math.max(-1, Math.min(1, (v.roll - baseline.value.roll) / 0.35));
+      const ny = Math.max(-1, Math.min(1, (v.pitch - baseline.value.pitch) / 0.35));
+      tiltX.value += (nx - tiltX.value) * 0.2;
+      tiltY.value += (ny - tiltY.value) * 0.2;
+    },
+  );
+  useEffect(
+    () => () => {
+      tiltX.value = withTiming(0, { duration: timing.parallaxReturn });
+      tiltY.value = withTiming(0, { duration: timing.parallaxReturn });
+    },
+    [tiltX, tiltY],
+  );
+  return null;
 }
 
 function rect(r: Rect) {
