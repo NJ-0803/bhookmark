@@ -12,8 +12,9 @@ The existing web app, Express API and Neon database are unchanged.
 | 2. MotionLab with the starter | Done, including the bolder in-flight choreography. Verified on the Android emulator only. |
 | 3. Real card detail overlay | Built (`src/components/CardOverlay.tsx`, `DishCard.tsx`), after the user said the Step 2 lab looked flat. It runs on 4 lab dishes; the Log and Save buttons are shown but not connected. **Verified on the emulator:** tap opens, the panel settles cleanly, Android Back closes and the grid is restored, with 0 JS errors. A 5× slow-motion recording shows the page recession, the card lift, and the photo pitching and shearing past the panel edge. **Not yet run on the overlay:** the 30-cycle rapid test, the source-removal fade, reduced motion, and the iPhone check. |
 | 4. Core product journey (login, search, save, journal) | **Built and verified end to end on the Android emulator against the local API on the Neon test branch**:<br>• Phone sign-in with the on-screen dev code<br>• Crave: search, craving chips from `/venues/categories`, browse from `/dishes/browse`<br>• Dish detail with Save and real ratings from `/dishes/score`<br>• BiteLog: details, confirm, 0–10 rating, done → `/logs`<br>• Bhookmarks journal (`/logs/mine`) with Saved for later, and each log reopening into its detail<br>0 JS errors. Tabs: Crave, Bhookmarks, Log a bite, Circles (placeholder), You.<br>**Not in the app yet:** Google sign-in (needs the native SDK in the app's own build), photo capture and location verification in BiteLog, recommendations, trending, Places near you, Flavor DNA, Circles, the taste game. |
-| 5. Physical-device profiling | Not started. **No 90/120 fps claim is made.** |
+| 5. Physical-device profiling | Done on one device (Pixel 4a, 60 Hz): the ANR fix and two smoothing passes below. **No 90/120 fps claim is made** — no 90/120 Hz device has been measured. |
 | 6. Broader migration | Not started. |
+| Hands-free mode (user feature, not in the brief) | Built and running on the Pixel 4a. Local Expo module (`modules/hands-free`) drives the front camera through CameraX and MediaPipe (hand landmarker + face detector) fully on-device; gestures are classified in JS (`src/handsfree/gestures.ts`, 25 off-device checks pass). Two-finger air swipe, pointing-finger rating dial, head-tracked panel depth, the You toggle, the camera pill and the one-time intro all work. **Verified on the phone:** the two-finger shape is detected and one real air swipe fired. **Not yet verified:** that a swipe visibly changes dishes, the rating dial with a real hand, head-tracked depth, and the effect on frame times. |
 
 ## Layout
 
@@ -107,11 +108,28 @@ expo ~57.0.22, react-native 0.86.3, react 19.2.3, react-native-reanimated 4.5.1,
     - **Still short of the 60 Hz target:** the median sits right at the 16.7 ms budget, and 1 frame in 10 takes 26 ms or more. Not yet tuned: stroke-heavy HUD compositing, layer count during flight, image decode on first open.
 - The redistribution rights of the two catalog photos are unconfirmed.
 
-## Next executable step
+## Hands-free mode
 
-Step 3: replace the demo button with a real card tap and a single root overlay. It needs the measured source rectangle, the idle/opening/open/closing lifecycle with a generation counter, focus and scroll restoration, and source removal. Keep the current in-flight choreography.
+User decisions (2026-09-17): the swipe must need **exactly** the index and middle fingers, with the ring finger, little finger and thumb folded — any other hand shape must never swipe. The rating dial follows BMW's volume gesture. The intro matters: "the intro for hands free is very much needed for the users to know".
 
-In parallel, connect the Android phone with USB debugging, so a development build can run on real hardware and its active refresh rate can be read.
+- `modules/hands-free` (local Expo module, Android only): CameraX front camera at 320×240, `STRATEGY_KEEP_ONLY_LATEST`, RGBA frames rotated and mirrored so x grows to the user's right. MediaPipe `HandLandmarker` (VIDEO, 1 hand, CPU) and `FaceDetector` (blaze_face_short_range, CPU) run on one background thread, throttled to ~15 fps. It emits only numbers — the face centre/width and 21 hand landmarks. No frame is stored or sent anywhere. Models ship as app assets (`hand_landmarker.task` 7.8 MB, `blaze_face_short_range.tflite` 230 KB, both from Google's public model store).
+- `src/handsfree/gestures.ts`: pose classification and gesture recognition, pure and testable. Swipe needs the two-finger pose held over 2 frames, ≥0.22 of the frame width inside 550 ms, |dy| < 0.6·|dx|, with an 800 ms cooldown; a single off-pose frame cancels it. The dial accumulates how far the fingertip's **direction of travel** turns (a circle turns it 2π per lap wherever it is drawn, a straight line ~0), one step per quarter turn, and each step is half a rating point.
+- `scripts/gestures-test.ts`: 25 checks, run with `node --experimental-strip-types scripts/gestures-test.ts`. All pass, including every must-not-fire case: three fingers, thumb out, open palm, fist, pointing, diagonal moves, jitter, and a third finger appearing mid-swipe.
+- `src/handsfree/HandsFreeProvider.tsx`: persists the toggle (`bhookmark.handsFree`) and the intro flag (`bhookmark.handsFreeIntroSeen`), runs the camera only while enabled **and** the app is foreground, resumes only if permission is still granted, eases head values between frames, and dispatches gestures newest-listener-first so an open panel or the rating screen wins over the list. Test builds log `[hf]` pose changes and gestures for tuning.
+- Wired into: `CardOverlay` (swipe moves to the neighbouring registered card in the same list; head position replaces phone tilt while a panel is open), `Crave` (swipe pages the grid when nothing is open), `LogFlow` (dial on the rating step, with a haptic tick), `You` (toggle, gesture list, privacy note, "How Hands-free works"), `AppShell` (camera pill, intro).
+- Known rough edge: the two-finger pose flickers in and out between readings on a hand-held phone, which is why swipes need several tries. Tuning candidates: relax `extended`/`folded` ratios, hold the pose for one frame less, lengthen the swipe window, or smooth landmarks before classifying.
+
+## Also changed on 2026-09-17
+
+- **Crave opens on dishes.** The start screen used to show only the search box and chips, so there was nothing to swipe or look at ("i dont see any dish on the page"). It now loads a "Worth a look · <craving>" grid, rotating daily through the catalog's categories, with a "See all" link.
+
+## Next executable steps
+
+1. **Finish verifying Hands-free on the phone:** that a swipe visibly moves between dishes, the dial sets a rating, and head movement shifts an open panel. Then tune the pose thresholds against the `[hf]` log.
+2. **Measure Hands-free's cost:** re-run the 20-cycle test with the camera on, since MediaPipe on the CPU competes with the transition.
+3. **On-screen gesture hints** where each gesture applies (the rating screen already has one).
+4. **Measure a 90/120 Hz phone** before launch; the user's own device is 60 Hz, and nothing above 60 Hz has been tested.
+5. Optional, the last known lever for the transition: build the panel once and reuse it, instead of creating it on every tap.
 
 ## Remaining store blockers (separate from this motion work)
 

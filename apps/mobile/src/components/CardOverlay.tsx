@@ -46,6 +46,7 @@ import { useTheme } from '../theme/ThemeProvider';
 import CategoryArt from './CategoryArt';
 import HoloHud from './HoloHud';
 import { perfOff } from '../motion/perfFlags';
+import { useHandsFree, useHandsFreeGestures } from '../handsfree/HandsFreeProvider';
 
 // Brief Step 3: a tapped card detaches into one root overlay.
 //
@@ -97,6 +98,10 @@ export type SourceRefs = {
   focus: RefObject<View | null>;
   nameMetrics?: NameMetrics;
   photoRadius?: number;
+  /** For Hands-free swipes: the card's dish, list and position in it. */
+  dish?: OverlayDish;
+  group?: string;
+  order?: number;
 };
 
 /** Tile card name metrics (the default when a source doesn't say). */
@@ -182,6 +187,10 @@ export function CardOverlayProvider({
     };
   }, []);
 
+  // A Hands-free swipe closes the open dish and then opens its neighbour.
+  const pendingOpen = useRef<OverlayDish | null>(null);
+  const openRef = useRef<(dish: OverlayDish) => void>(() => {});
+
   const settle = useCallback(
     (g: number, to: number) => {
       if (g !== gen.current) return;
@@ -192,6 +201,12 @@ export function CardOverlayProvider({
       const closed = entryRef.current;
       setEntry(null);
       setPhase('idle');
+      const next = pendingOpen.current;
+      pendingOpen.current = null;
+      if (next) {
+        openRef.current(next);
+        return;
+      }
       // Return accessibility focus to the card if it still exists.
       const target = closed ? sources.current.get(closed.dish.id)?.focus.current : null;
       if (target) AccessibilityInfo.sendAccessibilityEvent(target, 'focus');
@@ -311,6 +326,30 @@ export function CardOverlayProvider({
     run(0, g);
   }, [progress, stage, fade, reduce, slowMotion, run, settle, setEntry, setPhase, onTransitionStart]);
 
+  openRef.current = open;
+
+  useHandsFreeGestures(entry !== null && phase === 'open', (event) => {
+    if (event.type !== 'swipe') return false;
+    const current = entryRef.current;
+    const refs = current ? sources.current.get(current.dish.id) : undefined;
+    if (!current || refs?.group === undefined || refs.order === undefined) return true;
+    // Hand moves left → next dish (like swiping a card away), right → previous.
+    const forward = event.direction === 'left';
+    let best: SourceRefs | null = null;
+    for (const r of sources.current.values()) {
+      if (r.group !== refs.group || r.order === undefined || !r.dish) continue;
+      if (forward ? r.order <= refs.order : r.order >= refs.order) continue;
+      if (!best || (forward ? r.order < best.order! : r.order > best.order!)) best = r;
+    }
+    if (best?.dish) {
+      pendingOpen.current = best.dish;
+      close();
+    } else if (hapticsEnabled) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+    }
+    return true;
+  });
+
   // Android Back reaches the same close handler as Close and the backdrop.
   useEffect(() => {
     if (!entry) return;
@@ -390,6 +429,7 @@ const clamp01 = (v: number) => {
 
 function OverlayScene({ entry }: { entry: Entry }) {
   const { progress, fade, fx, reduce, phase, close, renderDetail, onDevRemoveSource } = useCardOverlay();
+  const handsFree = useHandsFree();
   const { colors: c } = useTheme();
   const { width: W, height: H } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -578,7 +618,11 @@ function OverlayScene({ entry }: { entry: Entry }) {
         <Pressable style={StyleSheet.absoluteFill} onPress={close} accessible={false} importantForAccessibility="no" />
       </Animated.View>
 
-      {phase === 'open' && fx.parallax && <TiltSensor tiltX={tiltX} tiltY={tiltY} />}
+      {phase === 'open' && fx.parallax && (handsFree.status === 'on' ? (
+        <HeadTilt tiltX={tiltX} tiltY={tiltY} />
+      ) : (
+        <TiltSensor tiltX={tiltX} tiltY={tiltY} />
+      ))}
 
       {/* Floating shadow */}
       {!perfOff('shadow') && <Animated.View pointerEvents="none" style={[styles.abs, rect(shadowRect), shadowStyle]}>
@@ -722,6 +766,28 @@ function TiltSensor({ tiltX, tiltY }: { tiltX: SharedValue<number>; tiltY: Share
       const ny = Math.max(-1, Math.min(1, (v.pitch - baseline.value.pitch) / 0.35));
       tiltX.value += (nx - tiltX.value) * 0.2;
       tiltY.value += (ny - tiltY.value) * 0.2;
+    },
+  );
+  useEffect(
+    () => () => {
+      tiltX.value = withTiming(0, { duration: timing.parallaxReturn });
+      tiltY.value = withTiming(0, { duration: timing.parallaxReturn });
+    },
+    [tiltX, tiltY],
+  );
+  return null;
+}
+
+// Hands-free "window": with the camera on, the user's head position (not the
+// phone's tilt) moves the artwork against the hologram layer, like looking
+// through a window. Eases back to rest when no face is visible or on unmount.
+function HeadTilt({ tiltX, tiltY }: { tiltX: SharedValue<number>; tiltY: SharedValue<number> }) {
+  const { headX, headY } = useHandsFree();
+  useAnimatedReaction(
+    () => [headX.value, headY.value] as const,
+    ([x, y]) => {
+      tiltX.value = x;
+      tiltY.value = y;
     },
   );
   useEffect(

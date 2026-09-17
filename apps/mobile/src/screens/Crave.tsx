@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { browseDishes, getVenueCategories, searchVenues, type BrowseDish, type VenueSearchResult } from '../api/client';
@@ -6,6 +6,7 @@ import { absoluteUrl } from '../api/config';
 import { useCardOverlay, type OverlayDish } from '../components/CardOverlay';
 import { CategoryGlyph } from '../components/CategoryArt';
 import DishCard from '../components/DishCard';
+import { useHandsFreeGestures } from '../handsfree/HandsFreeProvider';
 import { fonts, radius } from '../theme/brand';
 import { useTheme } from '../theme/ThemeProvider';
 
@@ -53,7 +54,23 @@ export default function CraveScreen() {
   // "0 spots" — an empty result and a failed request are different facts.
   const [browseError, setBrowseError] = useState<string | null>(null);
   const [browseAttempt, setBrowseAttempt] = useState(0);
+  // The start screen opens on real dishes: one craving, rotating daily, so
+  // there's always something to look at (and to air-swipe through).
+  const [featured, setFeatured] = useState<{ category: string; dishes: OverlayDish[] } | null>(null);
   const q = query.trim();
+  const listRef = useRef<FlatList<OverlayDish>>(null);
+  const scrollY = useRef(0);
+  const { height: screenHeight } = useWindowDimensions();
+
+  // Hands-free: with no dish open, a two-finger air swipe pages through the list
+  // (hand left → further down, like flicking cards away).
+  useHandsFreeGestures(activeId === null, (event) => {
+    if (event.type !== 'swipe') return false;
+    const page = screenHeight * 0.6;
+    const next = Math.max(0, scrollY.current + (event.direction === 'left' ? page : -page));
+    listRef.current?.scrollToOffset({ offset: next, animated: true });
+    return true;
+  });
 
   useEffect(() => {
     getVenueCategories().then((res) => {
@@ -83,6 +100,19 @@ export default function CraveScreen() {
     };
   }, [category, browseAttempt]);
 
+  useEffect(() => {
+    if (!categories || categories.length === 0) return;
+    const day = Math.floor(Date.now() / 86_400_000);
+    const pick = categories[day % categories.length];
+    let live = true;
+    browseDishes(pick).then((res) => {
+      if (live && res.ok && 'results' in res) setFeatured({ category: pick, dishes: res.results.map(browseToDish) });
+    });
+    return () => {
+      live = false;
+    };
+  }, [categories]);
+
   // Debounced name search, as on the web.
   useEffect(() => {
     if (q.length < 2) {
@@ -107,7 +137,7 @@ export default function CraveScreen() {
   }, [q]);
 
   const mode: 'category' | 'search' | 'idle' = category ? 'category' : q ? 'search' : 'idle';
-  const data = mode === 'category' ? (browse ?? []) : mode === 'search' ? (search ?? []) : [];
+  const data = mode === 'category' ? (browse ?? []) : mode === 'search' ? (search ?? []) : (featured?.dishes ?? []);
   const loading = (mode === 'category' && browse === null) || (mode === 'search' && (q.length < 2 || search === null));
   const tileWidth = (Math.min(width, 560) - 32 - 12) / 2;
   const matchingCategories = useMemo(
@@ -194,9 +224,17 @@ export default function CraveScreen() {
             </>
           )}
           {mode === 'search' && <Text style={[styles.section, { color: c.ink }]}>Places matching “{q}”</Text>}
-          {mode === 'idle' && (
-            <Text style={[styles.hint, { color: c.muted }]}>Pick a craving above, or search for a dish or place.</Text>
-          )}
+          {mode === 'idle' &&
+            (featured ? (
+              <View style={styles.featuredHead}>
+                <Text style={[styles.section, { color: c.ink }]}>Worth a look · {featured.category}</Text>
+                <Pressable onPress={() => setCategory(featured.category)} accessibilityRole="button" style={styles.seeAll}>
+                  <Text style={[styles.seeAllText, { color: c.rose }]}>See all</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <Text style={[styles.hint, { color: c.muted }]}>Pick a craving above, or search for a dish or place.</Text>
+            ))}
         </>
       )}
     </View>
@@ -221,11 +259,16 @@ export default function CraveScreen() {
 
   return (
     <FlatList
+      ref={listRef}
+      onScroll={(e) => {
+        scrollY.current = e.nativeEvent.contentOffset.y;
+      }}
+      scrollEventThrottle={32}
       data={data}
       keyExtractor={(d) => d.id}
       numColumns={2}
       columnWrapperStyle={styles.column}
-      renderItem={({ item }) => <DishCard dish={item} style={{ width: tileWidth }} />}
+      renderItem={({ item, index }) => <DishCard dish={item} group="crave" order={index} style={{ width: tileWidth }} />}
       ListHeaderComponent={header}
       ListEmptyComponent={empty}
       contentContainerStyle={styles.content}
@@ -252,6 +295,9 @@ const styles = StyleSheet.create({
   chipText: { fontFamily: fonts.body, fontSize: 14 },
   chipSkeleton: { width: 128, height: 44, borderRadius: 22 },
   section: { fontFamily: fonts.bodyMedium, fontSize: 16, marginTop: 8, marginBottom: 10 },
+  featuredHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 },
+  seeAll: { minHeight: 44, justifyContent: 'center', paddingLeft: 12 },
+  seeAllText: { fontFamily: fonts.bodyMedium, fontSize: 14 },
   hint: { fontFamily: fonts.body, fontSize: 14, lineHeight: 20, marginTop: 4 },
   error: { fontFamily: fonts.body, fontSize: 14, marginBottom: 10 },
   back: { minHeight: 44, justifyContent: 'center', marginBottom: 4 },

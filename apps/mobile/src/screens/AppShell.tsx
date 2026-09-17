@@ -8,6 +8,7 @@ import { CardOverlayLayer, CardOverlayProvider, OverlayStage, type OverlayDish }
 import { DishActions, LogDetail } from '../components/DishDetail';
 import { timing } from '../motion/policy';
 import { SavesProvider } from '../saves/SavesProvider';
+import { HandsFreeIntro, HandsFreePill } from '../handsfree/HandsFreeUI';
 import { useTheme } from '../theme/ThemeProvider';
 import BhookmarksScreen from './Bhookmarks';
 import CirclesScreen from './Circles';
@@ -93,6 +94,8 @@ export default function AppShell() {
               <LogFlow prefill={logFlow.prefill} onClose={closeLog} onLogged={() => loadLogs()} />
             </Animated.View>
           )}
+          <HandsFreePill />
+          <HandsFreeIntro />
           {labOpen && (
             <View style={StyleSheet.absoluteFill}>
               <MotionLab fontError={null} onClose={() => setLabOpen(false)} />

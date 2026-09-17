@@ -14,7 +14,9 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
 import { createLog, type RemoteLog } from '../api/client';
+import { useHandsFree, useHandsFreeGestures } from '../handsfree/HandsFreeProvider';
 import CategoryArt from '../components/CategoryArt';
 import type { OverlayDish } from '../components/CardOverlay';
 import RatingPicker from '../components/RatingPicker';
@@ -60,6 +62,17 @@ export default function LogFlow({
   // One visit can hold several dishes; the server counts them as one visit.
   const visitId = useRef(Crypto.randomUUID());
   const [visitDishes, setVisitDishes] = useState<{ name: string; score: number }[]>([]);
+  const handsFree = useHandsFree();
+
+  // Hands-free rating dial: point one finger and draw circles in the air.
+  // Clockwise raises, anticlockwise lowers, half a point per quarter turn.
+  useHandsFreeGestures(step === 'rate' && !saving, (event) => {
+    if (event.type === 'dial') {
+      setRating((r) => Math.min(10, Math.max(0, (r ?? 5) + event.steps * 0.5)));
+      Haptics.selectionAsync().catch(() => {});
+    }
+    return true; // nothing behind the rating screen should react
+  });
 
   const working = prefill ?? {
     id: 'new',
@@ -238,6 +251,11 @@ export default function LogFlow({
                 You set the number. Bhookmark only tells you what it thinks of it.
               </Text>
               <RatingPicker value={rating} onChange={setRating} />
+              {handsFree.status === 'on' && (
+                <Text style={[styles.small, styles.center, { color: c.rose, marginTop: 14 }]}>
+                  Hands-free: point one finger and draw a circle — clockwise to raise, anticlockwise to lower.
+                </Text>
+              )}
               {error && <Text style={[styles.error, { color: c.bad }]}>{error}</Text>}
               <Primary c={c} label={saving ? 'Saving…' : 'Add to Bhookmarks'} disabled={rating === null || saving} onPress={finish} />
             </View>

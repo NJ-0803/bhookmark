@@ -22,8 +22,13 @@ export default function DishCard({
   subline,
   trailing,
   note,
+  group,
+  order,
 }: {
   dish: OverlayDish;
+  /** List name and position, so Hands-free swipes can move to the neighbouring dish. */
+  group?: string;
+  order?: number;
   variant?: 'tile' | 'row';
   style?: StyleProp<ViewStyle>;
   subline?: string;
@@ -40,8 +45,8 @@ export default function DishCard({
   const nameMetrics = variant === 'row' ? ROW_NAME : CARD_NAME;
 
   useEffect(
-    () => register(dish.id, { card, photo, name, focus, nameMetrics, photoRadius: CARD_PHOTO_RADIUS }),
-    [register, dish.id, card, photo, name, nameMetrics],
+    () => register(dish.id, { card, photo, name, focus, nameMetrics, photoRadius: CARD_PHOTO_RADIUS, dish, group, order }),
+    [register, dish, card, photo, name, nameMetrics, group, order],
   );
 
   const pressStyle = useAnimatedStyle(() => ({ transform: [{ scale: press.value }] }));

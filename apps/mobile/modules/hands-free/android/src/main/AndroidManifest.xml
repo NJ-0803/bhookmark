@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- Hands-free mode reads the front camera on-device only, and only while
+       the user has turned it on. Frames are never stored or uploaded. -->
+  <uses-permission android:name="android.permission.CAMERA" />
+  <uses-feature android:name="android.hardware.camera.front" android:required="false" />
+</manifest>

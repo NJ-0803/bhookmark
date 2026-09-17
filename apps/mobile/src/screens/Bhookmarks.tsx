@@ -76,9 +76,9 @@ export default function BhookmarksScreen({
             Saved for later <Text style={{ color: c.muted, fontFamily: fonts.body }}>· {saves.length}</Text>
           </Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} scrollEnabled={activeId === null} contentContainerStyle={styles.savedRow}>
-            {saves.map((s) => {
+            {saves.map((s, i) => {
               const dish = savedToDish(s);
-              return <DishCard key={dish.id} dish={dish} style={styles.savedCard} />;
+              return <DishCard key={dish.id} dish={dish} group="saved" order={i} style={styles.savedCard} />;
             })}
           </ScrollView>
         </View>
@@ -100,10 +100,12 @@ export default function BhookmarksScreen({
         </View>
       ) : (
         <View style={styles.list}>
-          {visible.map((log) => (
+          {visible.map((log, i) => (
             <DishCard
               key={log.id}
               dish={logToDish(log)}
+              group="journal"
+              order={i}
               variant="row"
               subline={`${log.venue} · ${timeAgo(log.createdAt)}`}
               trailing={log.score.toFixed(1)}

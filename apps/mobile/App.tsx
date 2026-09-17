@@ -4,6 +4,7 @@ import { StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { initialWindowMetrics, SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from './src/auth/AuthProvider';
+import { HandsFreeProvider } from './src/handsfree/HandsFreeProvider';
 import { MotionProvider } from './src/motion/MotionProvider';
 import AppShell from './src/screens/AppShell';
 import SignIn from './src/screens/SignIn';
@@ -26,7 +27,9 @@ export default function App() {
         <ThemeProvider>
           <MotionProvider>
             <AuthProvider>
+              <HandsFreeProvider>
               {fontsLoaded || fontError ? <Root /> : <View style={[styles.fill, { backgroundColor: themes.evening.bg }]} />}
+              </HandsFreeProvider>
             </AuthProvider>
           </MotionProvider>
         </ThemeProvider>

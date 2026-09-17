@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { USING_LOCAL_API } from '../api/config';
 import { useAuth } from '../auth/AuthProvider';
+import { HandsFreeSettings } from '../handsfree/HandsFreeUI';
 import { useMotion } from '../motion/MotionProvider';
 import { fonts, radius, type ThemeColors } from '../theme/brand';
 import { useTheme, type ThemePref } from '../theme/ThemeProvider';
@@ -49,6 +50,8 @@ export default function YouScreen({ onOpenLab }: { onOpenLab?: () => void }) {
           })}
         </View>
       </Section>
+
+      <HandsFreeSettings c={c} />
 
       <Section title="Motion" c={c}>
         <Row label="Reduce effects" c={c}>
