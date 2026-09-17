@@ -98,6 +98,12 @@ expo ~57.0.22, react-native 0.86.3, react 19.2.3, react-native-reanimated 4.5.1,
     - Per-thread CPU: main ≈1095, RenderThread ≈961, JS ≈466. 0 ANRs.
     - Compared with the release build before the fix: janky 14% → 3.8%, p50 30 → 17 ms, p99 400 → 34 ms, freezes gone.
   - **Smoothing pass 1 (2026-09-17):** Reanimated `ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS` on, tilt sensor mounted only after arrival, one animated style per name layer, moving text cached. Same test: p50 18 ms, p90 27 ms, p99 36 ms, 5.4% janky, 0 ANRs. Main-thread CPU ≈836 (was ≈1095) and slow UI-thread frames 11 (was 21), but frame times unchanged within noise. The remaining cost is draw-command work on the render thread (≈999; 112 slow draw-command frames).
+  - **Layer-cost study (2026-09-17):** test-only switches (`src/motion/perfFlags.ts`, launched as `exp+bhookmark://perf?off=…`, ignored unless the build uses the local test API) turned off one transition layer at a time, 20 cycles each.
+    - Baseline over 3 runs: 5.1–5.9% janky, p90 26–27 ms, 102–115 slow draw frames.
+    - No single layer dominates. The background tilt/shrink, panel swing, photo, hologram and detail fade each cost a slice.
+    - The background snapshot is essential: without it p99 reached 1950 ms.
+    - With every effect off: p90 23 ms, p99 24 ms.
+  - **Smoothing pass 2:** every moving layer (panel shell, clipped artwork, hologram rings and corners, detail while fading) is drawn once into a hardware layer; the light sweep moved to its own clipped sibling. Two valid runs: 3.2–3.4% janky, p50 17 ms, p90 23–28 ms, 64–71 slow draw frames, 0 ANRs. A third run failed to load Crave and is excluded. Removing the background tilt made no measurable difference, so it stays.
     - **Still short of the 60 Hz target:** the median sits right at the 16.7 ms budget, and 1 frame in 10 takes 26 ms or more. Not yet tuned: stroke-heavy HUD compositing, layer count during flight, image decode on first open.
 - The redistribution rights of the two catalog photos are unconfirmed.
 

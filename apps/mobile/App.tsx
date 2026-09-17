@@ -9,7 +9,11 @@ import AppShell from './src/screens/AppShell';
 import SignIn from './src/screens/SignIn';
 import { themes } from './src/theme/brand';
 import { fontAssets } from './src/theme/fonts';
+import { loadPerfFlags } from './src/motion/perfFlags';
 import { ThemeProvider, useTheme } from './src/theme/ThemeProvider';
+
+// Measurement-only layer switches (no-op outside local test builds).
+loadPerfFlags();
 
 export default function App() {
   const [fontsLoaded, fontError] = useFonts(fontAssets);

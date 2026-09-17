@@ -92,15 +92,15 @@ export default function HoloHud({
   const corner = { borderColor: color };
   return (
     <View pointerEvents="none" style={styles.layer} accessible={false} importantForAccessibility="no-hide-descendants">
-      <Animated.View style={[styles.abs, { left: (width - outer) / 2, top: (height - outer) / 2, width: outer, height: outer }, outerStyle]}>
+      <Animated.View renderToHardwareTextureAndroid style={[styles.abs, { left: (width - outer) / 2, top: (height - outer) / 2, width: outer, height: outer }, outerStyle]}>
         <Image source={RING_OUTER} style={{ width: outer, height: outer, tintColor: color }} accessible={false} />
       </Animated.View>
 
-      <Animated.View style={[styles.abs, { left: (width - ring) / 2, top: (height - ring) / 2, width: ring, height: ring }, ringStyle]}>
+      <Animated.View renderToHardwareTextureAndroid style={[styles.abs, { left: (width - ring) / 2, top: (height - ring) / 2, width: ring, height: ring }, ringStyle]}>
         <Image source={RING_INNER} style={{ width: ring, height: ring, tintColor: color }} accessible={false} />
       </Animated.View>
 
-      <Animated.View style={[styles.corners, cornersStyle]}>
+      <Animated.View renderToHardwareTextureAndroid style={[styles.corners, cornersStyle]}>
         <View style={[styles.corner, styles.topLeft, corner]} />
         <View style={[styles.corner, styles.topRight, corner]} />
         <View style={[styles.corner, styles.bottomRight, corner]} />

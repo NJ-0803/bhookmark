@@ -45,6 +45,7 @@ import { fonts } from '../theme/brand';
 import { useTheme } from '../theme/ThemeProvider';
 import CategoryArt from './CategoryArt';
 import HoloHud from './HoloHud';
+import { perfOff } from '../motion/perfFlags';
 
 // Brief Step 3: a tapped card detaches into one root overlay.
 //
@@ -346,13 +347,15 @@ export function CardOverlayProvider({
  * 0.97, and is hidden from assistive technology while a panel is open. */
 export function OverlayStage({ children }: { children: ReactNode }) {
   const { stage, fx, reduce, activeId } = useCardOverlay();
+  const tilt = fx.perspective && !perfOff('stagetilt');
   const style = useAnimatedStyle(() => {
     const s = stage.value;
     const peak = fx.perspective ? flightPeak(s) : 0;
+    const tiltPeak = tilt ? peak : 0;
     return {
       transform: [
         { perspective: 1000 },
-        { rotateX: `${flight.backgroundRotateXDeg * peak}deg` },
+        { rotateX: `${flight.backgroundRotateXDeg * tiltPeak}deg` },
         { scale: reduce ? 1 : 1 - s * (1 - limits.backgroundScale) - flight.backgroundExtraRecede * peak },
       ],
     };
@@ -360,12 +363,12 @@ export function OverlayStage({ children }: { children: ReactNode }) {
   const hidden = activeId !== null;
   return (
     <Animated.View
-      style={[styles.fill, style]}
+      style={[styles.fill, perfOff('stage') ? null : style]}
       importantForAccessibility={hidden ? 'no-hide-descendants' : 'auto'}
       accessibilityElementsHidden={hidden}
       // While a panel is open the page behind it doesn't change: cache it as
       // one GPU texture so recession and tilt don't redraw every card.
-      renderToHardwareTextureAndroid={hidden}
+      renderToHardwareTextureAndroid={hidden && !perfOff('stagelayer')}
       shouldRasterizeIOS={hidden}
     >
       {children}
@@ -571,24 +574,28 @@ function OverlayScene({ entry }: { entry: Entry }) {
       accessibilityViewIsModal
       onAccessibilityEscape={close}
     >
-      <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: c.scrim }, scrimStyle]}>
+      <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: c.scrim }, perfOff('scrim') ? { opacity: 0.6 } : scrimStyle]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={close} accessible={false} importantForAccessibility="no" />
       </Animated.View>
 
       {phase === 'open' && fx.parallax && <TiltSensor tiltX={tiltX} tiltY={tiltY} />}
 
       {/* Floating shadow */}
-      <Animated.View pointerEvents="none" style={[styles.abs, rect(shadowRect), shadowStyle]}>
+      {!perfOff('shadow') && <Animated.View pointerEvents="none" style={[styles.abs, rect(shadowRect), shadowStyle]}>
         <Image source={CONTACT_SHADOW} resizeMode="stretch" style={[styles.stretch, { tintColor: c.shadow }]} accessible={false} />
-      </Animated.View>
+      </Animated.View>}
 
       {/* Card surface */}
       <Animated.View pointerEvents="none" style={[styles.abs, styles.originTopLeft, rect(panel), shellTravel]}>
-        <Animated.View style={[styles.fill, styles.shell, { backgroundColor: c.surface, borderColor: c.line }, shellInner]} />
+        <Animated.View
+          renderToHardwareTextureAndroid
+          style={[styles.fill, styles.shell, { backgroundColor: c.surface, borderColor: c.line }, perfOff('shell') ? null : shellInner]}
+        />
       </Animated.View>
 
       {/* Readable detail content: fades in near arrival, static position. */}
-      <Animated.View
+      {(!perfOff('detail') || phase === 'open') && <Animated.View
+        renderToHardwareTextureAndroid={phase !== 'open'}
         style={[styles.abs, styles.clipPanel, rect(panel), detailReveal]}
         pointerEvents={phase === 'open' ? 'box-none' : 'none'}
       >
@@ -634,10 +641,10 @@ function OverlayScene({ entry }: { entry: Entry }) {
             </Pressable>
           )}
         </View>
-      </Animated.View>
+      </Animated.View>}
 
       {/* Card-sized name, fading out as it grows toward the title. */}
-      <Animated.View
+      {!perfOff('names') && <Animated.View
         pointerEvents="none"
         importantForAccessibility="no-hide-descendants"
         accessibilityElementsHidden
@@ -647,14 +654,14 @@ function OverlayScene({ entry }: { entry: Entry }) {
         <Text style={[styles.dishFont, nameMetrics, { color: c.ink }]} numberOfLines={2}>
           {dish.name}
         </Text>
-      </Animated.View>
+      </Animated.View>}
 
       {/* Panel title, growing in from the card and crisp on arrival. */}
       <Animated.View
         pointerEvents="none"
         // Cached while it moves so glyphs aren't re-rasterised at each scale.
         renderToHardwareTextureAndroid={phase !== 'open'}
-        style={[styles.abs, styles.originTopLeft, { left: name.x, top: name.y, width: name.width }, dstName]}
+        style={[styles.abs, styles.originTopLeft, { left: name.x, top: name.y, width: name.width }, perfOff('names') ? null : dstName]}
       >
         <Text style={[styles.panelName, { color: c.ink }]} numberOfLines={3} accessibilityRole="header">
           {dish.name}
@@ -663,18 +670,23 @@ function OverlayScene({ entry }: { entry: Entry }) {
 
       {/* Photo: a sibling above the surface, so it can break past the panel edge. */}
       <Animated.View pointerEvents="none" style={[styles.abs, styles.originTopLeft, rect(photo), heroTravel]}>
-        <Animated.View style={[styles.fill, styles.clip, heroFlight]}>
+        {/* The clipped artwork is drawn once into a layer, then only moved.
+            The light sweep animates inside its own clipped sibling so it
+            doesn't force that layer to redraw every frame. */}
+        <Animated.View renderToHardwareTextureAndroid style={[styles.fill, styles.clip, perfOff('hero') ? null : heroFlight]}>
           {dish.photo ? (
-            <View style={styles.fill} renderToHardwareTextureAndroid>
-              <Image source={dish.photo} resizeMode="cover" style={styles.fill} accessible={false} />
-            </View>
+            <Image source={dish.photo} resizeMode="cover" style={styles.fill} accessible={false} />
           ) : (
             <CategoryArt category={dish.category} style={styles.fill} />
           )}
-          {fx.highlight && <Animated.View style={[styles.sweep, heroSweep]} />}
         </Animated.View>
+        {fx.highlight && !perfOff('sweep') && (
+          <Animated.View style={[StyleSheet.absoluteFill, styles.clip, perfOff('hero') ? null : heroFlight]}>
+            <Animated.View style={[styles.sweep, heroSweep]} />
+          </Animated.View>
+        )}
         {/* Hologram layer: rings, frame corners and one scan line in the brand's rose light. */}
-        <HoloHud progress={progress} tiltX={tiltX} tiltY={tiltY} width={photo.width} height={photo.height} color={c.rose} enabled={!reduce} />
+        <HoloHud progress={progress} tiltX={tiltX} tiltY={tiltY} width={photo.width} height={photo.height} color={c.rose} enabled={!reduce && !perfOff('hud')} />
       </Animated.View>
 
       <Animated.View
