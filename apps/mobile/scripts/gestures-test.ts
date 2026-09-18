@@ -327,6 +327,19 @@ r = run([snappedHand(), snappedHand(), snappedHand()]);
 check('snapped shape without the set-up → no snap', r.events.length === 0, show(r));
 r = run([snapApproachHand(), snapReadyHand(), snappedHand(), snappedHand()]);
 check('one-sample touch after a snap-shape lead-in, then snapped (a quick real snap) → one snap', JSON.stringify(types(r.events)) === '["snap"]', show(r));
+{
+  // Holding the set-up for ~2 s while the thumb wobbles off and back, then a real snap.
+  const wobble = hand({ thumb: false, index: true, middle: true, ring: false, pinky: false }, 0.5, 0.5, { ...SNAP_READY, 4: [-0.035, -0.02] });
+  const frames = [...Array(3).fill(snapReadyHand()), wobble, snapReadyHand(), snapReadyHand(), wobble, snapReadyHand(), wobble, snapReadyHand(), snapReadyHand(), snappedHand()];
+  r = run(frames);
+  const attempts = r.outs.flatMap((o) => (o.attempt ? [o.attempt] : []));
+  check('thumb wobbles during a held set-up are not near-misses', attempts.length === 1 && attempts[0].fired, JSON.stringify(attempts));
+  const L = new GestureLearner();
+  for (let i = 0; i < 6; i++) L.observe({ kind: 'snap', t: 1000 + i * 100, fired: false, delta: 0.2, rate: 4 });
+  L.observe({ kind: 'snap', t: 2000, fired: true, delta: 0.6, rate: 8 });
+  check('one success learns at most 2 near-misses', L.examples.snap === 3, JSON.stringify(L.examples));
+  check('old (v2) snap learning is dropped, the rest kept', JSON.stringify(GestureLearner.from({ v: 2, snap: { positives: Array(9).fill({ delta: 0.1, rate: 1 }) } }).tuning().snap) === JSON.stringify(DEFAULT_SNAP_TUNING));
+}
 r = run([...Array(4).fill(snapReadyHand()), null, null, snappedHand()], 60);
 check('the snap blurs the hand out for 2 frames (~180 ms), then snapped → one snap', JSON.stringify(types(r.events)) === '["snap"]', show(r));
 r = run([...Array(4).fill(snapReadyHand()), ...Array(8).fill(null), snappedHand()], 60);

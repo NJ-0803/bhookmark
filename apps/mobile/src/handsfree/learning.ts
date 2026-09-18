@@ -47,6 +47,8 @@ const SHAPE_SAME_INTENT_MS = 4000;
 const MIN_SNAP_EXAMPLES = 3;
 const MIN_SWIPE_EXAMPLES = 2;
 const KEEP = 30;
+/** At most this many near-misses are learned per success, so one session can't swing a threshold. */
+const MAX_PROMOTED = 2;
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 function quantile(xs: number[], q: number): number {
@@ -74,7 +76,10 @@ export class SnapLearner {
       this.pending.push({ ...sample, t: a.t });
       return;
     }
-    const promoted = this.pending.filter((m) => a.t - m.t <= SNAP_SAME_INTENT_MS).map(({ delta, rate }) => ({ delta, rate }));
+    const promoted = this.pending
+      .filter((m) => a.t - m.t <= SNAP_SAME_INTENT_MS)
+      .slice(-MAX_PROMOTED)
+      .map(({ delta, rate }) => ({ delta, rate }));
     this.pending = [];
     this.positives.push(...promoted, sample);
     this.positives = this.positives.slice(-KEEP);
@@ -141,7 +146,7 @@ class SwipeLearner {
       return;
     }
     // Near-misses in the same direction just before a swipe that fired were meant.
-    const meant = this.pending.filter((m) => m.direction === a.direction && a.t - m.t <= SWIPE_SAME_INTENT_MS);
+    const meant = this.pending.filter((m) => m.direction === a.direction && a.t - m.t <= SWIPE_SAME_INTENT_MS).slice(-MAX_PROMOTED);
     this.pending = [];
     this.examples.push(...meant.map(({ travel, speed }) => ({ travel, speed })));
     this.examples = this.examples.slice(-KEEP);
@@ -189,7 +194,7 @@ class ShapeWindowLearner {
       this.pending.push(a.t);
       return;
     }
-    const meant = this.pending.filter((t) => a.t - t <= SHAPE_SAME_INTENT_MS).length;
+    const meant = Math.min(MAX_PROMOTED, this.pending.filter((t) => a.t - t <= SHAPE_SAME_INTENT_MS).length);
     this.pending = [];
     this.extra = Math.min(SHAPE_WINDOW_MAX_MS - this.base, this.extra + meant * SHAPE_WINDOW_STEP_MS);
   }
@@ -241,7 +246,7 @@ export class GestureLearner {
   }
 
   toJSON() {
-    return { v: 2, snap: this.snap, swipe: this.swipe, grab: this.grab, release: this.release };
+    return { v: 3, snap: this.snap, swipe: this.swipe, grab: this.grab, release: this.release };
   }
 
   /** Restores saved learning; anything malformed is ignored. */
@@ -249,8 +254,10 @@ export class GestureLearner {
     const l = new GestureLearner();
     if (!json || typeof json !== 'object') return l;
     const j = json as { v?: number; snap?: unknown; swipe?: unknown; grab?: unknown; release?: unknown };
-    if (j.v === 2) {
-      l.snap.load(j.snap);
+    // v2 snap learning counted thumb wobbles during the set-up as snaps: it is
+    // dropped once; everything else carries over.
+    if (j.v === 3) l.snap.load(j.snap);
+    if (j.v === 2 || j.v === 3) {
       l.swipe.load(j.swipe);
       l.grab.load(j.grab);
       l.release.load(j.release);

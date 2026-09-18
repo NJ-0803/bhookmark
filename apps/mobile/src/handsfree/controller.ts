@@ -192,7 +192,13 @@ export class HandsFreeController {
   private openingFrom = -Infinity;
   /** The last thumb-on-middle sample: when, and how close. */
   private snapTouch: { t: number; tm: number } | null = null;
-  private snapMissLogged = false;
+  /**
+   * A separation that didn't fire. Only reported once the set-up ends without
+   * the thumb going back on the middle finger: a thumb wobbling while the
+   * set-up is held is not an attempt (recording, 2026-09-18: six wobbles in a
+   * 2-second hold were being learned as snaps).
+   */
+  private snapMiss: SnapAttempt | null = null;
   /** Consecutive thumb-on-middle samples, and the previous hand sample's measurements. */
   private snapReadyRun = 0;
   private prevDetail: ReturnType<typeof poseDetail> | null = null;
@@ -453,7 +459,7 @@ export class HandsFreeController {
       if (this.snapReadyRun >= 2 || approached) {
         if (this.state !== 'snap') this.enterShape('snap');
         this.snapTouch = { t, tm: d.thumbMiddle };
-        this.snapMissLogged = false;
+        this.snapMiss = null; // back on the middle finger: that was a wobble
       }
       return true;
     }
@@ -468,18 +474,17 @@ export class HandsFreeController {
         if (fold || split) {
           events.push({ type: 'snap' });
           this.attempt = { kind: 'snap', t, fired: true, delta, rate };
+          this.snapMiss = null;
           this.afterShape(t);
           return true;
         }
-        if (delta >= SNAP_ATTEMPT_DELTA && !this.snapMissLogged) {
-          // Came apart, but not like a snap (yet): remember it for the learner.
-          this.attempt = { kind: 'snap', t, fired: false, delta, rate };
-          this.snapMissLogged = true;
+        if (delta >= SNAP_ATTEMPT_DELTA && (!this.snapMiss || delta > this.snapMiss.delta)) {
+          // Came apart, but not like a snap (yet): hold it until the set-up ends.
+          this.snapMiss = { kind: 'snap', t, fired: false, delta, rate };
         }
         return true;
       }
-      this.state = 'searching';
-      this.snapTouch = null;
+      this.endSnapSetUp();
     }
 
     // Bloom: fingertip pyramid, held, then opened.
@@ -565,6 +570,14 @@ export class HandsFreeController {
     return false;
   }
 
+  /** The snap set-up ended without firing: a separation during it was a real near-miss. */
+  private endSnapSetUp() {
+    if (this.snapMiss) this.attempt = this.snapMiss;
+    this.snapMiss = null;
+    this.snapTouch = null;
+    if (this.state === 'snap') this.state = 'searching';
+  }
+
   private enterShape(state: 'snap' | 'pyramid' | 'fist') {
     this.state = state;
     this.preview = null;
@@ -622,6 +635,8 @@ export class HandsFreeController {
     // 2-second set-up). Within the snap window, keep the set-up waiting.
     const touch = this.snapTouch;
     const snapPending = this.state === 'snap' && touch !== null && t - touch.t <= SNAP_WINDOW_MS;
+    const miss = this.snapMiss;
+    if (!snapPending) this.endSnapSetUp();
     // Tracking lost or stale: cancel, never extrapolate. Leaving view also
     // counts as releasing after a commit.
     this.preview = null;
@@ -635,6 +650,7 @@ export class HandsFreeController {
     if (snapPending) {
       this.state = 'snap';
       this.snapTouch = touch;
+      this.snapMiss = miss;
     }
   }
 
