@@ -8,7 +8,7 @@ import { GestureRecognizer, headOffset, type GestureEvent } from './gestures';
 
 // Hands-free mode: Bhookmark's signature feature. Off by default; while it's on
 // and the app is in the foreground, the front camera tracks the user's head
-// (window-style depth on open dishes) and hand (two-finger air swipes, a
+// (window-style depth on open dishes) and hand (open-palm air swipes, a
 // pointing-finger rating dial). Everything runs on the phone; no image is
 // stored or sent anywhere.
 
@@ -16,6 +16,8 @@ const ENABLED_KEY = 'bhookmark.handsFree';
 const INTRO_KEY = 'bhookmark.handsFreeIntroSeen';
 
 export type HandsFreeStatus = 'unavailable' | 'off' | 'starting' | 'on' | 'denied' | 'error';
+/** What the camera sees of the hand right now: nothing, a hand, or one of the two gesture shapes. */
+export type HandSight = 'none' | 'hand' | 'open' | 'point';
 
 type Listener = (event: GestureEvent) => boolean | void;
 
@@ -41,9 +43,13 @@ type HandsFreeContextValue = {
    * list behind it.
    */
   subscribe: (listener: Listener) => () => void;
+  /** Turns face detection on while something needs head position; call the returned function to release it. */
+  requestHeadTracking: () => () => void;
 };
 
 const HandsFreeContext = createContext<HandsFreeContextValue | null>(null);
+// Separate, so a hand entering or leaving view only re-renders the pill.
+const HandSightContext = createContext<HandSight>('none');
 
 export function HandsFreeProvider({ children }: { children: ReactNode }) {
   const available = Platform.OS === 'android' && HandsFree != null;
@@ -51,9 +57,12 @@ export function HandsFreeProvider({ children }: { children: ReactNode }) {
   const [introSeen, setIntroSeen] = useState<boolean | null>(null);
   const [status, setStatus] = useState<HandsFreeStatus>(available ? 'off' : 'unavailable');
   const [error, setError] = useState<string | null>(null);
+  const [handSight, setHandSight] = useState<HandSight>('none');
+  const missedHandFrames = useRef(0);
   const [appActive, setAppActive] = useState(AppState.currentState === 'active');
   const listeners = useRef<Listener[]>([]);
   const recognizer = useRef(new GestureRecognizer());
+  const headUsers = useRef(0);
   const headX = useSharedValue(0);
   const headY = useSharedValue(0);
   const faceVisible = useSharedValue(false);
@@ -86,6 +95,7 @@ export function HandsFreeProvider({ children }: { children: ReactNode }) {
         setStatus('off');
       }
       recognizer.current.reset();
+      setHandSight('none');
       faceVisible.value = false;
       headX.value = withTiming(0, { duration: 300 });
       headY.value = withTiming(0, { duration: 300 });
@@ -97,9 +107,9 @@ export function HandsFreeProvider({ children }: { children: ReactNode }) {
       if (frame.face) {
         const o = headOffset(frame.face);
         faceVisible.value = true;
-        // Frames arrive ~15/s; ease between them so the depth moves at 60+ fps.
-        headX.value = withTiming(o.x, { duration: 90, easing: Easing.linear });
-        headY.value = withTiming(o.y, { duration: 90, easing: Easing.linear });
+        // Frames arrive ~30/s; ease between them so the depth moves at 60+ fps.
+        headX.value = withTiming(o.x, { duration: 40, easing: Easing.linear });
+        headY.value = withTiming(o.y, { duration: 40, easing: Easing.linear });
       } else if (faceVisible.value) {
         faceVisible.value = false;
         headX.value = withTiming(0, { duration: 300 });
@@ -107,8 +117,24 @@ export function HandsFreeProvider({ children }: { children: ReactNode }) {
       }
       const before = recognizer.current.currentPose;
       const events = recognizer.current.update(frame.t, frame.hand);
+      // Hand feedback: a single missed frame doesn't blank it, so it doesn't flicker.
+      if (frame.hand) missedHandFrames.current = 0;
+      else missedHandFrames.current++;
+      const pose = recognizer.current.currentPose;
+      setHandSight(frame.hand ? (pose === 'other' ? 'hand' : pose) : missedHandFrames.current >= 3 ? 'none' : (prev) => prev);
       // Test builds only: a trace for tuning thresholds on a real hand.
       if (USING_LOCAL_API) {
+        // Raw landmarks, so real hand recordings can be replayed off-device (scripts/gestures-replay.ts).
+        const r3 = (v: number) => Math.round(v * 1000) / 1000;
+        const f = frame.face ? [r3(frame.face.x), r3(frame.face.y), r3(frame.face.w)] : null;
+        // age: ms from the camera capturing this frame to it reaching JS.
+        // queued: capture → analyser; cost: per stage; bridge: native send → JS.
+        const now = Date.now();
+        const age = frame.wall ? Math.round(now - frame.wall) : null;
+        const bridge = frame.sent ? Math.round(now - frame.sent) : null;
+        const queued = frame.queued != null ? Math.round(frame.queued) : null;
+        const cost = frame.cost?.map((v) => Math.round(v));
+        console.log(`[hfraw] ${JSON.stringify({ t: Math.round(frame.t), age, queued, bridge, gpu: frame.gpu, cost, f, h: frame.hand?.map(r3) ?? null })}`);
         const after = recognizer.current.currentPose;
         if (after !== before) console.log(`[hf] pose ${before} -> ${after}`);
         for (const e of events) console.log(`[hf] ${JSON.stringify(e)}`);
@@ -179,11 +205,28 @@ export function HandsFreeProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  const requestHeadTracking = useCallback(() => {
+    if (!available) return () => {};
+    if (headUsers.current++ === 0) HandsFree!.setFaceTracking(true);
+    return () => {
+      if (--headUsers.current === 0) HandsFree!.setFaceTracking(false);
+    };
+  }, [available]);
+
   const value = useMemo(
-    () => ({ available, enabled, status, error, setEnabled, introSeen, markIntroSeen, showIntro, headX, headY, faceVisible, subscribe }),
-    [available, enabled, status, error, setEnabled, introSeen, markIntroSeen, showIntro, headX, headY, faceVisible, subscribe],
+    () => ({ available, enabled, status, error, setEnabled, introSeen, markIntroSeen, showIntro, headX, headY, faceVisible, subscribe, requestHeadTracking }),
+    [available, enabled, status, error, setEnabled, introSeen, markIntroSeen, showIntro, headX, headY, faceVisible, subscribe, requestHeadTracking],
   );
-  return <HandsFreeContext.Provider value={value}>{children}</HandsFreeContext.Provider>;
+  return (
+    <HandsFreeContext.Provider value={value}>
+      <HandSightContext.Provider value={handSight}>{children}</HandSightContext.Provider>
+    </HandsFreeContext.Provider>
+  );
+}
+
+/** Live feedback for the pill: whether the camera sees a hand, and which gesture shape. */
+export function useHandSight(): HandSight {
+  return useContext(HandSightContext);
 }
 
 export function useHandsFree(): HandsFreeContextValue {

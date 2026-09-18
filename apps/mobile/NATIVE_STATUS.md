@@ -119,6 +119,25 @@ User decisions (2026-09-17): the swipe must need **exactly** the index and middl
 - Wired into: `CardOverlay` (swipe moves to the neighbouring registered card in the same list; head position replaces phone tilt while a panel is open), `Crave` (swipe pages the grid when nothing is open), `LogFlow` (dial on the rating step, with a haptic tick), `You` (toggle, gesture list, privacy note, "How Hands-free works"), `AppShell` (camera pill, intro).
 - Known rough edge: the two-finger pose flickers in and out between readings on a hand-held phone, which is why swipes need several tries. Tuning candidates: relax `extended`/`folded` ratios, hold the pose for one frame less, lengthen the swipe window, or smooth landmarks before classifying.
 
+### Hands-free update (2026-09-18)
+
+- **Framing, not thresholds, was the first problem.** In the first real recording a hand was found in only 6% of frames: the user's hand was so close to the camera that it spilled out of the frame. The pill now shows live feedback: "Hand seen", "Ready to swipe" or "Dial ready".
+- **The swipe is now an open palm, four fingers up (thumb ignored), in four directions** (user decision, replacing the two-finger swipe). The two-finger pose was hard to hold, and the thumb check alone broke it in 60 frames. Up/down scrolls Crave, with the list following the hand. Left/right moves between dishes in an open panel.
+- **Thresholds from real recordings:**
+  - An open palm reads 1.15–1.45 reach per finger. In two-finger frames, a folded ring or pinky always read ≤1.05. The open cutoff is 1.12.
+  - The hand must be in view for 300 ms before its movement counts, because a hand rising into view read as an "up" swipe.
+  - One lost frame mid-sweep is tolerated.
+  - The return stroke is ignored for 1 s.
+- `scripts/gestures-replay.ts` replays a recorded `[hfraw]` trace, per frame and per finger. Test builds log the raw landmarks plus timing. There are 31 offline checks.
+- **Native changes:** no 66 ms throttle, the camera fixed at 30 fps, the hand model tried on the GPU with a CPU fallback, and face detection only while a dish panel is open.
+- **Measured latency (Pixel 4a, debug build, median of 150 frames):**
+  - Camera capture → analyser: 81 ms.
+  - Image conversion: 3 ms.
+  - Hand model: 47 ms. The GPU was no faster than the CPU on the Adreno 618.
+  - Native → JS: 2 ms.
+  - Total: about 134 ms per frame, with a frame every 55 ms.
+  - The floor on this phone is about 115 ms. The user wants a much faster response; the gesture design (how much travel is needed before anything moves) is the remaining lever, and that choice is still open.
+
 ## Also changed on 2026-09-17
 
 - **Crave opens on dishes.** The start screen used to show only the search box and chips, so there was nothing to swipe or look at ("i dont see any dish on the page"). It now loads a "Worth a look · <craving>" grid, rotating daily through the catalog's categories, with a "See all" link.

@@ -3,9 +3,14 @@ package expo.modules.handsfree
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Matrix
+import android.hardware.camera2.CaptureRequest
 import android.os.SystemClock
 import android.util.Log
+import android.util.Range
 import android.util.Size
+import androidx.annotation.OptIn
+import androidx.camera.camera2.interop.Camera2Interop
+import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
@@ -25,7 +30,7 @@ import java.util.concurrent.Executors
 
 /**
  * Front camera → MediaPipe face detector + hand landmarker, entirely on the
- * device. Emits at most ~15 small frames per second: the face centre/size and
+ * device. Emits one small frame per camera frame (up to 30/s): the face centre/size and
  * the 21 hand landmarks, both normalised to a mirrored, upright image so that
  * x grows to the user's right as they look at the screen. No pixels leave
  * this class and nothing is written to disk.
@@ -41,9 +46,12 @@ class HandsFreeEngine(
   private var hands: HandLandmarker? = null
   private var faces: FaceDetector? = null
   @Volatile private var running = false
-  private var lastFrameMs = 0L
+  /** The face is only needed while a dish is open (head-tracked depth); skipping it saves ~10 ms a frame. */
+  @Volatile var faceTracking = false
+  private var handsOnGpu = false
   private var lastTimestamp = 0L
 
+  @OptIn(markerClass = [ExperimentalCamera2Interop::class])
   fun start(owner: LifecycleOwner, done: (String?) -> Unit) {
     if (running) return done(null)
     running = true
@@ -51,7 +59,11 @@ class HandsFreeEngine(
     future.addListener({
       try {
         val cameraProvider = future.get()
-        val useCase = ImageAnalysis.Builder()
+        val builder = ImageAnalysis.Builder()
+        // A fixed 30 fps: the most frames the front camera gives, and it caps
+        // exposure at 33 ms, so a moving hand blurs less.
+        Camera2Interop.Extender(builder).setCaptureRequestOption(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(30, 30))
+        val useCase = builder
           .setResolutionSelector(
             ResolutionSelector.Builder()
               .setResolutionStrategy(
@@ -95,19 +107,16 @@ class HandsFreeEngine(
 
   private fun ensureModels() {
     if (hands == null) {
-      hands = HandLandmarker.createFromOptions(
-        context,
-        HandLandmarker.HandLandmarkerOptions.builder()
-          .setBaseOptions(BaseOptions.builder().setModelAssetPath("hand_landmarker.task").setDelegate(Delegate.CPU).build())
-          .setRunningMode(RunningMode.VIDEO)
-          .setNumHands(1)
-          .setMinHandDetectionConfidence(0.6f)
-          .setMinHandPresenceConfidence(0.6f)
-          .setMinTrackingConfidence(0.5f)
-          .build()
-      )
+      // The GPU runs the hand model several times faster than the CPU; fall back if it can't start.
+      hands = try {
+        createHands(Delegate.GPU).also { handsOnGpu = true }
+      } catch (e: Exception) {
+        Log.w("HandsFree", "GPU hand model unavailable, using CPU", e)
+        handsOnGpu = false
+        createHands(Delegate.CPU)
+      }
     }
-    if (faces == null) {
+    if (faceTracking && faces == null) {
       faces = FaceDetector.createFromOptions(
         context,
         FaceDetector.FaceDetectorOptions.builder()
@@ -119,14 +128,26 @@ class HandsFreeEngine(
     }
   }
 
+  private fun createHands(delegate: Delegate): HandLandmarker =
+    HandLandmarker.createFromOptions(
+      context,
+      HandLandmarker.HandLandmarkerOptions.builder()
+        .setBaseOptions(BaseOptions.builder().setModelAssetPath("hand_landmarker.task").setDelegate(delegate).build())
+        .setRunningMode(RunningMode.VIDEO)
+        .setNumHands(1)
+        .setMinHandDetectionConfidence(0.6f)
+        .setMinHandPresenceConfidence(0.6f)
+        .setMinTrackingConfidence(0.5f)
+        .build()
+    )
+
   private fun analyze(image: ImageProxy) {
     try {
       if (!running) return
       val now = SystemClock.uptimeMillis()
-      if (now - lastFrameMs < 66) return
-      lastFrameMs = now
       ensureModels()
 
+      val t0 = SystemClock.elapsedRealtimeNanos()
       val raw = image.toBitmap()
       val matrix = Matrix().apply {
         postRotate(image.imageInfo.rotationDegrees.toFloat())
@@ -140,8 +161,12 @@ class HandsFreeEngine(
 
       val payload = HashMap<String, Any?>()
       payload["t"] = now.toDouble()
+      // Wall-clock time the camera captured this frame, so JS can measure the full delay to the screen.
+      payload["wall"] = (System.currentTimeMillis() - (SystemClock.elapsedRealtimeNanos() - image.imageInfo.timestamp) / 1_000_000).toDouble()
+      val t1 = SystemClock.elapsedRealtimeNanos()
 
-      val face = faces?.detectForVideo(mpImage, ts)?.detections()?.maxByOrNull { it.boundingBox().width() }
+      payload["gpu"] = handsOnGpu
+      val face = if (!faceTracking) null else faces?.detectForVideo(mpImage, ts)?.detections()?.maxByOrNull { it.boundingBox().width() }
       if (face != null) {
         val box = face.boundingBox()
         payload["face"] = mapOf(
@@ -151,7 +176,11 @@ class HandsFreeEngine(
         )
       }
 
+      val t2 = SystemClock.elapsedRealtimeNanos()
       val landmarks = hands?.detectForVideo(mpImage, ts)?.landmarks()?.firstOrNull()
+      val t3 = SystemClock.elapsedRealtimeNanos()
+      // Per-stage cost in ms: image conversion, face detector, hand landmarker.
+      payload["cost"] = listOf((t1 - t0) / 1e6, (t2 - t1) / 1e6, (t3 - t2) / 1e6)
       if (landmarks != null && landmarks.size == 21) {
         val points = ArrayList<Double>(42)
         for (lm in landmarks) {
@@ -160,6 +189,9 @@ class HandsFreeEngine(
         }
         payload["hand"] = points
       }
+      // Test measurements: ms from capture to the analyser picking the frame up, and to sending it.
+      payload["queued"] = (t0 - image.imageInfo.timestamp) / 1e6
+      payload["sent"] = System.currentTimeMillis().toDouble()
       emit(payload)
     } catch (e: Exception) {
       Log.w("HandsFree", "frame failed", e)

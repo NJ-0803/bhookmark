@@ -62,12 +62,13 @@ export default function CraveScreen() {
   const scrollY = useRef(0);
   const { height: screenHeight } = useWindowDimensions();
 
-  // Hands-free: with no dish open, a two-finger air swipe pages through the list
-  // (hand left → further down, like flicking cards away).
+  // Hands-free: with no dish open, an open-palm air swipe up or down pages
+  // through the list. The list follows the hand, as it would a finger: hand up
+  // → further down the list.
   useHandsFreeGestures(activeId === null, (event) => {
-    if (event.type !== 'swipe') return false;
+    if (event.type !== 'swipe' || (event.direction !== 'up' && event.direction !== 'down')) return false;
     const page = screenHeight * 0.6;
-    const next = Math.max(0, scrollY.current + (event.direction === 'left' ? page : -page));
+    const next = Math.max(0, scrollY.current + (event.direction === 'up' ? page : -page));
     listRef.current?.scrollToOffset({ offset: next, animated: true });
     return true;
   });

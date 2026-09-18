@@ -10,6 +10,7 @@ import expo.modules.kotlin.modules.ModuleDefinition
 
 class HandsFreeModule : Module() {
   private var engine: HandsFreeEngine? = null
+  private var faceTracking = false
 
   override fun definition() = ModuleDefinition {
     Name("HandsFreeModule")
@@ -36,10 +37,16 @@ class HandsFreeModule : Module() {
         emit = { sendEvent("onFrame", it) },
         onError = { sendEvent("onError", mapOf("message" to it)) },
       ).also { engine = it }
+      current.faceTracking = faceTracking
       current.start(owner) { error ->
         if (error == null) promise.resolve(null) else promise.reject("E_CAMERA", error, null)
       }
     }.runOnQueue(Queues.MAIN)
+
+    Function("setFaceTracking") { on: Boolean ->
+      faceTracking = on
+      engine?.faceTracking = on
+    }
 
     AsyncFunction("stop") {
       engine?.stop()

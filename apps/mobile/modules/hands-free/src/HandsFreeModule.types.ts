@@ -5,6 +5,14 @@ export type HandsFreeFrame = {
   face?: { x: number; y: number; w: number };
   /** 21 MediaPipe hand landmarks as [x0, y0, x1, y1, …], normalised 0–1, same space as `face`. */
   hand?: number[];
+  /** Wall-clock ms when the camera captured the frame (for measuring delay). */
+  wall?: number;
+  /** Test measurements: ms spent converting the image, detecting the face, and finding the hand. */
+  cost?: number[];
+  /** Test measurement: whether the hand model runs on the GPU. */
+  gpu?: boolean;
+  queued?: number;
+  sent?: number;
 };
 
 export type PermissionResponse = { granted: boolean; canAskAgain: boolean; status: string };

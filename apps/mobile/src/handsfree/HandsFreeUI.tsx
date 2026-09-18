@@ -5,16 +5,17 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import Svg, { Circle, Path } from 'react-native-svg';
 import { fonts, radius, type ThemeColors } from '../theme/brand';
 import { useTheme } from '../theme/ThemeProvider';
-import { useHandsFree } from './HandsFreeProvider';
+import { useHandSight, useHandsFree } from './HandsFreeProvider';
 
 // Line drawings of the two hand shapes, in the brand's rose.
-function TwoFingers({ color, size = 56 }: { color: string; size?: number }) {
+function OpenPalm({ color, size = 56 }: { color: string; size?: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 48 48" fill="none" stroke={color} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
-      <Path d="M17 26V9a2.5 2.5 0 0 1 5 0v14" />
-      <Path d="M22 23V7a2.5 2.5 0 0 1 5 0v16" />
-      <Path d="M27 24v-3a2.5 2.5 0 0 1 5 0v4a2.5 2.5 0 0 1 5 0v6c0 7-4.5 12-11 12h-2c-5 0-8.5-3-10.5-7.5L10 30a2.5 2.5 0 0 1 4-3l3 3" />
-      <Path d="M5 16h6M37 16h6M7 13l-3 3 3 3M41 13l3 3-3 3" />
+      <Path d="M16 27V13a2.2 2.2 0 0 1 4.4 0v10" />
+      <Path d="M20.4 23V10a2.2 2.2 0 0 1 4.4 0v13" />
+      <Path d="M24.8 23V11.5a2.2 2.2 0 0 1 4.4 0V24" />
+      <Path d="M29.2 24v-8a2.2 2.2 0 0 1 4.4 0v14c0 7-4.5 12-11 12h-1.5c-4.5 0-8-2.8-10-7l-3-6a2.2 2.2 0 0 1 3.8-2.2L16 30" />
+      <Path d="M40 12v10M37 15l3-3 3 3M37 19l3 3 3-3" />
     </Svg>
   );
 }
@@ -44,9 +45,9 @@ function Face({ color, size = 56 }: { color: string; size?: number }) {
 const GESTURES = [
   {
     key: 'swipe',
-    title: 'Two-finger air swipe',
-    body: 'Hold up only your index and middle fingers and sweep sideways to move between dishes. Any other hand shape is ignored.',
-    Art: TwoFingers,
+    title: 'Open-palm air swipe',
+    body: 'Hold up an open hand about a forearm\'s length in front of the screen, wait for "Ready to swipe" at the top, then sweep up or down to scroll, or sideways to move between open dishes.',
+    Art: OpenPalm,
   },
   {
     key: 'dial',
@@ -123,8 +124,11 @@ export function HandsFreeIntro() {
 export function HandsFreePill() {
   const { colors: c } = useTheme();
   const { status, setEnabled } = useHandsFree();
+  const handSight = useHandSight();
   const insets = useSafeAreaInsets();
   if (status !== 'on' && status !== 'starting') return null;
+  // Live feedback: the camera only sees a hand held about a forearm's length in front of the screen.
+  const label = status !== 'on' ? 'Starting…' : { none: 'Hands-free', hand: 'Hand seen', open: 'Ready to swipe', point: 'Dial ready' }[handSight];
   return (
     <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(150)} style={[styles.pillWrap, { top: insets.top + 6 }]} pointerEvents="box-none">
       <Pressable
@@ -133,8 +137,8 @@ export function HandsFreePill() {
         accessibilityLabel="Hands-free is on and using the camera. Tap to turn it off."
         style={[styles.pill, { backgroundColor: c.surface, borderColor: c.accent }]}
       >
-        <View style={[styles.dot, { backgroundColor: status === 'on' ? c.rose : c.faint }]} />
-        <Text style={[styles.pillText, { color: c.ink }]}>{status === 'on' ? 'Hands-free' : 'Starting…'}</Text>
+        <View style={[styles.dot, handSight !== 'none' && styles.dotLive, { backgroundColor: status === 'on' && handSight !== 'none' ? c.rose : c.faint }]} />
+        <Text style={[styles.pillText, { color: c.ink }]}>{label}</Text>
         <Text style={[styles.pillOff, { color: c.faint }]}>Off</Text>
       </Pressable>
     </Animated.View>
@@ -160,10 +164,10 @@ export function HandsFreeSettings({ c }: { c: ThemeColors }) {
           <Text style={[styles.sectionTitle, { color: c.ink }]}>Hands-free</Text>
           <Text style={[styles.small, { color: c.muted }]}>
             {status === 'on'
-              ? 'On — try a two-finger air swipe on an open dish.'
+              ? 'On — hold up an open hand and sweep up or down.'
               : status === 'starting'
                 ? 'Starting the camera…'
-                : 'Two-finger air swipes, circle-to-rate, and head-tracked depth.'}
+                : 'Open-palm air swipes, circle-to-rate, and head-tracked depth.'}
           </Text>
         </View>
         <Switch
@@ -212,6 +216,7 @@ const styles = StyleSheet.create({
   pillWrap: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
   pill: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 18, paddingHorizontal: 12, minHeight: 36 },
   dot: { width: 8, height: 8, borderRadius: 4 },
+  dotLive: { width: 10, height: 10, borderRadius: 5 },
   pillText: { fontFamily: fonts.bodyMedium, fontSize: 13 },
   pillOff: { fontFamily: fonts.body, fontSize: 12, textDecorationLine: 'underline' },
   section: { borderWidth: 1, borderRadius: radius.card, padding: 16, marginBottom: 14, gap: 10 },

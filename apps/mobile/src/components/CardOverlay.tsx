@@ -329,7 +329,7 @@ export function CardOverlayProvider({
   openRef.current = open;
 
   useHandsFreeGestures(entry !== null && phase === 'open', (event) => {
-    if (event.type !== 'swipe') return false;
+    if (event.type !== 'swipe' || event.direction === 'up' || event.direction === 'down') return false;
     const current = entryRef.current;
     const refs = current ? sources.current.get(current.dish.id) : undefined;
     if (!current || refs?.group === undefined || refs.order === undefined) return true;
@@ -782,7 +782,8 @@ function TiltSensor({ tiltX, tiltY }: { tiltX: SharedValue<number>; tiltY: Share
 // phone's tilt) moves the artwork against the hologram layer, like looking
 // through a window. Eases back to rest when no face is visible or on unmount.
 function HeadTilt({ tiltX, tiltY }: { tiltX: SharedValue<number>; tiltY: SharedValue<number> }) {
-  const { headX, headY } = useHandsFree();
+  const { headX, headY, requestHeadTracking } = useHandsFree();
+  useEffect(() => requestHeadTracking(), [requestHeadTracking]);
   useAnimatedReaction(
     () => [headX.value, headY.value] as const,
     ([x, y]) => {
