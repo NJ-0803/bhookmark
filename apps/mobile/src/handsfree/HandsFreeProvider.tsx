@@ -25,7 +25,7 @@ const OLD_SNAP_KEY = 'bhookmark.handsFreeSnapLearning';
 
 export type HandsFreeStatus = 'unavailable' | 'off' | 'starting' | 'on' | 'denied' | 'error';
 /** What the controller can do right now: nothing in view, a hand it can't use yet, or which gesture is ready. */
-export type HandSight = 'none' | 'hand' | 'ready' | 'point' | 'fist' | 'pyramid' | 'snap';
+export type HandSight = 'none' | 'hand' | 'ready' | 'point' | 'fist' | 'pyramid' | 'snap' | 'slower' | 'back';
 
 type Listener = (event: GestureEvent) => boolean | void;
 
@@ -72,13 +72,17 @@ type HandsFreeContextValue = {
 
 function sightOf(out: ControllerOutput): HandSight {
   if (out.pose === 'none') return 'none';
-  if (out.state === 'armed' || out.state === 'previewing' || out.state === 'closing') return 'ready';
+  if (out.state === 'armed' || out.state === 'previewing' || out.state === 'following' || out.state === 'closing') return 'ready';
   if (out.state === 'dial') return 'point';
   if (out.state === 'fist' || out.state === 'opening') return 'fist';
   if (out.state === 'pyramid') return 'pyramid';
   if (out.state === 'snap') return 'snap';
   return 'hand';
 }
+
+// Coaching: how long "Slower" shows, and how often at most (a hint, not a nag).
+const COACH_MS = 2500;
+const COACH_EVERY_MS = 15000;
 
 const HandsFreeContext = createContext<HandsFreeContextValue | null>(null);
 // Separate, so a hand entering or leaving view only re-renders the pill.
@@ -104,6 +108,7 @@ export function HandsFreeProvider({ children }: { children: ReactNode }) {
   const faceVisible = useSharedValue(false);
   const previewX = useSharedValue(0);
   const previewY = useSharedValue(0);
+  const coach = useRef<{ until: number; last: number; say: 'slower' | 'back' }>({ until: 0, last: -Infinity, say: 'slower' });
 
   useEffect(() => {
     AsyncStorage.multiGet([ENABLED_KEY, INTRO_KEY])
@@ -195,10 +200,14 @@ export function HandsFreeProvider({ children }: { children: ReactNode }) {
         if (TRACE) console.log(`[hf] attempt ${JSON.stringify(out.attempt)} → ${JSON.stringify(learner.current.tuning())}`);
       }
       publishPreview(out);
-      setHandSight(sightOf(out));
+      const now = Date.now();
+      const hint = events.find((e) => e.type === 'hint');
+      if (hint && now - coach.current.last >= COACH_EVERY_MS) {
+        coach.current = { until: now + COACH_MS, last: now, say: hint.hint };
+      }
+      setHandSight(now < coach.current.until ? coach.current.say : sightOf(out));
       if (TRACE) {
         const r3 = (v: number) => Math.round(v * 1000) / 1000;
-        const now = Date.now();
         console.log(
           `[hfraw] ${JSON.stringify({
             t: Math.round((frame.cap ?? frame.t) * 10) / 10,
@@ -217,6 +226,7 @@ export function HandsFreeProvider({ children }: { children: ReactNode }) {
         for (const e of events) console.log(`[hf] ${out.state} ${JSON.stringify(e)}`);
       }
       for (const event of events) {
+        if (event.type === 'hint') continue; // shown in the pill, not a gesture
         for (const l of [...listeners.current].reverse()) {
           if (l(event)) break;
         }

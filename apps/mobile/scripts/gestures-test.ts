@@ -138,21 +138,108 @@ const HOLD = 8; // 8 × 55 ms = 440 ms > ARM_MS
 const sweep = (shape: Shape, from: [number, number], to: [number, number], n = 6) => [...still(shape, from[0], from[1], HOLD), ...move(shape, from, to, n)];
 const swipes = (e: GestureEvent[]) => e.filter((x) => x.type === 'swipe').map((x) => (x.type === 'swipe' ? x.direction : ''));
 const only = (e: GestureEvent[], ...dirs: string[]) => e.length === dirs.length && JSON.stringify(swipes(e)) === JSON.stringify(dirs);
-const show = (r: Run) => JSON.stringify(r.events);
+const show = (r: Run) => JSON.stringify(r.events.filter((e) => e.type !== 'scroll'));
+/** Total up/down the list was told to follow (palm lengths, + = down). */
+const scrolled = (e: GestureEvent[]) => e.reduce((a, x) => a + (x.type === 'scroll' ? x.palms : 0), 0);
+const noScroll = (e: GestureEvent[]) => !e.some((x) => x.type === 'scroll');
+const notScroll = (e: GestureEvent[]) => e.filter((x) => x.type !== 'scroll');
+/** Palm length (frame widths) of the synthetic hand, to convert frame travel to palm lengths. */
+const PALM = (() => {
+  const p = toPoints(hand(OPEN), H / W)!;
+  return Math.hypot(p[0].x - p[9].x, p[0].y - p[9].y);
+})();
+const palmsY = (dy: number) => (dy * (H / W)) / PALM;
 
 // --- swipes: the four directions
 let r = run(sweep(OPEN, [0.3, 0.5], [0.7, 0.5]));
 check('open sweep right → one swipe right', only(r.events, 'right'), show(r));
 r = run(sweep(OPEN, [0.7, 0.5], [0.3, 0.5]));
 check('open sweep left → one swipe left', only(r.events, 'left'), show(r));
-r = run(sweep(OPEN, [0.5, 0.6], [0.5, 0.3]));
-check('open sweep up → one swipe up', only(r.events, 'up'), show(r));
-r = run(sweep(OPEN, [0.5, 0.3], [0.5, 0.6]));
-check('open sweep down → one swipe down', only(r.events, 'down'), show(r));
+
+// --- up/down follows the hand (2026-09-18): no swipe, the list moves with it
+{
+  const settle = (f: Frame[]) => [...f, ...still(OPEN, 0.5, 0.3, 16)];
+  r = run(settle(sweep(OPEN, [0.5, 0.6], [0.5, 0.3])));
+  const want = palmsY(-0.3);
+  check('open move up → the list follows up by the distance moved, no swipe', swipes(r.events).length === 0 && Math.abs(scrolled(r.events) - want) < 0.1 * Math.abs(want), `${scrolled(r.events).toFixed(2)} vs ${want.toFixed(2)}`);
+  check('following, then Ready again after holding still', r.outs.some((o) => o.state === 'following') && r.outs[r.outs.length - 1].state === 'armed', r.outs.map((o) => o.state).join(','));
+  r = run(sweep(OPEN, [0.5, 0.3], [0.5, 0.6]));
+  check('open move down → the list follows down', swipes(r.events).length === 0 && scrolled(r.events) > 0.8 * palmsY(0.3), scrolled(r.events).toFixed(2));
+  const deltas = r.events.flatMap((e) => (e.type === 'scroll' ? [e.palms] : []));
+  check('a steady move is followed in steady steps (no jumps)', deltas.length >= 4 && Math.max(...deltas) < 0.45 * palmsY(0.3), deltas.map((d) => d.toFixed(2)).join(' '));
+}
+{
+  // Step by step, both ways: up a little, stop, down a little, stop, up again.
+  const frames = [
+    ...still(OPEN, 0.5, 0.5, HOLD),
+    ...move(OPEN, [0.5, 0.5], [0.5, 0.44], 8),
+    ...still(OPEN, 0.5, 0.44, 6),
+    ...move(OPEN, [0.5, 0.44], [0.5, 0.49], 8),
+    ...still(OPEN, 0.5, 0.49, 6),
+    ...move(OPEN, [0.5, 0.49], [0.5, 0.45], 8),
+    ...still(OPEN, 0.5, 0.45, 8),
+  ];
+  r = run(frames);
+  const seg = (a: number, b: number) => scrolled(r.events.slice(0, 0).concat(r.outs.slice(a, b).flatMap((o) => o.events)));
+  const up1 = seg(HOLD, HOLD + 14);
+  const down = seg(HOLD + 14, HOLD + 28);
+  const up2 = seg(HOLD + 28, frames.length);
+  check('small moves, both ways: up, down, up again', up1 < 0 && down > 0 && up2 < 0, [up1, down, up2].map((v) => v.toFixed(2)).join(' '));
+  check('…ending where the hand ended (within the dead band)', Math.abs(scrolled(r.events) - palmsY(-0.05)) < 0.08, `${scrolled(r.events).toFixed(2)} vs ${palmsY(-0.05).toFixed(2)}`);
+  check('…and nothing swipes', swipes(r.events).length === 0, show(r));
+}
+{
+  // A very slow move (0.3 palm/s, as recorded) is still followed.
+  const n = Math.round((palmsY(0.08) / 0.3) * 1000 / 55);
+  r = run([...still(OPEN, 0.5, 0.5, HOLD), ...move(OPEN, [0.5, 0.5], [0.5, 0.42], n)]);
+  check('a slow move (0.3 palm/s) is followed', scrolled(r.events) < -0.6 * palmsY(0.08), `${scrolled(r.events).toFixed(2)} over ${n} samples`);
+}
+{
+  // Real-sized tracking jitter at rest never moves the list.
+  const jitter = rng(11);
+  r = run([...still(OPEN, 0.5, 0.5, HOLD), ...Array.from({ length: 80 }, () => hand(OPEN, 0.5 + (jitter() - 0.5) * 0.008, 0.5 + (jitter() - 0.5) * 0.008))]);
+  check('a held hand with tracking jitter → the list stays put', Math.abs(scrolled(r.events)) < 0.05, scrolled(r.events).toFixed(3));
+}
+{
+  // After following, a sideways sweep still swipes once the hand has paused.
+  r = run([...sweep(OPEN, [0.5, 0.6], [0.5, 0.45]), ...still(OPEN, 0.5, 0.45, 16), ...move(OPEN, [0.5, 0.45], [0.8, 0.45], 6)]);
+  check('follow, pause, then sweep right → one swipe right', only(notScroll(r.events), 'right'), show(r));
+}
+
+// --- coaching: a hand lost mid-fast-move (2026-09-18, recording rec8)
+{
+  const hints = (e: GestureEvent[]) => e.filter((x) => x.type === 'hint').length;
+  // Ready, a fast move (2 samples, ~3 palm/s), lost for 3 samples, back: one "slower" hint.
+  const fast = [...still(OPEN, 0.5, 0.5, HOLD), ...move(OPEN, [0.5, 0.5], [0.5, 0.35], 2)];
+  r = run([...fast, null, null, null, ...still(OPEN, 0.5, 0.4, 4)]);
+  check('fast move lost, hand back soon → one "slower" hint', hints(r.events) === 1, show(r));
+  r = run([...fast, ...Array(25).fill(null), ...still(OPEN, 0.5, 0.4, 4)]);
+  check('fast move lost, hand back much later (lowered away) → no hint', hints(r.events) === 0, show(r));
+  r = run([...fast, ...Array(30).fill(null)]);
+  check('fast move lost, never back → no hint', hints(r.events) === 0, show(r));
+  r = run([...still(OPEN, 0.5, 0.5, HOLD), ...move(OPEN, [0.5, 0.5], [0.5, 0.47], 4), null, null, null, ...still(OPEN, 0.5, 0.47, 4)]);
+  check('slow move lost (tracking dropout), back → no hint', hints(r.events) === 0, show(r));
+  r = run([...move(OPEN, [0.5, 0.8], [0.5, 0.4], 3), null, null, null, ...still(OPEN, 0.5, 0.4, 4)]);
+  check('hand swept into view fast (never Ready), lost, back → no hint', hints(r.events) === 0, show(r));
+}
+
+// --- coaching: hand too close to the camera (fills the frame)
+{
+  const hints = (e: GestureEvent[]) => e.filter((x) => x.type === 'hint' && x.hint === 'back').length;
+  // Scale the synthetic hand about its centre so the palm is ~0.45 frame widths, like the recordings.
+  const big = (f: number[], k: number) => f.map((v, i) => (i % 2 === 0 ? 0.5 + (v - 0.5) * k : 0.5 + (v - 0.5) * k));
+  const k = 0.45 / PALM;
+  r = run(Array.from({ length: 20 }, () => big(hand(OPEN), k)));
+  check('hand filling the frame for a second → one "move back" hint', hints(r.events) === 1, show(r));
+  r = run(Array.from({ length: 10 }, () => big(hand(OPEN), k)));
+  check('…not before it has been that close for ~0.8 s', hints(r.events) === 0, show(r));
+  r = run(Array.from({ length: 40 }, () => hand(OPEN)));
+  check('a hand at a normal distance → no "move back" hint', hints(r.events) === 0, show(r));
+}
 
 // --- preview before commit
 {
-  r = run(sweep(OPEN, [0.5, 0.6], [0.5, 0.3]));
+  r = run(sweep(OPEN, [0.3, 0.5], [0.7, 0.5]));
   const firstPreview = r.outs.findIndex((o) => o.preview !== null);
   const commitAt = r.outs.findIndex((o) => o.events.length > 0);
   check('preview starts before the commit', firstPreview >= 0 && firstPreview < commitAt, `preview@${firstPreview} commit@${commitAt}`);
@@ -162,44 +249,41 @@ check('open sweep down → one swipe down', only(r.events, 'down'), show(r));
 }
 {
   // A partial sweep that comes back: preview shows, nothing commits.
-  r = run([...still(OPEN, 0.5, 0.55, HOLD), ...move(OPEN, [0.5, 0.55], [0.5, 0.49], 3), ...move(OPEN, [0.5, 0.49], [0.5, 0.56], 4), ...still(OPEN, 0.5, 0.56, 4)]);
+  r = run([...still(OPEN, 0.55, 0.5, HOLD), ...move(OPEN, [0.55, 0.5], [0.49, 0.5], 3), ...move(OPEN, [0.49, 0.5], [0.56, 0.5], 4), ...still(OPEN, 0.56, 0.5, 4)]);
   check('partial sweep then back → preview but no commit', r.events.length === 0 && r.outs.some((o) => o.preview), show(r));
   check('abandoned preview clears', r.outs[r.outs.length - 1].preview === null);
-  check('pulling back after an abandoned preview does not preview the other way', !r.outs.some((o) => o.preview?.direction === 'down'));
+  check('pulling back after an abandoned preview does not preview the other way', !r.outs.some((o) => o.preview?.direction === 'right'));
 }
 
 // --- shapes and motions that must not swipe
 // Any hand shape swipes (user decision, 2026-09-18).
 r = run(sweep(TWO, [0.5, 0.6], [0.5, 0.3]));
-check('two-finger sweep up → one swipe up', only(r.events, 'up'), show(r));
+check('two-finger move up → the list follows', swipes(r.events).length === 0 && scrolled(r.events) < -1, scrolled(r.events).toFixed(2));
 r = run(sweep(THREE, [0.3, 0.5], [0.7, 0.5]));
 check('three-finger sweep right → one swipe right', only(r.events, 'right'), show(r));
 r = run(sweep(FIST, [0.5, 0.3], [0.5, 0.6]));
-check('fist sweep down → one swipe down (not a release)', only(r.events, 'down'), show(r));
+check('fist move down → the list follows (not a release)', notScroll(r.events).length === 0 && scrolled(r.events) > 1, show(r));
 r = run(sweep(POINT, [0.5, 0.6], [0.5, 0.3]));
-check('pointing sweep up → one swipe up (no rating dial on screen)', only(r.events, 'up'), show(r));
+check('pointing move up → the list follows (no rating dial on screen)', notScroll(r.events).length === 0 && scrolled(r.events) < -1, show(r));
 {
   const c = new HandsFreeController();
   c.setDialEnabled(true);
   r = run(sweep(POINT, [0.5, 0.6], [0.5, 0.3]), 55, { c });
-  check('pointing sweep on the rating screen → no swipe (the finger dials there)', swipes(r.events).length === 0, show(r));
+  check('pointing move on the rating screen → nothing moves (the finger dials there)', swipes(r.events).length === 0 && noScroll(r.events), show(r));
 }
 r = run(sweep(snapReadyHand(), [0.5, 0.6], [0.5, 0.3]).map(() => snapReadyHand()));
-check('snap set-up held still → no swipe', swipes(r.events).length === 0, show(r));
+check('snap set-up held still → nothing moves', r.events.length === 0, show(r));
 {
-  // Regression (recording, 2026-09-18): a long "Ready" hold, then an up swipe
-  // that takes a few frames. It was cancelled one frame into its preview.
+  // A long "Ready" hold, then a move: followed from the first frames.
   r = run([...still(OPEN, 0.5, 0.62, 20), ...move(OPEN, [0.5, 0.62], [0.5, 0.35], 7)]);
-  check('up swipe after a long Ready hold → one swipe up', only(r.events, 'up'), show(r));
-  r = run([...still(OPEN, 0.5, 0.35, 20), ...move(OPEN, [0.5, 0.35], [0.5, 0.62], 7)]);
-  check('down swipe after a long Ready hold → one swipe down', only(r.events, 'down'), show(r));
-  r = run([...still(OPEN, 0.5, 0.6, 20), ...move(OPEN, [0.5, 0.6], [0.5, 0.56], 14), ...still(OPEN, 0.5, 0.56, 10)]);
-  check('a slow up drift after a long hold → no swipe', r.events.length === 0, show(r));
+  check('up move after a long Ready hold → followed', swipes(r.events).length === 0 && scrolled(r.events) < -1, scrolled(r.events).toFixed(2));
+  const firstScroll = r.outs.findIndex((o) => o.events.some((e) => e.type === 'scroll'));
+  check('…starting within two samples of the hand moving', firstScroll >= 0 && firstScroll <= 21, `first scroll @${firstScroll}`);
 }
 r = run(sweep(OPEN, [0.47, 0.5], [0.53, 0.5]));
-check('small open-palm drift → no swipe', r.events.length === 0, show(r));
+check('small sideways drift → nothing', r.events.length === 0, show(r));
 r = run(sweep(OPEN, [0.3, 0.35], [0.6, 0.6]));
-check('diagonal open move → no swipe', r.events.length === 0, show(r));
+check('diagonal open move → no swipe', swipes(r.events).length === 0, show(r));
 r = run(move(OPEN, [0.5, 0.75], [0.5, 0.35], 8));
 check('open hand rising into view (no hold) → no swipe', r.events.length === 0, show(r));
 r = run(move(OPEN, [0.5, 0.8], [0.5, 0.25], 14));
@@ -208,7 +292,7 @@ check('open hand still rising 770 ms after entering → no swipe', r.events.leng
   const jitter = rng(7);
   const frames = Array.from({ length: 60 }, () => hand(OPEN, 0.5 + (jitter() - 0.5) * 0.02, 0.5 + (jitter() - 0.5) * 0.02));
   r = run(frames);
-  check('held open palm with tracking jitter → no swipe', r.events.length === 0, show(r));
+  check('held open palm with heavy tracking jitter → no swipe', swipes(r.events).length === 0, show(r));
 }
 {
   // A slower sweep (commits around the 4th moving sample), interrupted before that.
@@ -271,14 +355,15 @@ for (const fps of [10, 18, 30]) {
 r = run(sweep(OPEN, [0.3, 0.5], [0.8, 0.5], 10));
 check('long sweep → exactly one swipe', only(r.events, 'right'), show(r));
 // Returns at a realistic pace (~1.5–2 palm/s, as recorded) versus a deliberate flick.
-r = run([...sweep(OPEN, [0.5, 0.6], [0.5, 0.3]), ...move(OPEN, [0.5, 0.3], [0.5, 0.6], 26)]);
-check('swipe up then slowly bring the hand back → only up', only(r.events, 'up'), show(r));
-r = run([...sweep(OPEN, [0.5, 0.6], [0.5, 0.3]), ...move(OPEN, [0.5, 0.3], [0.5, 0.6], 26), ...still(OPEN, 0.5, 0.6, 5), ...move(OPEN, [0.5, 0.6], [0.5, 0.3], 6)]);
-check('up, slow return, settle, up again → two swipes up', only(r.events, 'up', 'up'), show(r));
-r = run([...sweep(OPEN, [0.5, 0.3], [0.5, 0.6]), ...move(OPEN, [0.5, 0.6], [0.5, 0.3], 5)]);
-check('down, then a quick flick straight back up → down, up', only(r.events, 'down', 'up'), show(r));
-r = run([...sweep(OPEN, [0.5, 0.3], [0.5, 0.65], 12)]);
-check('one long down sweep → still one swipe (no flick from its own tail)', only(r.events, 'down'), show(r));
+r = run([...sweep(OPEN, [0.3, 0.5], [0.7, 0.5]), ...move(OPEN, [0.7, 0.5], [0.3, 0.5], 26)]);
+check('swipe right then slowly bring the hand back → only right', only(notScroll(r.events), 'right'), show(r));
+r = run([...sweep(OPEN, [0.3, 0.5], [0.7, 0.5]), ...move(OPEN, [0.7, 0.5], [0.3, 0.5], 26), ...still(OPEN, 0.3, 0.5, 5), ...move(OPEN, [0.3, 0.5], [0.7, 0.5], 6)]);
+check('right, slow return, settle, right again → two swipes right', only(notScroll(r.events), 'right', 'right'), show(r));
+r = run([...sweep(OPEN, [0.3, 0.5], [0.7, 0.5]), ...move(OPEN, [0.7, 0.5], [0.3, 0.5], 5)]);
+check('right, then a quick flick straight back left → right, left', only(r.events, 'right', 'left'), show(r));
+check('…the second one is marked as a flick (tabs ignore it), the first is not', r.events[0].type === 'swipe' && !r.events[0].flick && r.events[1].type === 'swipe' && r.events[1].flick === true, show(r));
+r = run([...sweep(OPEN, [0.3, 0.5], [0.8, 0.5], 12)]);
+check('one long right sweep → still one swipe (no flick from its own tail)', only(r.events, 'right'), show(r));
 r = run([...sweep(OPEN, [0.3, 0.5], [0.7, 0.5]), ...Array(10).fill(null), ...sweep(OPEN, [0.7, 0.5], [0.3, 0.5])]);
 check('right, hand leaves, then left → both', only(r.events, 'right', 'left'), show(r));
 {
@@ -434,9 +519,9 @@ check('snap after the window has passed → no snap', r.events.length === 0, sho
 
 // --- swipe and close/open learning
 {
-  // This user's up-swipes are short and gentle: ~0.55 palm at ~2.5 palm/s,
+  // This user's left swipes are short and gentle: ~0.55 palm at ~2.5 palm/s,
   // which the default (0.66, or 0.45 at 3 palm/s) misses.
-  const shortSwipe = () => [...still(OPEN, 0.5, 0.55, HOLD), ...move(OPEN, [0.5, 0.55], [0.5, 0.47], 8), ...still(OPEN, 0.5, 0.47, 8)];
+  const shortSwipe = () => [...still(OPEN, 0.55, 0.5, HOLD), ...move(OPEN, [0.55, 0.5], [0.443, 0.5], 8), ...still(OPEN, 0.443, 0.5, 8)];
   const def = run(shortSwipe());
   check('a short, gentle swipe misses at the default thresholds', def.events.length === 0, show(def));
   const missed = def.outs.find((o) => o.attempt)?.attempt;
@@ -444,26 +529,26 @@ check('snap after the window has passed → no snap', r.events.length === 0, sho
   const L = new GestureLearner();
   // Twice: the gentle swipe misses, then a bigger one in the same direction fires.
   for (let k = 0; k < 2; k++) {
-    L.observe({ kind: 'swipe', t: 10000 * k, fired: false, direction: 'up', travel: 0.55, speed: 2.5 });
-    L.observe({ kind: 'swipe', t: 10000 * k + 1500, fired: true, direction: 'up', travel: 0.7, speed: 5 });
+    L.observe({ kind: 'swipe', t: 10000 * k, fired: false, direction: 'left', travel: 0.55, speed: 2.5 });
+    L.observe({ kind: 'swipe', t: 10000 * k + 1500, fired: true, direction: 'left', travel: 0.7, speed: 5 });
   }
   const tuned = L.tuning();
   check('swipe near-misses followed by a swipe loosen the commit distance', tuned.swipe.commitTravel < 0.55 && tuned.swipe.commitTravel >= SWIPE_FLOOR.commitTravel, JSON.stringify(tuned.swipe));
   const c = new HandsFreeController();
   c.setTuning(tuned);
   const learned = run(shortSwipe(), 55, { c });
-  check('the same gentle swipe fires once learned', only(learned.events, 'up'), show(learned));
+  check('the same gentle swipe fires once learned', only(learned.events, 'left'), show(learned));
   const drift = new HandsFreeController();
   drift.setTuning(tuned);
-  const d = run(sweep(OPEN, [0.5, 0.5], [0.5, 0.47]), 55, { c: drift });
-  check('a small drift still never scrolls after learning', d.events.length === 0, show(d));
+  const d = run(sweep(OPEN, [0.5, 0.5], [0.47, 0.5]), 55, { c: drift });
+  check('a small drift still never swipes after learning', d.events.length === 0, show(d));
 }
 {
   const L = new GestureLearner();
-  L.observe({ kind: 'swipe', t: 0, fired: false, direction: 'down', travel: 0.5, speed: 2 });
-  L.observe({ kind: 'swipe', t: 1000, fired: true, direction: 'up', travel: 0.7, speed: 5 });
-  L.observe({ kind: 'swipe', t: 20000, fired: false, direction: 'up', travel: 0.5, speed: 2 });
-  L.observe({ kind: 'swipe', t: 26000, fired: true, direction: 'up', travel: 0.7, speed: 5 });
+  L.observe({ kind: 'swipe', t: 0, fired: false, direction: 'right', travel: 0.5, speed: 2 });
+  L.observe({ kind: 'swipe', t: 1000, fired: true, direction: 'left', travel: 0.7, speed: 5 });
+  L.observe({ kind: 'swipe', t: 20000, fired: false, direction: 'left', travel: 0.5, speed: 2 });
+  L.observe({ kind: 'swipe', t: 26000, fired: true, direction: 'left', travel: 0.7, speed: 5 });
   check('misses in another direction, or long before, are not learned', JSON.stringify(L.tuning().swipe) === JSON.stringify(DEFAULT_TUNING.swipe), JSON.stringify(L.tuning().swipe));
 }
 {

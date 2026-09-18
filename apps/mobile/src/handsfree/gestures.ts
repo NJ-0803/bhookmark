@@ -10,9 +10,12 @@
 //
 // Gestures (user decisions):
 // - Air swipe (2026-09-18, replacing the 2026-09-17 two-finger swipe, which was
-//   hard to hold in mid-air): an open palm, all four fingers up (the thumb is
-//   ignored; its reading is the noisiest). Up/down scrolls, left/right moves
-//   between dishes. Any other hand shape never swipes.
+//   hard to hold in mid-air). Later the same day: any hand shape. Left/right
+//   moves between dishes.
+// - Up/down follows the hand (2026-09-18, replacing up/down swipes: "the
+//   movement should be slow as well, step by step … it should not jitter but
+//   smoothly move"). A recording showed every real up/down move was slow
+//   (0.3–0.9 palm lengths/s), which no swipe threshold caught.
 // - Rating dial: a single pointing index finger drawing a circle, like BMW's
 //   volume gesture. Clockwise raises, anticlockwise lowers, one step per
 //   quarter turn.
@@ -25,7 +28,23 @@ export type Point = { x: number; y: number };
 export type SwipeDirection = 'left' | 'right' | 'up' | 'down';
 export type Pose = 'open' | 'point' | 'fist' | 'pyramid' | 'snapReady' | 'other';
 export type GestureEvent =
-  | { type: 'swipe'; direction: SwipeDirection }
+  /**
+   * `flick`: a quick swipe straight after another one (the hand's fast return
+   * can be one). Moving between dishes uses them; switching tabs ignores them,
+   * so a return stroke can't switch straight back (user report, 2026-09-18).
+   */
+  | { type: 'swipe'; direction: SwipeDirection; flick?: true }
+  /**
+   * The list follows the hand: it moved this far up or down (palm lengths,
+   * + = down) since the last sample, smoothed. Sent on every sample while a
+   * held hand moves vertically, so the screen can move with it, step by step.
+   */
+  | { type: 'scroll'; palms: number }
+  /**
+   * Coaching: `slower` — a gesture was lost because the hand moved too fast for
+   * the camera; `back` — the hand is so close it fills the frame.
+   */
+  | { type: 'hint'; hint: 'slower' | 'back' }
   | { type: 'dial'; steps: number }
   /** A held open palm closed into a fist: the list moves down with the fingers. */
   | { type: 'grab' }
@@ -217,4 +236,46 @@ export class DialTracker {
 export function headOffset(face: { x: number; y: number }): { x: number; y: number } {
   const clamp = (v: number) => Math.max(-1, Math.min(1, v));
   return { x: clamp((face.x - 0.5) * 3), y: clamp((face.y - 0.45) * 3) };
+}
+
+/**
+ * One Euro filter (Casiez, Roussel & Vogel, CHI 2012), the usual smoother for
+ * hand tracking: heavy smoothing while the hand is slow (tracking jitter
+ * disappears), light smoothing while it moves fast (little lag). `minCutoff`
+ * is in Hz; `beta` is in 1/(units per second) of whatever is being filtered.
+ */
+export class OneEuro {
+  private x: number | null = null;
+  private dx = 0;
+  private lastT = 0;
+  private readonly minCutoff: number;
+  private readonly beta: number;
+  private readonly dCutoff: number;
+
+  constructor(minCutoff: number, beta: number, dCutoff = 1) {
+    this.minCutoff = minCutoff;
+    this.beta = beta;
+    this.dCutoff = dCutoff;
+  }
+
+  reset() {
+    this.x = null;
+    this.dx = 0;
+  }
+
+  /** `t` in ms. */
+  filter(value: number, t: number): number {
+    if (this.x === null || !(t > this.lastT)) {
+      this.x = value;
+      this.dx = 0;
+      this.lastT = t;
+      return value;
+    }
+    const dt = (t - this.lastT) / 1000;
+    this.lastT = t;
+    const alpha = (cutoff: number) => 1 / (1 + 1 / (2 * Math.PI * cutoff * dt));
+    this.dx += alpha(this.dCutoff) * ((value - this.x) / dt - this.dx);
+    this.x += alpha(this.minCutoff + this.beta * Math.abs(this.dx)) * (value - this.x);
+    return this.x;
+  }
 }

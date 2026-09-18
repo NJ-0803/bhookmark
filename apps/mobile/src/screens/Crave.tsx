@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ViewToken } from 'react-native';
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
-import Animated, { useAnimatedStyle } from 'react-native-reanimated';
+import Animated, { Easing, cancelAnimation, scrollTo, useAnimatedReaction, useAnimatedRef, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { scheduleOnUI } from 'react-native-worklets';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { browseDishes, getVenueCategories, searchVenues, type BrowseDish, type VenueSearchResult } from '../api/client';
 import { absoluteUrl } from '../api/config';
@@ -60,19 +61,19 @@ export default function CraveScreen() {
   // there's always something to look at (and to air-swipe through).
   const [featured, setFeatured] = useState<{ category: string; dishes: OverlayDish[] } | null>(null);
   const q = query.trim();
-  const listRef = useRef<FlatList<OverlayDish>>(null);
+  const listRef = useAnimatedRef<FlatList<OverlayDish>>();
   const scrollY = useRef(0);
+  const maxScroll = useRef({ content: 0, view: 0 });
   const { height: screenHeight } = useWindowDimensions();
   const { previewY } = useHandsFree();
-  // While an air swipe is under way the list already leans with the hand
-  // (reversible preview); the committed swipe below does the actual scroll.
+  // While a hand is closing or opening, the list already leans with the fingers
+  // (reversible preview); the committed grab/release below does the actual scroll.
   const previewStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: activeId === null ? previewY.value * PREVIEW_PX : 0 }],
   }));
 
-  // Hands-free: with no dish open, an open-palm air swipe up or down pages
-  // through the list. The list follows the hand, as it would a finger: hand up
-  // → further down the list. Closing a held palm into a fist moves the list
+  // Hands-free: with no dish open, the list follows a Ready hand moving up or
+  // down, as it would a finger: hand up → further down the list. Closing a held palm into a fist moves the list
   // down with the fingers; opening a held fist moves it up. A pyramid of
   // fingertips opening ("bloom") opens the highlighted card.
   const handSight = useHandSight();
@@ -86,14 +87,51 @@ export default function CraveScreen() {
     focusedRef.current = middle;
     setFocusedId(middle?.id ?? null);
   }).current;
+  // Hand-follow: the controller sends how far the hand moved (palm lengths) on
+  // each camera sample (~7–15 a second); the list eases to each new target on
+  // the UI thread, so it glides between samples instead of stepping.
+  const followY = useSharedValue(0);
+  const following = useSharedValue(false);
+  const follow = useRef<{ target: number; timer: ReturnType<typeof setTimeout> | null }>({ target: 0, timer: null });
+  useAnimatedReaction(
+    () => followY.value,
+    (y, prev) => {
+      if (following.value && prev !== null && y !== prev) scrollTo(listRef, 0, y, false);
+    },
+  );
+  const stopFollowing = () => {
+    const f = follow.current;
+    if (f.timer) clearTimeout(f.timer);
+    f.timer = null;
+    following.value = false;
+    cancelAnimation(followY);
+  };
+  const followHand = (palms: number) => {
+    const f = follow.current;
+    const start = f.timer === null;
+    const from = start ? scrollY.current : f.target;
+    const max = Math.max(0, maxScroll.current.content - maxScroll.current.view);
+    f.target = Math.max(0, Math.min(max, from - palms * screenHeight * FOLLOW_PX_PER_PALM));
+    const to = f.target;
+    scheduleOnUI(() => {
+      'worklet';
+      if (start) followY.value = from;
+      following.value = true;
+      followY.value = withTiming(to, { duration: FOLLOW_EASE_MS, easing: Easing.linear });
+    });
+    if (f.timer) clearTimeout(f.timer);
+    // The hand stopped: hand the list back to touch and the normal scroll position.
+    f.timer = setTimeout(stopFollowing, FOLLOW_EASE_MS + 250);
+  };
+  useEffect(() => () => stopFollowing(), []); // eslint-disable-line react-hooks/exhaustive-deps
   const page = (towardsEnd: boolean) => {
     const step = screenHeight * 0.6;
     const next = Math.max(0, scrollY.current + (towardsEnd ? step : -step));
     listRef.current?.scrollToOffset({ offset: next, animated: true });
   };
   useHandsFreeGestures(activeId === null, (event) => {
-    if (event.type === 'swipe' && (event.direction === 'up' || event.direction === 'down')) {
-      page(event.direction === 'up');
+    if (event.type === 'scroll') {
+      followHand(event.palms);
       return true;
     }
     if (event.type === 'grab' || event.type === 'release') {
@@ -295,10 +333,17 @@ export default function CraveScreen() {
 
   return (
     <Animated.View style={[styles.fill, previewStyle]}>
-      <FlatList
+      <Animated.FlatList
         ref={listRef}
         onScroll={(e) => {
           scrollY.current = e.nativeEvent.contentOffset.y;
+        }}
+        onScrollBeginDrag={stopFollowing}
+        onContentSizeChange={(_, h) => {
+          maxScroll.current.content = h;
+        }}
+        onLayout={(e) => {
+          maxScroll.current.view = e.nativeEvent.layout.height;
         }}
         scrollEventThrottle={32}
         data={data}
@@ -326,6 +371,10 @@ export default function CraveScreen() {
 
 // How far the list leans with the hand at full preview, before the swipe commits.
 const PREVIEW_PX = 56;
+// Hand-follow: a hand moving one palm length moves the list this share of the screen…
+const FOLLOW_PX_PER_PALM = 0.8;
+// …easing to each new target over about one camera interval.
+const FOLLOW_EASE_MS = 120;
 const VIEWABILITY = { itemVisiblePercentThreshold: 60 };
 
 const styles = StyleSheet.create({

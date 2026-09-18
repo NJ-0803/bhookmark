@@ -3,8 +3,11 @@
 // Only a commit may navigate or change data; the preview just lets the screen
 // follow the hand from the moment its direction is clear.
 //
-//   searching → candidate → armed → previewing → (commit) → rearm → armed …
+//   searching → candidate → armed → previewing → (commit) → rearm → armed …   (left/right)
 //                                        ↘ (reversal / too slow) → rearm (settle first)
+//                             armed → following ⇄ armed                      (up/down)
+//   Up/down doesn't swipe: while `following`, the list moves with the hand,
+//   smoothed, a sample at a time (`scroll` events), and stops when it stops.
 //   A stable pointing finger switches to `dial` instead.
 //   Shape gestures (2026-09-18), each committed exactly once:
 //     armed (open, still) → closing → fist: `grab` (list moves down with the fingers)
@@ -26,6 +29,7 @@ import {
   poseDetail,
   palmCenter,
   palmScale,
+  OneEuro,
   toPoints,
   type GestureEvent,
   type Point,
@@ -38,6 +42,7 @@ export type ControllerState =
   | 'candidate'
   | 'armed'
   | 'previewing'
+  | 'following'
   | 'rearm'
   | 'dial'
   | 'closing'
@@ -86,7 +91,9 @@ export const ARM_MS = 300;
 /**
  * A missing or misread stretch shorter than the gap tolerance doesn't break a
  * pose. The tolerance follows the measured frame cadence: 3× the median recent
- * interval, kept within these bounds. (On the Pixel 4a, frames with a hand in
+ * interval, or 1.5× the 90th percentile when frames come in bursts (recording
+ * rec9, 2026-09-18: runs 33 ms apart with regular 166 ms holes — the median
+ * alone gave 120 ms, and every hole reset the hand), kept within these bounds. (On the Pixel 4a, frames with a hand in
  * view regularly arrive 130–200 ms apart; a fixed 120 ms kept resetting
  * gestures mid-way — recordings, 2026-09-18.)
  */
@@ -135,6 +142,55 @@ const ARM_STILL_SPEED = 1.2; // palm lengths per second
 // Shape gestures: proposed starting values, to be tuned on real recordings.
 // Closing a held open palm must reach a fist, and opening a held fist must
 // reach an open palm, within DEFAULT_SHAPE_TUNING's windows (adapted per user).
+/**
+ * Up/down follows the hand (user request, 2026-09-18: "slow … step by step …
+ * it should not jitter but smoothly move"). Values from the recording that
+ * prompted it: real up/down moves were 0.35–0.7 palm lengths at 0.3–0.9 palm/s.
+ * The list starts following once a Ready hand has moved this far (palm
+ * lengths) more up/down than sideways…
+ */
+const FOLLOW_START = 0.06;
+/** …tracking jitter smaller than this (palm lengths) never moves it… */
+const FOLLOW_DEADBAND = 0.025;
+/** …and after this long still, it's Ready again (a sideways swipe can start). */
+const FOLLOW_RELEASE_MS = 700;
+const FOLLOW_STILL_SPEED = 0.3; // palm lengths per second
+/** One Euro smoothing of the palm's height: ~1 Hz at rest, opening up as the hand moves. */
+const FOLLOW_MIN_CUTOFF = 1;
+const FOLLOW_BETA = 3;
+/**
+ * Following starts only on a consistent move: the smoothed height has gone the
+ * same way over this many consecutive samples. A fidgeting hand (eating,
+ * talking) wanders back and forth and never starts it.
+ */
+const FOLLOW_CONSISTENT = 2;
+/**
+ * …and it must also clear the hand's own noise floor: a running average of
+ * how jerky its height is sample to sample (second difference, palm lengths),
+ * measured while it isn't following. A steady move has almost none, so real
+ * moves start as soon as ever; a fidgeting hand raises the bar above its wander.
+ */
+const FOLLOW_NOISE_K = 1;
+const FOLLOW_NOISE_ALPHA = 0.25;
+/**
+ * Coaching (2026-09-18): the camera loses a hand that moves fast (at ~15
+ * samples/s it blurs, or leaves the frame, within 1–3 samples — recording rec8:
+ * every up/down move above ~2 palm lengths/s was lost). A Ready hand lost while
+ * moving at least this fast (palm lengths/s)…
+ */
+const TOO_FAST_SPEED = 2;
+/** …that comes back into view within this is a gesture that was too fast (a hand lowered away doesn't come back). */
+const TOO_FAST_RETURN_MS = 1000;
+/**
+ * Coaching: a palm (wrist to middle knuckle) this big (frame widths) means the
+ * hand is ~15–20 cm from the camera and fills the frame, so any move takes it
+ * out of view. At a forearm's length it's ~0.15–0.2. Recordings rec3–rec10
+ * (2026-09-18): the user's palm was 0.41–0.48 at the median, and 88–95% of
+ * hand frames were within a palm length of an edge.
+ */
+const TOO_CLOSE_PALM = 0.36;
+/** …held that close this long (gap-tolerant) before saying so. */
+const TOO_CLOSE_MS = 800;
 /** A fist must be held (and still) this long before opening it counts. */
 const FIST_ARM_MS = 300;
 /** A fingertip pyramid must be held this long… */
@@ -187,6 +243,8 @@ export class HandsFreeController {
   private intervals: number[] = [];
   private gap = GAP_MIN_MS;
   private lastHandAt = -Infinity;
+  /** The last sample in which the camera reported no (usable) hand. */
+  private lastNoHandAt = -Infinity;
   /** When a swipe-capable hand shape was first and last seen (gap-tolerant). */
   private steadySince: number | null = null;
   private lastSteadyAt = -Infinity;
@@ -229,6 +287,24 @@ export class HandsFreeController {
   private attempt: GestureAttempt | undefined;
   /** Close/open preview: the list moves with the fingers. */
   private shapePreview: { dir: SwipeDirection; progress: number } | null = null;
+  /** Hand-follow: the palm's smoothed height (palm lengths at the scale it armed with). */
+  private followFilter = new OneEuro(FOLLOW_MIN_CUTOFF, FOLLOW_BETA);
+  private followScale = 0;
+  private followY: number | null = null;
+  /** Where the hand armed (following starts once it leaves here), and how far the list has been told to move. */
+  private followAnchor: number | null = null;
+  private followSent = 0;
+  private followStillSince: number | null = null;
+  /** The last few smoothed heights (before the dead band), for the consistency check. */
+  private followHistory: number[] = [];
+  /** The hand's height noise (see FOLLOW_NOISE_K), and the last two raw heights it's measured from. */
+  private followNoise = 0;
+  private noiseYs: number[] = [];
+  /** A Ready hand was lost mid-fast-move at this time; if it comes back soon, coach the user to move slower. */
+  private lostFastAt: number | null = null;
+  /** When the hand was first seen too close (see TOO_CLOSE_PALM), and whether this spell was already coached. */
+  private tooClose = new Held();
+  private tooCloseSaid = false;
 
   get currentState(): ControllerState {
     return this.state;
@@ -256,6 +332,7 @@ export class HandsFreeController {
     this.intervals = [];
     this.gap = GAP_MIN_MS;
     this.lastHandAt = -Infinity;
+    this.lastNoHandAt = -Infinity;
     this.steadySince = null;
     this.lastSteadyAt = -Infinity;
     this.lastOpenAt = -Infinity;
@@ -271,6 +348,53 @@ export class HandsFreeController {
     this.dial.reset();
     this.clearShapes();
     this.recent = [];
+    this.resetFollow();
+    this.lostFastAt = null;
+    this.tooClose.clear();
+    this.tooCloseSaid = false;
+    this.followNoise = 0;
+    this.noiseYs = [];
+  }
+
+  /** The next Ready hand starts following from where it is. */
+  private resetFollow() {
+    this.followFilter.reset();
+    this.followScale = 0;
+    this.followY = null;
+    this.followAnchor = null;
+    this.followSent = 0;
+    this.followStillSince = null;
+    this.followHistory = [];
+  }
+
+  /** The palm's height, smoothed, with a small dead band so jitter at rest never moves the list. */
+  private trackFollow(t: number, y: number, scale: number): number {
+    if (!this.followScale) this.followScale = scale;
+    const f = this.followFilter.filter(y / this.followScale, t);
+    this.followHistory.push(f);
+    if (this.followHistory.length > FOLLOW_CONSISTENT + 1) this.followHistory.shift();
+    if (this.followY === null) this.followY = f;
+    else if (f - this.followY > FOLLOW_DEADBAND) this.followY = f - FOLLOW_DEADBAND;
+    else if (this.followY - f > FOLLOW_DEADBAND) this.followY = f + FOLLOW_DEADBAND;
+    return this.followY;
+  }
+
+  /** Updates the hand's height noise; frozen while following (the move itself isn't noise). */
+  private measureNoise(y: number) {
+    this.noiseYs.push(y);
+    if (this.noiseYs.length > 3) this.noiseYs.shift();
+    if (this.state === 'following' || this.noiseYs.length < 3) return;
+    const [a, b, c] = this.noiseYs;
+    const jerk = Math.abs(c - 2 * b + a);
+    this.followNoise += FOLLOW_NOISE_ALPHA * (jerk - this.followNoise);
+  }
+
+  /** The smoothed height moved the same way (sign) over each of the last FOLLOW_CONSISTENT samples. */
+  private movingSteadily(sign: number): boolean {
+    const h = this.followHistory;
+    if (h.length < FOLLOW_CONSISTENT + 1) return false;
+    for (let i = 1; i < h.length; i++) if ((h[i] - h[i - 1]) * sign <= 0) return false;
+    return true;
   }
 
   private clearShapes() {
@@ -297,6 +421,7 @@ export class HandsFreeController {
     this.pointSince = null;
     this.dial.reset();
     this.clearShapes();
+    this.resetFollow();
     this.state = 'searching';
   }
 
@@ -310,7 +435,8 @@ export class HandsFreeController {
       if (this.intervals.length > 15) this.intervals.shift();
       const sorted = [...this.intervals].sort((a, b) => a - b);
       const median = sorted[Math.floor(sorted.length / 2)];
-      this.gap = Math.max(GAP_MIN_MS, Math.min(GAP_MAX_MS, median * 3));
+      const p90 = sorted[Math.floor(sorted.length * 0.9)];
+      this.gap = Math.max(GAP_MIN_MS, Math.min(GAP_MAX_MS, Math.max(median * 3, p90 * 1.5)));
     }
     this.lastT = t;
     const GAP_MS = this.gap;
@@ -327,14 +453,28 @@ export class HandsFreeController {
     }
 
     if (!pts) {
+      this.lastNoHandAt = t;
       this.pose = t - this.lastHandAt > GAP_MS ? 'none' : this.pose;
-      if (t - this.lastHandAt > GAP_MS) this.lose(t);
+      if (t - this.lastHandAt > GAP_MS) this.lose(t, true);
       return this.output(events);
     }
 
     // Samples resuming after a stale gap: treat as a new hand, never continue the old gesture.
-    if (t - this.lastHandAt > GAP_MS) this.lose(t);
+    // (Seen gone if the camera reported no hand meanwhile; otherwise samples just stalled.)
+    if (t - this.lastHandAt > GAP_MS) this.lose(t, this.lastNoHandAt > this.lastHandAt);
+    if (this.lostFastAt !== null) {
+      // Back soon after a fast move lost it: that was a gesture, just too fast for the camera.
+      if (t - this.lostFastAt <= TOO_FAST_RETURN_MS) events.push({ type: 'hint', hint: 'slower' });
+      this.lostFastAt = null;
+    }
     this.lastHandAt = t;
+    // Too close to the camera for long: coach once per spell.
+    this.tooClose.update(t, scale >= TOO_CLOSE_PALM, GAP_MS);
+    if (this.tooClose.since === null) this.tooCloseSaid = false;
+    else if (!this.tooCloseSaid && this.tooClose.heldFor(t) >= TOO_CLOSE_MS) {
+      events.push({ type: 'hint', hint: 'back' });
+      this.tooCloseSaid = true;
+    }
     this.scale = this.scale ? this.scale * 0.7 + scale * 0.3 : scale;
     scale = this.scale;
     const seen = classifyPose(pts);
@@ -394,12 +534,14 @@ export class HandsFreeController {
 
     this.trail.push({ t, x: center.x, y: center.y });
     while (this.trail.length > 1 && t - this.trail[0].t > WINDOW_MS) this.trail.shift();
+    this.measureNoise(center.y / scale);
 
     if (this.state === 'rearm') {
       if (this.flick(t, scale, events)) return this.output(events);
       if (this.rearmed(t, scale)) {
         this.state = 'armed';
         this.trail = [{ t, x: center.x, y: center.y }];
+        this.resetFollow();
       }
       return this.output(events);
     }
@@ -416,20 +558,46 @@ export class HandsFreeController {
       // Freshly armed: movement before this point doesn't count.
       this.state = 'armed';
       this.trail = [{ t, x: center.x, y: center.y }];
+      this.resetFollow();
+      this.followAnchor = this.trackFollow(t, center.y, scale);
       return this.output(events);
     }
 
-    if (this.state === 'armed') {
+    if (this.state === 'armed' || this.state === 'following') {
+      const y = this.trackFollow(t, center.y, scale);
+      if (this.followAnchor === null) this.followAnchor = y;
+      // A clear sideways sweep (over the recent window) previews a left/right swipe.
       const first = this.trail[0];
       const dx = (center.x - first.x) / scale;
       const dy = (center.y - first.y) / scale;
-      const horizontal = Math.abs(dx) >= Math.abs(dy);
-      const main = horizontal ? Math.abs(dx) : Math.abs(dy);
-      const cross = horizontal ? Math.abs(dy) : Math.abs(dx);
-      if (main >= PREVIEW_MIN && cross < main * MAX_CROSS) {
-        const dir: SwipeDirection = horizontal ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
-        this.preview = { dir, origin: first, startedAt: t, furthest: 0, peakSpeed: 0 };
+      if (Math.abs(dx) >= PREVIEW_MIN && Math.abs(dy) < Math.abs(dx) * MAX_CROSS && (this.state === 'armed' || Math.abs(dx) >= 2 * PREVIEW_MIN)) {
+        this.preview = { dir: dx > 0 ? 'right' : 'left', origin: first, startedAt: t, furthest: 0, peakSpeed: 0 };
         this.state = 'previewing';
+      } else if (this.state === 'armed') {
+        // Up/down: once the hand has clearly moved vertically, the list follows it.
+        const moved = y - this.followAnchor;
+        if (Math.abs(moved) >= Math.max(FOLLOW_START, FOLLOW_NOISE_K * this.followNoise) && Math.abs(dy) >= Math.abs(dx) && this.movingSteadily(Math.sign(moved))) {
+          this.state = 'following';
+          this.followStillSince = null;
+          events.push({ type: 'scroll', palms: y - this.followAnchor });
+          this.followSent = y;
+        }
+        return this.output(events);
+      } else {
+        if (y !== this.followSent) events.push({ type: 'scroll', palms: y - this.followSent });
+        this.followSent = y;
+        // Held still for a moment: Ready again, from here.
+        if (Math.hypot(...this.velocity(t)) / scale <= FOLLOW_STILL_SPEED) {
+          if (this.followStillSince === null) this.followStillSince = t;
+          else if (t - this.followStillSince >= FOLLOW_RELEASE_MS) {
+            this.state = 'armed';
+            this.followAnchor = y;
+            this.trail = [{ t, x: center.x, y: center.y }];
+          }
+        } else {
+          this.followStillSince = null;
+        }
+        return this.output(events);
       }
     }
 
@@ -548,8 +716,9 @@ export class HandsFreeController {
     if (this.state === 'fist' || this.state === 'opening') {
       if (seen === 'fist') {
         if (!still && this.state === 'fist') {
-          // A held fist that starts moving is swiping, not opening.
+          // A held fist that starts moving is moving the list, not opening.
           this.state = 'armed';
+          this.resetFollow();
           return false;
         }
         this.state = 'fist';
@@ -585,6 +754,7 @@ export class HandsFreeController {
           // Opened again before reaching a fist: cancel.
           this.state = 'armed';
           this.trail = [{ t, x: this.recent[this.recent.length - 1].x, y: this.recent[this.recent.length - 1].y }];
+          this.resetFollow();
         }
         return false;
       }
@@ -670,11 +840,13 @@ export class HandsFreeController {
     const horizontal = Math.abs(dx) >= Math.abs(dy);
     const main = horizontal ? Math.abs(dx) : Math.abs(dy);
     const cross = horizontal ? Math.abs(dy) : Math.abs(dx);
-    const dir: SwipeDirection = horizontal ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
+    // Up/down follows the hand instead of swiping.
+    if (!horizontal) return false;
+    const dir: SwipeDirection = dx > 0 ? 'right' : 'left';
     const speed = this.speedAlong(dir, t) / scale;
     if (dir === prevDir) return false;
     if (main * scale < MIN_ABS_TRAVEL || main < this.tuning.swipe.commitTravel || cross >= main * MAX_CROSS || speed < FLICK_SPEED) return false;
-    events.push({ type: 'swipe', direction: dir });
+    events.push({ type: 'swipe', direction: dir, flick: true });
     this.lastSwipeDir = dir;
     this.attempt = { kind: 'swipe', t, fired: true, direction: dir, travel: main, speed };
     this.lastCommitAt = t;
@@ -714,7 +886,8 @@ export class HandsFreeController {
     return alongAxis(dir, vx, vy);
   }
 
-  private lose(t: number) {
+  /** `seenGone`: the camera reported no hand (not just a stall with no samples at all). */
+  private lose(t: number, seenGone = false) {
     // A snap's own speed blurs the hand out of a frame or two (recording,
     // 2026-09-18: a clean snap was lost to a 167 ms blackout right after a
     // 2-second set-up). Within the snap window, keep the set-up waiting.
@@ -722,6 +895,10 @@ export class HandsFreeController {
     const snapPending = this.state === 'snap' && touch !== null && t - touch.t <= SNAP_WINDOW_MS;
     const miss = this.snapMiss;
     if (!snapPending) this.endSnapSetUp();
+    // A Ready hand lost while moving fast: coach if it comes back (see update).
+    const wasReady = this.state === 'armed' || this.state === 'following' || this.state === 'previewing';
+    const speed = this.scale ? Math.hypot(...this.velocity(this.lastHandAt)) / this.scale : 0;
+    if (seenGone && wasReady && speed >= TOO_FAST_SPEED) this.lostFastAt = this.lastHandAt;
     // Tracking lost or stale: cancel, never extrapolate. Leaving view also
     // counts as releasing after a commit.
     this.preview = null;
@@ -731,6 +908,8 @@ export class HandsFreeController {
     this.dial.reset();
     this.clearShapes();
     this.recent = [];
+    this.noiseYs = [];
+    this.resetFollow();
     this.state = 'searching';
     if (snapPending) {
       this.state = 'snap';

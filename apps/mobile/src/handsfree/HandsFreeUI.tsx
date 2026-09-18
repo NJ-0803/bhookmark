@@ -74,8 +74,8 @@ function Snap({ color, size = 56 }: { color: string; size?: number }) {
 const GESTURES = [
   {
     key: 'swipe',
-    title: 'Air swipe',
-    body: 'Hold your hand still, in any shape, about a forearm\'s length in front of the screen. When the top of the screen says "Ready", sweep up or down to scroll, or sideways to move between open dishes. The screen follows your hand; a half-finished sweep springs back. Right after a swipe, a quick flick swipes again.',
+    title: 'Move and swipe',
+    body: 'Hold your hand still, in any shape, about a forearm\'s length in front of the screen. When the top of the screen says "Ready", move your hand slowly up or down and the list moves with it, step by step. Sweep sideways to switch between Crave, Bhookmarks and Circles — or between dishes when one is open; a half-finished sweep springs back, and right after a swipe a quick flick swipes again. Too fast and the camera loses your hand — the top of the screen will say "Slower".',
     Art: OpenPalm,
   },
   {
@@ -175,7 +175,7 @@ export function HandsFreePill() {
   const insets = useSafeAreaInsets();
   if (status !== 'on' && status !== 'starting') return null;
   // Live feedback: the camera only sees a hand held about a forearm's length in front of the screen.
-  const label = status !== 'on' ? 'Starting…' : { none: 'Hands-free', hand: 'Hand seen', ready: 'Ready', point: 'Dial ready', fist: 'Open to go up', pyramid: 'Open to view dish', snap: 'Snap to close' }[handSight];
+  const label = status !== 'on' ? 'Starting…' : { none: 'Hands-free', hand: 'Hand seen', ready: 'Ready', point: 'Dial ready', fist: 'Open to go up', pyramid: 'Open to view dish', snap: 'Snap to close', slower: 'Slower — keep your hand in view', back: 'Too close — move your hand back' }[handSight];
   return (
     <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(150)} style={[styles.pillWrap, { top: insets.top + 6 }]} pointerEvents="box-none">
       <Pressable
@@ -212,7 +212,7 @@ export function HandsFreeSettings({ c }: { c: ThemeColors }) {
           <Text style={[styles.sectionTitle, { color: c.ink }]}>Hands-free</Text>
           <Text style={[styles.small, { color: c.muted }]}>
             {status === 'on'
-              ? 'On — hold up an open hand and sweep up or down.'
+              ? 'On — hold up a hand, then move it slowly up or down.'
               : status === 'starting'
                 ? 'Starting the camera…'
                 : 'Open-palm air swipes, circle-to-rate, and head-tracked depth.'}

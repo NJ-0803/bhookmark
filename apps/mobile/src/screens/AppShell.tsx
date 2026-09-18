@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeIn, FadeOut, SlideInDown, SlideOutDown } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInLeft, FadeInRight, FadeOut, SlideInDown, SlideOutDown, useAnimatedStyle } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getMyLogs, type RemoteLog } from '../api/client';
 import BottomNav, { type Tab } from '../components/BottomNav';
-import { CardOverlayLayer, CardOverlayProvider, OverlayStage, type OverlayDish } from '../components/CardOverlay';
+import { CardOverlayLayer, CardOverlayProvider, OverlayStage, useCardOverlay, type OverlayDish } from '../components/CardOverlay';
 import { DishActions, LogDetail } from '../components/DishDetail';
 import { timing } from '../motion/policy';
 import { fonts } from '../theme/brand';
@@ -40,7 +40,17 @@ export default function AppShell() {
     const timer = setTimeout(() => BackHandler.exitApp(), CLOSE_NOTICE_MS);
     return () => clearTimeout(timer);
   }, [closing]);
-  const [tab, setTab] = useState<Tab>('crave');
+  const [tab, setTabState] = useState<Tab>('crave');
+  // Which way the last air swipe went, so the new tab slides in from that side (null: a tap).
+  const [tabFrom, setTabFrom] = useState<'left' | 'right' | null>(null);
+  const setTab = useCallback((t: Tab) => {
+    setTabFrom(null);
+    setTabState(t);
+  }, []);
+  const swipeTab = useCallback((t: Tab, from: 'left' | 'right') => {
+    setTabFrom(from);
+    setTabState(t);
+  }, []);
   const [logs, setLogs] = useState<RemoteLog[] | null>(null);
   const [logsError, setLogsError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -88,7 +98,12 @@ export default function AppShell() {
         <View style={[styles.fill, { backgroundColor: c.bg }]} onTouchStart={handsFreeOn ? interrupt : undefined}>
           <OverlayStage>
             <SafeAreaView style={styles.fill} edges={['top', 'left', 'right']}>
-              <Animated.View key={tab} entering={FadeIn.duration(timing.tab)} style={styles.fill}>
+              <TabSwipe tab={tab} onSwipe={swipeTab} enabled={!logFlow.open}>
+              <Animated.View
+                key={tab}
+                entering={(tabFrom === 'right' ? FadeInRight : tabFrom === 'left' ? FadeInLeft : FadeIn).duration(timing.tab)}
+                style={styles.fill}
+              >
                 {tab === 'crave' && <CraveScreen />}
                 {tab === 'bhookmarks' && (
                   <BhookmarksScreen
@@ -106,6 +121,7 @@ export default function AppShell() {
                 {tab === 'circles' && <CirclesScreen />}
                 {tab === 'you' && <YouScreen onOpenLab={__DEV__ ? () => setLabOpen(true) : undefined} />}
               </Animated.View>
+              </TabSwipe>
             </SafeAreaView>
           </OverlayStage>
           <BottomNav active={tab} onChange={setTab} onBite={() => openLog()} />
@@ -148,6 +164,33 @@ export default function AppShell() {
 
 // How long the snap's "Closing…" notice stays up before the app exits.
 const CLOSE_NOTICE_MS = 900;
+
+// Hands-free tab switching (user request, 2026-09-18): with no dish open, a
+// sideways air swipe moves between Crave, Bhookmarks and Circles, stopping at
+// the ends. Quick back-to-back flicks don't switch tabs (the return stroke
+// switched straight back — recording rec12, 2026-09-18). Hand moves left → next tab (like swiping a page away), right →
+// previous, the same as between open dishes. While the sweep is under way the
+// screen leans with the hand (reversible preview).
+const SWIPE_TABS: Tab[] = ['crave', 'bhookmarks', 'circles'];
+const TAB_LEAN_PX = 28;
+
+function TabSwipe({ tab, onSwipe, enabled, children }: { tab: Tab; onSwipe: (t: Tab, from: 'left' | 'right') => void; enabled: boolean; children: ReactNode }) {
+  const { activeId } = useCardOverlay();
+  const { previewX } = useHandsFree();
+  const i = SWIPE_TABS.indexOf(tab);
+  const active = enabled && activeId === null && i >= 0;
+  useHandsFreeGestures(active, (event) => {
+    if (event.type !== 'swipe' || (event.direction !== 'left' && event.direction !== 'right')) return false;
+    // A flick right after a swipe is usually the hand coming back: never switch tabs on it.
+    if (event.flick) return true;
+    const next = SWIPE_TABS[i + (event.direction === 'left' ? 1 : -1)];
+    // The new tab comes in from the side the hand is moving away from.
+    if (next) onSwipe(next, event.direction === 'left' ? 'right' : 'left');
+    return true;
+  });
+  const lean = useAnimatedStyle(() => ({ transform: [{ translateX: active ? previewX.value * TAB_LEAN_PX : 0 }] }));
+  return <Animated.View style={[styles.fill, lean]}>{children}</Animated.View>;
+}
 
 const styles = StyleSheet.create({
   closing: { justifyContent: 'center' },
