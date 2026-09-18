@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
-import Animated, { FadeIn, SlideInDown, SlideOutDown } from 'react-native-reanimated';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, { FadeIn, FadeOut, SlideInDown, SlideOutDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getMyLogs, type RemoteLog } from '../api/client';
 import BottomNav, { type Tab } from '../components/BottomNav';
 import { CardOverlayLayer, CardOverlayProvider, OverlayStage, type OverlayDish } from '../components/CardOverlay';
 import { DishActions, LogDetail } from '../components/DishDetail';
 import { timing } from '../motion/policy';
+import { fonts } from '../theme/brand';
 import { SavesProvider } from '../saves/SavesProvider';
+import { useHandsFree, useHandsFreeGestures } from '../handsfree/HandsFreeProvider';
 import { HandsFreeIntro, HandsFreePill } from '../handsfree/HandsFreeUI';
 import { useTheme } from '../theme/ThemeProvider';
 import BhookmarksScreen from './Bhookmarks';
@@ -21,11 +23,29 @@ import YouScreen from './You';
 // card overlay for every screen, and BiteLog as a sheet above everything.
 export default function AppShell() {
   const { colors: c } = useTheme();
+  const { status: handsFreeStatus, interrupt } = useHandsFree();
+  const handsFreeOn = handsFreeStatus === 'on';
+  // Hands-free Thanos snap closes the app, after a short, cancellable notice so
+  // an accidental snap can be undone with a touch. Never while a bite is being
+  // logged, so unsaved input can't be lost.
+  const [closing, setClosing] = useState(false);
+  const logFlowOpen = useRef(false);
+  useHandsFreeGestures(true, (event) => {
+    if (event.type !== 'snap') return false;
+    if (!logFlowOpen.current) setClosing(true);
+    return true;
+  });
+  useEffect(() => {
+    if (!closing) return;
+    const timer = setTimeout(() => BackHandler.exitApp(), CLOSE_NOTICE_MS);
+    return () => clearTimeout(timer);
+  }, [closing]);
   const [tab, setTab] = useState<Tab>('crave');
   const [logs, setLogs] = useState<RemoteLog[] | null>(null);
   const [logsError, setLogsError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [logFlow, setLogFlow] = useState<{ open: boolean; prefill?: OverlayDish }>({ open: false });
+  logFlowOpen.current = logFlow.open;
   const [labOpen, setLabOpen] = useState(false);
 
   const loadLogs = useCallback(async () => {
@@ -64,7 +84,8 @@ export default function AppShell() {
   return (
     <SavesProvider>
       <CardOverlayProvider renderDetail={renderDetail}>
-        <View style={[styles.fill, { backgroundColor: c.bg }]}>
+        {/* Touch always wins: any touch cancels an air gesture in progress. */}
+        <View style={[styles.fill, { backgroundColor: c.bg }]} onTouchStart={handsFreeOn ? interrupt : undefined}>
           <OverlayStage>
             <SafeAreaView style={styles.fill} edges={['top', 'left', 'right']}>
               <Animated.View key={tab} entering={FadeIn.duration(timing.tab)} style={styles.fill}>
@@ -96,6 +117,16 @@ export default function AppShell() {
           )}
           <HandsFreePill />
           <HandsFreeIntro />
+          {closing && (
+            <Animated.View entering={FadeIn.duration(120)} exiting={FadeOut.duration(150)} style={[StyleSheet.absoluteFill, styles.closing, { backgroundColor: c.scrim }]}>
+              <Pressable style={StyleSheet.absoluteFill} onPress={() => setClosing(false)} accessibilityRole="button" accessibilityLabel="Cancel closing Bhookmark">
+                <View style={styles.closingBox}>
+                  <Text style={[styles.closingTitle, { color: c.ink }]}>Closing Bhookmark…</Text>
+                  <Text style={[styles.closingHint, { color: c.muted }]}>Tap anywhere to stay</Text>
+                </View>
+              </Pressable>
+            </Animated.View>
+          )}
           {labOpen && (
             <View style={StyleSheet.absoluteFill}>
               <MotionLab fontError={null} onClose={() => setLabOpen(false)} />
@@ -107,6 +138,13 @@ export default function AppShell() {
   );
 }
 
+// How long the snap's "Closing…" notice stays up before the app exits.
+const CLOSE_NOTICE_MS = 900;
+
 const styles = StyleSheet.create({
+  closing: { justifyContent: 'center' },
+  closingBox: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6 },
+  closingTitle: { fontFamily: fonts.displayMedium, fontSize: 22 },
+  closingHint: { fontFamily: fonts.body, fontSize: 14 },
   fill: { flex: 1 },
 });

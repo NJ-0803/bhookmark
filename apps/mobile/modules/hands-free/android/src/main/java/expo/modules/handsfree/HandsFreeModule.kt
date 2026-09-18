@@ -11,6 +11,7 @@ import expo.modules.kotlin.modules.ModuleDefinition
 class HandsFreeModule : Module() {
   private var engine: HandsFreeEngine? = null
   private var faceTracking = false
+  private var handDelegate = "cpu"
 
   override fun definition() = ModuleDefinition {
     Name("HandsFreeModule")
@@ -38,6 +39,7 @@ class HandsFreeModule : Module() {
         onError = { sendEvent("onError", mapOf("message" to it)) },
       ).also { engine = it }
       current.faceTracking = faceTracking
+      current.handDelegate = handDelegate
       current.start(owner) { error ->
         if (error == null) promise.resolve(null) else promise.reject("E_CAMERA", error, null)
       }
@@ -46,6 +48,12 @@ class HandsFreeModule : Module() {
     Function("setFaceTracking") { on: Boolean ->
       faceTracking = on
       engine?.faceTracking = on
+    }
+
+    // Diagnostics: switch the hand model between "cpu" and "gpu" to compare them on a device.
+    Function("setHandDelegate") { delegate: String ->
+      handDelegate = if (delegate == "gpu") "gpu" else "cpu"
+      engine?.handDelegate = handDelegate
     }
 
     AsyncFunction("stop") {

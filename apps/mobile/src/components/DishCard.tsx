@@ -24,8 +24,11 @@ export default function DishCard({
   note,
   group,
   order,
+  focused,
 }: {
   dish: OverlayDish;
+  /** Hands-free: this is the card a "bloom" gesture would open. */
+  focused?: boolean;
   /** List name and position, so Hands-free swipes can move to the neighbouring dish. */
   group?: string;
   order?: number;
@@ -118,12 +121,14 @@ export default function DishCard({
           </>
         )}
       </Pressable>
+      {focused && <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.focusRing, { borderColor: c.rose }]} />}
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   card: { borderWidth: 1, borderRadius: radius.card, overflow: 'hidden' },
+  focusRing: { borderWidth: 2, borderRadius: radius.card },
   photo: { margin: 8, aspectRatio: 4 / 3, borderRadius: CARD_PHOTO_RADIUS, overflow: 'hidden' },
   image: { width: '100%', height: '100%' },
   nameWrap: { marginHorizontal: 12, marginTop: 2 },

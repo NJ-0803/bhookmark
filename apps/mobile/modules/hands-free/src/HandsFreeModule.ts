@@ -9,6 +9,8 @@ declare class HandsFreeModule extends NativeModule<HandsFreeModuleEvents> {
   stop(): Promise<void>;
   /** Face detection is only needed for head-tracked depth on an open dish. */
   setFaceTracking(on: boolean): void;
+  /** Diagnostics: run the hand model on the CPU or GPU. */
+  setHandDelegate(delegate: 'cpu' | 'gpu'): void;
 }
 
 /** null where the native module isn't built in (iOS for now, Expo Go, web). */

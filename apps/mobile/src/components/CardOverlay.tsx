@@ -466,6 +466,11 @@ function OverlayScene({ entry }: { entry: Entry }) {
   const shadowRect: Rect = { x: panel.x + 20, y: panel.y + panel.height - 26, width: panel.width - 40, height: 60 };
 
   const rootStyle = useAnimatedStyle(() => ({ opacity: fade.value }));
+  // Hands-free preview: while a sideways air swipe is under way the open dish
+  // leans with the hand; the committed swipe moves to the neighbouring dish.
+  const { previewX } = handsFree;
+  const isOpen = phase === 'open';
+  const leanStyle = useAnimatedStyle(() => ({ transform: [{ translateX: isOpen ? previewX.value * LEAN_PX : 0 }] }));
 
   // "Window" depth once the panel has arrived: tilting the phone moves the
   // artwork against the hologram layer. Calibrated to the pose at arrival,
@@ -624,6 +629,7 @@ function OverlayScene({ entry }: { entry: Entry }) {
         <TiltSensor tiltX={tiltX} tiltY={tiltY} />
       ))}
 
+      <Animated.View style={[StyleSheet.absoluteFill, leanStyle]} pointerEvents="box-none">
       {/* Floating shadow */}
       {!perfOff('shadow') && <Animated.View pointerEvents="none" style={[styles.abs, rect(shadowRect), shadowStyle]}>
         <Image source={CONTACT_SHADOW} resizeMode="stretch" style={[styles.stretch, { tintColor: c.shadow }]} accessible={false} />
@@ -742,9 +748,13 @@ function OverlayScene({ entry }: { entry: Entry }) {
           <View style={[styles.closeBar, { transform: [{ rotate: '-45deg' }] }]} />
         </Pressable>
       </Animated.View>
+      </Animated.View>
     </Animated.View>
   );
 }
+
+// How far an open dish leans with the hand at full swipe preview.
+const LEAN_PX = 28;
 
 // "Window" depth once the panel has arrived: tilting the phone moves the
 // artwork against the hologram layer. Calibrated to the pose on mount, low-pass

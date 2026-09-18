@@ -1,11 +1,13 @@
-// Replays a real Hands-free recording through the gesture recogniser.
-// Record: a test build logs `[hfraw] {"t":…,"h":[…]}` for every camera frame;
-//   adb logcat -s ReactNativeJS:V | grep hfraw > recording.log
+// Replays a real Hands-free recording through the controller (controller.ts).
+// Record: start Metro with EXPO_PUBLIC_HANDSFREE_TRACE=1; the app then logs
+//   `[hfraw] {"t":…,"W":…,"H":…,"h":[…]}` for every analysed camera frame.
+//   adb logcat -d -s ReactNativeJS:V > recording.log
 // Run: node --experimental-strip-types scripts/gestures-replay.ts recording.log [--frames]
-// Prints the gestures fired and pose counts; --frames adds one line per frame
-// with each finger's measurement, so a flickering pose shows which check failed.
+// Prints committed gestures, state/pose counts and (when present) timing
+// percentiles; --frames adds one line per frame with each finger's measurement.
 import { readFileSync } from 'node:fs';
-import { classifyPose, GestureRecognizer, poseDetail, toPoints } from '../src/handsfree/gestures.ts';
+import { HandsFreeController } from '../src/handsfree/controller.ts';
+import { classifyPose, palmCenter, poseDetail, toPoints } from '../src/handsfree/gestures.ts';
 
 const [file, ...flags] = process.argv.slice(2);
 if (!file) {
@@ -14,7 +16,7 @@ if (!file) {
 }
 const showFrames = flags.includes('--frames');
 
-type Frame = { t: number; h: number[] | null };
+type Frame = { t: number; W?: number; H?: number; h: number[] | null; age?: number | null; queued?: number | null; cost?: number[] };
 const frames: Frame[] = [];
 for (const line of readFileSync(file, 'utf8').split('\n')) {
   const i = line.indexOf('[hfraw] ');
@@ -30,24 +32,46 @@ if (!frames.length) {
   process.exit(1);
 }
 
-const r = new GestureRecognizer();
+// Recordings made before sizes were logged came from the Pixel 4a's 240×320 upright frame.
+const size = (f: Frame) => ({ w: f.W ?? 240, h: f.H ?? 320 });
+const c = new HandsFreeController();
 const t0 = frames[0].t;
-const counts: Record<string, number> = { none: 0, open: 0, point: 0, other: 0 };
+const poses: Record<string, number> = { none: 0, open: 0, point: 0, other: 0 };
+const states: Record<string, number> = {};
 const f2 = (v: number) => v.toFixed(2);
+let previews = 0;
 for (const f of frames) {
-  const pts = f.h ? toPoints(f.h) : null;
-  const seen = pts ? classifyPose(pts) : 'none';
-  counts[seen]++;
-  const events = r.update(f.t, f.h);
+  const { w, h } = size(f);
+  const pts = toPoints(f.h, h / w);
+  poses[pts ? classifyPose(pts) : 'none']++;
+  const out = c.update({ t: f.t, w, h, hand: f.h });
+  states[out.state] = (states[out.state] ?? 0) + 1;
+  if (out.preview) previews++;
   if (showFrames) {
     const d = pts ? poseDetail(pts) : null;
-    const m = d ? `idx ${f2(d.index)} mid ${f2(d.middle)} ring ${f2(d.ring)} pinky ${f2(d.pinky)} thumb ${f2(d.thumb)}` : '';
-    const palm = pts ? [0, 5, 9, 13, 17].map((i) => pts[i]) : null;
-    const x = palm ? ` palm ${f2(palm.reduce((a, p) => a + p.x, 0) / 5)},${f2(palm.reduce((a, p) => a + p.y, 0) / 5)}` : '';
-    console.log(`${String(f.t - t0).padStart(6)}ms  ${seen.padEnd(5)} stable ${r.currentPose.padEnd(5)} ${m}${x}${events.length ? '  → ' + JSON.stringify(events) : ''}`);
+    const m = d ? `idx ${f2(d.index)} mid ${f2(d.middle)} ring ${f2(d.ring)} pinky ${f2(d.pinky)}` : '';
+    const pc = pts ? palmCenter(pts) : null;
+    const p = out.preview ? ` preview ${out.preview.direction} ${f2(out.preview.progress)}` : '';
+    console.log(`${String(Math.round(f.t - t0)).padStart(6)}ms  ${out.state.padEnd(10)} ${m}${pc ? ` palm ${f2(pc.x)},${f2(pc.y)}` : ''}${p}${out.events.length ? '  → ' + JSON.stringify(out.events) : ''}`);
   } else {
-    for (const e of events) console.log(`${String(f.t - t0).padStart(6)}ms  ${JSON.stringify(e)}`);
+    for (const e of out.events) console.log(`${String(Math.round(f.t - t0)).padStart(6)}ms  ${JSON.stringify(e)}`);
   }
 }
 const span = (frames[frames.length - 1].t - t0) / 1000;
-console.log(`\n${frames.length} frames over ${span.toFixed(1)} s (${(frames.length / span).toFixed(1)} fps)  poses: ${JSON.stringify(counts)}`);
+console.log(`\n${frames.length} frames over ${span.toFixed(1)} s (${(frames.length / span).toFixed(1)} fps)`);
+console.log(`poses ${JSON.stringify(poses)}  states ${JSON.stringify(states)}  preview frames ${previews}`);
+
+const pct = (xs: number[], p: number) => {
+  const s = [...xs].sort((a, b) => a - b);
+  return s[Math.min(s.length - 1, Math.floor(p * s.length))];
+};
+const report = (name: string, xs: number[]) => {
+  if (xs.length) console.log(`${name.padEnd(22)} p50 ${pct(xs, 0.5).toFixed(1)}  p95 ${pct(xs, 0.95).toFixed(1)}  p99 ${pct(xs, 0.99).toFixed(1)} ms  (n=${xs.length})`);
+};
+const gaps = frames.slice(1).map((f, i) => f.t - frames[i].t);
+report('capture interval', gaps);
+report('capture → JS', frames.flatMap((f) => (f.age != null ? [f.age] : [])));
+report('capture → analyser', frames.flatMap((f) => (f.queued != null ? [f.queued] : [])));
+report('copy+rotate', frames.flatMap((f) => (f.cost ? [f.cost[0]] : [])));
+report('hand model (hand seen)', frames.flatMap((f) => (f.cost && f.h ? [f.cost[2]] : [])));
+report('hand model (no hand)', frames.flatMap((f) => (f.cost && !f.h ? [f.cost[2]] : [])));

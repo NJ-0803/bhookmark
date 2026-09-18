@@ -1,10 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AppState, Platform } from 'react-native';
-import { Easing, useSharedValue, withTiming, type SharedValue } from 'react-native-reanimated';
+import { Easing, useSharedValue, withSpring, withTiming, type SharedValue } from 'react-native-reanimated';
 import HandsFree from '../../modules/hands-free';
-import { USING_LOCAL_API } from '../api/config';
-import { GestureRecognizer, headOffset, type GestureEvent } from './gestures';
+import { HandsFreeController, type ControllerOutput } from './controller';
+import { headOffset, type GestureEvent } from './gestures';
 
 // Hands-free mode: Bhookmark's signature feature. Off by default; while it's on
 // and the app is in the foreground, the front camera tracks the user's head
@@ -13,11 +13,14 @@ import { GestureRecognizer, headOffset, type GestureEvent } from './gestures';
 // stored or sent anywhere.
 
 const ENABLED_KEY = 'bhookmark.handsFree';
+// Diagnostics only, set explicitly when starting Metro: EXPO_PUBLIC_HANDSFREE_TRACE=1.
+// Logs landmarks and timing for scripts/gestures-replay.ts. Never on by default.
+const TRACE = process.env.EXPO_PUBLIC_HANDSFREE_TRACE === '1';
 const INTRO_KEY = 'bhookmark.handsFreeIntroSeen';
 
 export type HandsFreeStatus = 'unavailable' | 'off' | 'starting' | 'on' | 'denied' | 'error';
-/** What the camera sees of the hand right now: nothing, a hand, or one of the two gesture shapes. */
-export type HandSight = 'none' | 'hand' | 'open' | 'point';
+/** What the controller can do right now: nothing in view, a hand it can't use yet, or which gesture is ready. */
+export type HandSight = 'none' | 'hand' | 'ready' | 'point' | 'fist' | 'pyramid' | 'snap';
 
 type Listener = (event: GestureEvent) => boolean | void;
 
@@ -38,6 +41,15 @@ type HandsFreeContextValue = {
   headY: SharedValue<number>;
   faceVisible: SharedValue<boolean>;
   /**
+   * Live swipe preview, -1…1 along each axis (right/down positive): how far
+   * the current sweep is towards committing. Reversible; only a committed
+   * swipe event may act. Springs back to 0 when a sweep is abandoned.
+   */
+  previewX: SharedValue<number>;
+  previewY: SharedValue<number>;
+  /** A touch took over: cancel any gesture in progress. */
+  interrupt: () => void;
+  /**
    * Gesture listeners run newest-first; a listener that returns true consumes
    * the event, so an open panel or the rating screen takes priority over the
    * list behind it.
@@ -46,6 +58,16 @@ type HandsFreeContextValue = {
   /** Turns face detection on while something needs head position; call the returned function to release it. */
   requestHeadTracking: () => () => void;
 };
+
+function sightOf(out: ControllerOutput): HandSight {
+  if (out.pose === 'none') return 'none';
+  if (out.state === 'armed' || out.state === 'previewing' || out.state === 'closing') return 'ready';
+  if (out.state === 'dial') return 'point';
+  if (out.state === 'fist' || out.state === 'opening') return 'fist';
+  if (out.state === 'pyramid') return 'pyramid';
+  if (out.state === 'snap') return 'snap';
+  return 'hand';
+}
 
 const HandsFreeContext = createContext<HandsFreeContextValue | null>(null);
 // Separate, so a hand entering or leaving view only re-renders the pill.
@@ -58,14 +80,15 @@ export function HandsFreeProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<HandsFreeStatus>(available ? 'off' : 'unavailable');
   const [error, setError] = useState<string | null>(null);
   const [handSight, setHandSight] = useState<HandSight>('none');
-  const missedHandFrames = useRef(0);
   const [appActive, setAppActive] = useState(AppState.currentState === 'active');
   const listeners = useRef<Listener[]>([]);
-  const recognizer = useRef(new GestureRecognizer());
+  const controller = useRef(new HandsFreeController());
   const headUsers = useRef(0);
   const headX = useSharedValue(0);
   const headY = useSharedValue(0);
   const faceVisible = useSharedValue(false);
+  const previewX = useSharedValue(0);
+  const previewY = useSharedValue(0);
 
   useEffect(() => {
     AsyncStorage.multiGet([ENABLED_KEY, INTRO_KEY])
@@ -87,6 +110,22 @@ export function HandsFreeProvider({ children }: { children: ReactNode }) {
     return () => sub.remove();
   }, []);
 
+  // Frames arrive every ~35–60 ms; ease between them so the preview moves on every display frame.
+  const publishPreview = useCallback(
+    (out: ControllerOutput) => {
+      const p = out.preview;
+      const x = p?.axis === 'x' ? (p.direction === 'right' ? p.progress : -p.progress) : 0;
+      const y = p?.axis === 'y' ? (p.direction === 'down' ? p.progress : -p.progress) : 0;
+      const ease = (target: number, v: SharedValue<number>) => {
+        if (target !== 0) v.value = withTiming(target, { duration: 60, easing: Easing.linear });
+        else if (v.value !== 0) v.value = withSpring(0, { damping: 18, stiffness: 220 });
+      };
+      ease(x, previewX);
+      ease(y, previewY);
+    },
+    [previewX, previewY],
+  );
+
   // Run the camera only while enabled and in the foreground.
   useEffect(() => {
     if (!available || !enabled || !appActive) {
@@ -94,8 +133,10 @@ export function HandsFreeProvider({ children }: { children: ReactNode }) {
         HandsFree!.stop().catch(() => {});
         setStatus('off');
       }
-      recognizer.current.reset();
+      controller.current.reset();
       setHandSight('none');
+      previewX.value = 0;
+      previewY.value = 0;
       faceVisible.value = false;
       headX.value = withTiming(0, { duration: 300 });
       headY.value = withTiming(0, { duration: 300 });
@@ -115,29 +156,29 @@ export function HandsFreeProvider({ children }: { children: ReactNode }) {
         headX.value = withTiming(0, { duration: 300 });
         headY.value = withTiming(0, { duration: 300 });
       }
-      const before = recognizer.current.currentPose;
-      const events = recognizer.current.update(frame.t, frame.hand);
-      // Hand feedback: a single missed frame doesn't blank it, so it doesn't flicker.
-      if (frame.hand) missedHandFrames.current = 0;
-      else missedHandFrames.current++;
-      const pose = recognizer.current.currentPose;
-      setHandSight(frame.hand ? (pose === 'other' ? 'hand' : pose) : missedHandFrames.current >= 3 ? 'none' : (prev) => prev);
-      // Test builds only: a trace for tuning thresholds on a real hand.
-      if (USING_LOCAL_API) {
-        // Raw landmarks, so real hand recordings can be replayed off-device (scripts/gestures-replay.ts).
+      const out = controller.current.update({ t: frame.cap ?? frame.t, w: frame.w, h: frame.h, hand: frame.hand });
+      const events = out.events;
+      publishPreview(out);
+      setHandSight(sightOf(out));
+      if (TRACE) {
         const r3 = (v: number) => Math.round(v * 1000) / 1000;
-        const f = frame.face ? [r3(frame.face.x), r3(frame.face.y), r3(frame.face.w)] : null;
-        // age: ms from the camera capturing this frame to it reaching JS.
-        // queued: capture → analyser; cost: per stage; bridge: native send → JS.
         const now = Date.now();
-        const age = frame.wall ? Math.round(now - frame.wall) : null;
-        const bridge = frame.sent ? Math.round(now - frame.sent) : null;
-        const queued = frame.queued != null ? Math.round(frame.queued) : null;
-        const cost = frame.cost?.map((v) => Math.round(v));
-        console.log(`[hfraw] ${JSON.stringify({ t: Math.round(frame.t), age, queued, bridge, gpu: frame.gpu, cost, f, h: frame.hand?.map(r3) ?? null })}`);
-        const after = recognizer.current.currentPose;
-        if (after !== before) console.log(`[hf] pose ${before} -> ${after}`);
-        for (const e of events) console.log(`[hf] ${JSON.stringify(e)}`);
+        console.log(
+          `[hfraw] ${JSON.stringify({
+            t: Math.round((frame.cap ?? frame.t) * 10) / 10,
+            W: frame.w,
+            H: frame.h,
+            age: frame.wall != null ? Math.round(now - frame.wall) : null,
+            queued: frame.queued != null ? Math.round(frame.queued) : null,
+            bridge: frame.sent != null ? Math.round(now - frame.sent) : null,
+            d: frame.delegate,
+            idle: frame.idle,
+            cost: frame.cost?.map((v) => Math.round(v * 10) / 10),
+            f: frame.face ? [r3(frame.face.x), r3(frame.face.y), r3(frame.face.w)] : null,
+            h: frame.hand?.map(r3) ?? null,
+          })}`,
+        );
+        for (const e of events) console.log(`[hf] ${out.state} ${JSON.stringify(e)}`);
       }
       for (const event of events) {
         for (const l of [...listeners.current].reverse()) {
@@ -166,7 +207,7 @@ export function HandsFreeProvider({ children }: { children: ReactNode }) {
       errorSub.remove();
       HandsFree!.stop().catch(() => {});
     };
-  }, [available, enabled, appActive, headX, headY, faceVisible]);
+  }, [available, enabled, appActive, headX, headY, faceVisible, previewX, previewY, publishPreview]);
 
   const setEnabled = useCallback(
     async (on: boolean) => {
@@ -208,14 +249,24 @@ export function HandsFreeProvider({ children }: { children: ReactNode }) {
   const requestHeadTracking = useCallback(() => {
     if (!available) return () => {};
     if (headUsers.current++ === 0) HandsFree!.setFaceTracking(true);
+    let released = false;
     return () => {
-      if (--headUsers.current === 0) HandsFree!.setFaceTracking(false);
+      if (released) return; // idempotent: a second call can't drive the count negative
+      released = true;
+      headUsers.current = Math.max(0, headUsers.current - 1);
+      if (headUsers.current === 0) HandsFree!.setFaceTracking(false);
     };
   }, [available]);
 
+  const interrupt = useCallback(() => {
+    controller.current.interrupt();
+    previewX.value = withSpring(0, { damping: 18, stiffness: 220 });
+    previewY.value = withSpring(0, { damping: 18, stiffness: 220 });
+  }, [previewX, previewY]);
+
   const value = useMemo(
-    () => ({ available, enabled, status, error, setEnabled, introSeen, markIntroSeen, showIntro, headX, headY, faceVisible, subscribe, requestHeadTracking }),
-    [available, enabled, status, error, setEnabled, introSeen, markIntroSeen, showIntro, headX, headY, faceVisible, subscribe, requestHeadTracking],
+    () => ({ available, enabled, status, error, setEnabled, introSeen, markIntroSeen, showIntro, headX, headY, faceVisible, previewX, previewY, interrupt, subscribe, requestHeadTracking }),
+    [available, enabled, status, error, setEnabled, introSeen, markIntroSeen, showIntro, headX, headY, faceVisible, previewX, previewY, interrupt, subscribe, requestHeadTracking],
   );
   return (
     <HandsFreeContext.Provider value={value}>

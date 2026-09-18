@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { ViewToken } from 'react-native';
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { browseDishes, getVenueCategories, searchVenues, type BrowseDish, type VenueSearchResult } from '../api/client';
 import { absoluteUrl } from '../api/config';
 import { useCardOverlay, type OverlayDish } from '../components/CardOverlay';
 import { CategoryGlyph } from '../components/CategoryArt';
 import DishCard from '../components/DishCard';
-import { useHandsFreeGestures } from '../handsfree/HandsFreeProvider';
+import { useHandSight, useHandsFree, useHandsFreeGestures } from '../handsfree/HandsFreeProvider';
 import { fonts, radius } from '../theme/brand';
 import { useTheme } from '../theme/ThemeProvider';
 
@@ -42,7 +44,7 @@ const venueToDish = (v: VenueSearchResult): OverlayDish => ({
 
 export default function CraveScreen() {
   const { colors: c } = useTheme();
-  const { activeId } = useCardOverlay();
+  const { activeId, open } = useCardOverlay();
   const { width } = useWindowDimensions();
   const [query, setQuery] = useState('');
   const [categories, setCategories] = useState<string[] | null>(null);
@@ -61,17 +63,50 @@ export default function CraveScreen() {
   const listRef = useRef<FlatList<OverlayDish>>(null);
   const scrollY = useRef(0);
   const { height: screenHeight } = useWindowDimensions();
+  const { previewY } = useHandsFree();
+  // While an air swipe is under way the list already leans with the hand
+  // (reversible preview); the committed swipe below does the actual scroll.
+  const previewStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: activeId === null ? previewY.value * PREVIEW_PX : 0 }],
+  }));
 
   // Hands-free: with no dish open, an open-palm air swipe up or down pages
   // through the list. The list follows the hand, as it would a finger: hand up
-  // → further down the list.
-  useHandsFreeGestures(activeId === null, (event) => {
-    if (event.type !== 'swipe' || (event.direction !== 'up' && event.direction !== 'down')) return false;
-    const page = screenHeight * 0.6;
-    const next = Math.max(0, scrollY.current + (event.direction === 'up' ? page : -page));
+  // → further down the list. Closing a held palm into a fist moves the list
+  // down with the fingers; opening a held fist moves it up. A pyramid of
+  // fingertips opening ("bloom") opens the highlighted card.
+  const handSight = useHandSight();
+  const [focusedId, setFocusedId] = useState<string | null>(null);
+  const visible = useRef<OverlayDish[]>([]);
+  const focusedRef = useRef<OverlayDish | null>(null);
+  // The card in the middle of what's on screen is the one "this" refers to.
+  const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: ViewToken<OverlayDish>[] }) => {
+    visible.current = viewableItems.filter((v) => v.isViewable && v.item).map((v) => v.item);
+    const middle = visible.current[Math.floor((visible.current.length - 1) / 2)] ?? null;
+    focusedRef.current = middle;
+    setFocusedId(middle?.id ?? null);
+  }).current;
+  const page = (towardsEnd: boolean) => {
+    const step = screenHeight * 0.6;
+    const next = Math.max(0, scrollY.current + (towardsEnd ? step : -step));
     listRef.current?.scrollToOffset({ offset: next, animated: true });
-    return true;
+  };
+  useHandsFreeGestures(activeId === null, (event) => {
+    if (event.type === 'swipe' && (event.direction === 'up' || event.direction === 'down')) {
+      page(event.direction === 'up');
+      return true;
+    }
+    if (event.type === 'grab' || event.type === 'release') {
+      page(event.type === 'release');
+      return true;
+    }
+    if (event.type === 'bloom' && focusedRef.current) {
+      open(focusedRef.current);
+      return true;
+    }
+    return false;
   });
+  const showFocus = handSight !== 'none';
 
   useEffect(() => {
     getVenueCategories().then((res) => {
@@ -259,30 +294,42 @@ export default function CraveScreen() {
   );
 
   return (
-    <FlatList
-      ref={listRef}
-      onScroll={(e) => {
-        scrollY.current = e.nativeEvent.contentOffset.y;
-      }}
-      scrollEventThrottle={32}
-      data={data}
-      keyExtractor={(d) => d.id}
-      numColumns={2}
-      columnWrapperStyle={styles.column}
-      renderItem={({ item, index }) => <DishCard dish={item} group="crave" order={index} style={{ width: tileWidth }} />}
-      ListHeaderComponent={header}
-      ListEmptyComponent={empty}
-      contentContainerStyle={styles.content}
-      keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="on-drag"
-      scrollEnabled={activeId === null}
-      initialNumToRender={8}
-      windowSize={7}
-    />
+    <Animated.View style={[styles.fill, previewStyle]}>
+      <FlatList
+        ref={listRef}
+        onScroll={(e) => {
+          scrollY.current = e.nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={32}
+        data={data}
+        keyExtractor={(d) => d.id}
+        numColumns={2}
+        columnWrapperStyle={styles.column}
+        renderItem={({ item, index }) => (
+          <DishCard dish={item} group="crave" order={index} focused={showFocus && item.id === focusedId} style={{ width: tileWidth }} />
+        )}
+        extraData={showFocus ? focusedId : null}
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={VIEWABILITY}
+        ListHeaderComponent={header}
+        ListEmptyComponent={empty}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        scrollEnabled={activeId === null}
+        initialNumToRender={8}
+        windowSize={7}
+      />
+    </Animated.View>
   );
 }
 
+// How far the list leans with the hand at full preview, before the swipe commits.
+const PREVIEW_PX = 56;
+const VIEWABILITY = { itemVisiblePercentThreshold: 60 };
+
 const styles = StyleSheet.create({
+  fill: { flex: 1 },
   content: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 140 },
   column: { gap: 12, marginBottom: 12 },
   area: { fontFamily: fonts.body, fontSize: 13, marginBottom: 6 },

@@ -42,12 +42,59 @@ function Face({ color, size = 56 }: { color: string; size?: number }) {
   );
 }
 
+function FistOpen({ color, size = 56 }: { color: string; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 48 48" fill="none" stroke={color} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M12 22c0-3 2-5 5-5h10c3 0 5 2 5 5v6c0 6-4 10-10 10s-10-4-10-10z" />
+      <Path d="M17 17v5M22 17v5M27 17v5" />
+      <Path d="M40 8v14M36 12l4-4 4 4M36 18l4 4 4-4" />
+    </Svg>
+  );
+}
+
+function Pyramid({ color, size = 56 }: { color: string; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 48 48" fill="none" stroke={color} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M14 38c0-8 4-16 10-26 6 10 10 18 10 26" />
+      <Path d="M19 38c0-7 2-14 5-26M29 38c0-7-2-14-5-26" />
+      <Path d="M24 6V2M16 8l-2-3M32 8l2-3" />
+    </Svg>
+  );
+}
+
+function Snap({ color, size = 56 }: { color: string; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 48 48" fill="none" stroke={color} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M16 40c-4-4-5-10-3-16l4-8c1-2 4-2 5 0l1 6 6-10c1-2 4-1 4 1l-3 12 5-3c2-1 4 1 3 3l-6 9c-3 5-10 8-16 6z" />
+      <Path d="M36 6l-2 4M42 12l-4 1M40 4l-3 5" />
+    </Svg>
+  );
+}
+
 const GESTURES = [
   {
     key: 'swipe',
     title: 'Open-palm air swipe',
-    body: 'Hold up an open hand about a forearm\'s length in front of the screen, wait for "Ready to swipe" at the top, then sweep up or down to scroll, or sideways to move between open dishes.',
+    body: 'Hold an open hand still about a forearm\'s length in front of the screen. When the top of the screen says "Ready", sweep up or down to scroll, or sideways to move between open dishes. The screen follows your hand as you move; a half-finished sweep springs back.',
     Art: OpenPalm,
+  },
+  {
+    key: 'grab',
+    title: 'Close and open your hand',
+    body: 'From "Ready", close your open hand into a fist and the list moves down with your fingers. Hold the fist still for a moment, then open it, and the list moves up.',
+    Art: FistOpen,
+  },
+  {
+    key: 'bloom',
+    title: 'Bloom to open a dish',
+    body: 'The dish in the middle of the screen is outlined while your hand is in view. Pinch all your fingertips together like a pyramid, hold, then open them to open that dish.',
+    Art: Pyramid,
+  },
+  {
+    key: 'snap',
+    title: 'Snap to close',
+    body: 'Press your thumb to your middle finger, then snap. Bhookmark closes after a moment — tap the screen to stay. Snaps are ignored while you are logging a bite.',
+    Art: Snap,
   },
   {
     key: 'dial',
@@ -128,7 +175,7 @@ export function HandsFreePill() {
   const insets = useSafeAreaInsets();
   if (status !== 'on' && status !== 'starting') return null;
   // Live feedback: the camera only sees a hand held about a forearm's length in front of the screen.
-  const label = status !== 'on' ? 'Starting…' : { none: 'Hands-free', hand: 'Hand seen', open: 'Ready to swipe', point: 'Dial ready' }[handSight];
+  const label = status !== 'on' ? 'Starting…' : { none: 'Hands-free', hand: 'Hand seen', ready: 'Ready', point: 'Dial ready', fist: 'Open to go up', pyramid: 'Open to view dish', snap: 'Snap to close' }[handSight];
   return (
     <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(150)} style={[styles.pillWrap, { top: insets.top + 6 }]} pointerEvents="box-none">
       <Pressable

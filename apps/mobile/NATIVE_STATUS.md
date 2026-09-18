@@ -138,6 +138,40 @@ User decisions (2026-09-17): the swipe must need **exactly** the index and middl
   - Total: about 134 ms per frame, with a frame every 55 ms.
   - The floor on this phone is about 115 ms. The user wants a much faster response; the gesture design (how much travel is needed before anything moves) is the remaining lever, and that choice is still open.
 
+### Hands-free controller and new gestures (2026-09-18, later)
+
+Following the user's *Bhookmark Handsfree and Spatial Assistant* brief (stages 1–2), plus four gestures the user added the same day.
+
+- **Native engine:**
+  - Camera timestamp source checked (the Pixel 4a reports REALTIME). Latency fields are only sent when that holds.
+  - Each frame reports its real size (240×320 upright), a sequence number and its capture time.
+  - The fps range is chosen from what the camera actually lists.
+  - Reused bitmaps: copy + rotate went from ~3 ms to 1.6 ms.
+  - Idle rate of ~8 fps after 2 s with no hand.
+  - A start/stop generation token, so a late camera callback can't bind after a stop.
+  - The hand model defaults to the CPU (the GPU was no faster on this phone and competes with UI rendering). There's a `setHandDelegate` diagnostic switch and a one-time GPU→CPU fallback if inference fails.
+  - Repeated errors are debounced.
+- **`src/handsfree/controller.ts`:** a state machine (searching → candidate → armed → previewing → commit → rearm, plus dial and shape states).
+  - Time-based tolerances, aspect-correct geometry and travel in palm lengths.
+  - Arming needs a still open palm.
+  - A reversible preview lets the list or panel move with the hand before the swipe commits, exactly once.
+  - The return stroke and abandoned previews need the hand to settle before the next gesture.
+  - Stale gaps, out-of-order and malformed samples, and one-sample glitches are handled.
+  - A touch cancels any gesture in progress.
+- **New gestures (user decisions):**
+  - Closing a Ready palm into a fist moves the list down with the fingers. Opening a held fist moves it up.
+  - A fingertip pyramid that opens ("bloom") opens the highlighted dish. The middle visible card gets a rose ring while a hand is in view.
+  - A Thanos snap closes the app after a 0.9 s notice that a tap cancels. It's ignored while a bite is being logged.
+  - Their thresholds are **proposed starting values, not yet tuned on real recordings**.
+- **Readiness:** the pill label comes from the controller's real state (Ready / Dial ready / Open to go up / Open to view dish / Snap to close).
+- **Traces:** they now need `EXPO_PUBLIC_HANDSFREE_TRACE=1` rather than depending on the local API URL.
+- **Tests:** 80 deterministic checks, run with `node --experimental-strip-types scripts/gestures-test.ts`. They cover the brief's failure cases: variable frame rates, gaps, out-of-order and malformed samples, touch interruption, the return stroke, jitter, and fidgeting while eating. They're synthetic and **not device proof**.
+- **First measurements from the new debug build (Pixel 4a, no hand in view, idle rate):**
+  - Capture → analyser: p50 57 ms.
+  - Capture → JS: p50 125 ms.
+  - Hand model (CPU): p50 60 ms.
+- **Voice assistant (brief §7) not started:** it specifies paid OpenAI APIs and needs the user's sign-off on cost. iOS parity is blocked on Xcode or the Apple Developer Program.
+
 ## Also changed on 2026-09-17
 
 - **Crave opens on dishes.** The start screen used to show only the search box and chips, so there was nothing to swipe or look at ("i dont see any dish on the page"). It now loads a "Worth a look · <craving>" grid, rotating daily through the catalog's categories, with a "See all" link.

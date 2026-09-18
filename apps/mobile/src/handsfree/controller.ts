@@ -1,0 +1,557 @@
+// Hands-free controller: turns landmark samples into a small, deliberate state
+// machine, separating a reversible visual PREVIEW from a COMMITTED action.
+// Only a commit may navigate or change data; the preview just lets the screen
+// follow the hand from the moment its direction is clear.
+//
+//   searching → candidate → armed → previewing → (commit) → rearm → armed …
+//                                        ↘ (reversal / too slow) → rearm (settle first)
+//   A stable pointing finger switches to `dial` instead.
+//   Shape gestures (2026-09-18), each committed exactly once:
+//     armed (open, still) → closing → fist: `grab` (list moves down with the fingers)
+//     fist held still → opening → open: `release` (list moves up)
+//     pyramid held → open: `bloom` (open the highlighted dish)
+//     snap-ready held → snapped: `snap` (close the app)
+//
+// All timing uses the samples' capture time (camera clock, ms) and elapsed-time
+// tolerances, so behaviour is the same at 10, 18 or 30 frames a second. Travel
+// is measured in palm lengths, so a near hand and a far hand need the same
+// gesture. Pure and deterministic: tested off-device in scripts/gestures-test.ts.
+
+import {
+  classifyPose,
+  DialTracker,
+  INDEX,
+  isSnapped,
+  openness,
+  palmCenter,
+  palmScale,
+  toPoints,
+  type GestureEvent,
+  type Point,
+  type Pose,
+  type SwipeDirection,
+} from './gestures.ts';
+
+export type ControllerState =
+  | 'searching'
+  | 'candidate'
+  | 'armed'
+  | 'previewing'
+  | 'rearm'
+  | 'dial'
+  | 'closing'
+  | 'fist'
+  | 'opening'
+  | 'pyramid'
+  | 'snap';
+export type Preview = { axis: 'x' | 'y'; direction: SwipeDirection; progress: number } | null;
+export type Sample = { t: number; w: number; h: number; hand: readonly number[] | null | undefined };
+export type ControllerOutput = { state: ControllerState; pose: Pose | 'none'; preview: Preview; events: GestureEvent[] };
+
+// Baseline values carried over from the frame-based recogniser (tuned on real
+// Pixel 4a recordings), expressed in time and palm lengths.
+/** An open palm must be held this long before it can swipe (a hand rising into view reads as "up"). */
+export const ARM_MS = 300;
+/** A missing or misread sample shorter than this doesn't break a pose. */
+const GAP_MS = 120;
+/** A pointing finger must hold this long before the dial listens. */
+const POINT_DWELL_MS = 110;
+/** Motion older than this doesn't count towards a swipe. */
+const WINDOW_MS = 550;
+/** Preview starts once the hand has moved this far (palm lengths) in one clear direction. */
+const PREVIEW_MIN = 0.15;
+/** Full commit distance. 0.66 palm ≈ the old 22% of frame width at a typical distance. */
+const COMMIT_TRAVEL = 0.66;
+/** A fast flick commits earlier. */
+const FAST_COMMIT_TRAVEL = 0.45;
+const FAST_SPEED = 3; // palm lengths per second
+/** Never commit on less than this absolute travel (frame widths): far hands are noisy. */
+const MIN_ABS_TRAVEL = 0.08;
+/** The cross axis must stay under this share of the main axis. */
+const MAX_CROSS = 0.6;
+/** Pulling back this far (palm lengths) from the furthest point cancels a preview. */
+const CANCEL_REVERSAL = 0.2;
+/** After a commit: a minimum lockout, then the hand must settle (or leave, or change shape). */
+const REARM_MIN_MS = 250;
+const STILL_SPEED = 0.8; // palm lengths per second
+const STILL_MS = 120;
+const REARM_MAX_MS = 1500;
+/** Arming also needs the palm roughly still: a hand still moving into place can't arm. */
+const ARM_STILL_SPEED = 1.2; // palm lengths per second
+// Shape gestures: proposed starting values, to be tuned on real recordings.
+/** Closing a held open palm must reach a fist within this. */
+const GRAB_WINDOW_MS = 600;
+/** A fist must be held (and still) this long before opening it counts. */
+const FIST_ARM_MS = 300;
+/** Opening a held fist must reach an open palm within this. */
+const RELEASE_WINDOW_MS = 600;
+/** A fingertip pyramid must be held this long… */
+const PYRAMID_DWELL_MS = 200;
+/** …and open into a palm within this. */
+const BLOOM_WINDOW_MS = 600;
+/** Thumb-on-middle must be held this long… */
+const SNAP_DWELL_MS = 120;
+/** …and snap within this. A real snap takes one or two camera frames. */
+const SNAP_WINDOW_MS = 350;
+
+/** When a pose was first and last seen, tolerating short gaps. */
+class Held {
+  since: number | null = null;
+  last = -Infinity;
+  update(t: number, seen: boolean) {
+    if (seen) {
+      if (this.since === null || t - this.last > GAP_MS) this.since = t;
+      this.last = t;
+    } else if (t - this.last > GAP_MS) {
+      this.since = null;
+    }
+  }
+  heldFor(t: number): number {
+    return this.since === null ? 0 : t - this.since;
+  }
+  clear() {
+    this.since = null;
+    this.last = -Infinity;
+  }
+}
+/** Palms smaller than this (frame widths) are too far away or a false detection. */
+const MIN_PALM = 0.05;
+/** A palm jumping further than this between consecutive samples is a tracking glitch. */
+const MAX_JUMP = 1.5; // palm lengths
+
+type TrailPoint = { t: number; x: number; y: number };
+
+export class HandsFreeController {
+  private state: ControllerState = 'searching';
+  private pose: Pose | 'none' = 'none';
+  private lastT = -Infinity;
+  private lastHandAt = -Infinity;
+  private openSince: number | null = null;
+  private lastOpenAt = -Infinity;
+  private pointSince: number | null = null;
+  private lastPointAt = -Infinity;
+  private scale = 0;
+  private trail: TrailPoint[] = [];
+  private preview: { dir: SwipeDirection; origin: TrailPoint; furthest: number } | null = null;
+  private lastCommitAt = -Infinity;
+  /** Rearm can't complete before this time (a lockout after commits, none after a cancel). */
+  private rearmNotBefore = -Infinity;
+  private stillSince: number | null = null;
+  private dial = new DialTracker();
+  private fist = new Held();
+  private pyramid = new Held();
+  private snapReady = new Held();
+  /** Palm centres of every recent sample, whatever the pose (for stillness and glitch checks). */
+  private recent: TrailPoint[] = [];
+  private closingFrom = -Infinity;
+  /** Close/open preview: the list moves with the fingers. */
+  private shapePreview: { dir: SwipeDirection; progress: number } | null = null;
+
+  get currentState(): ControllerState {
+    return this.state;
+  }
+
+  /** Full reset: mode off, backgrounded, camera restarted. */
+  reset() {
+    this.state = 'searching';
+    this.pose = 'none';
+    this.lastT = -Infinity;
+    this.lastHandAt = -Infinity;
+    this.openSince = null;
+    this.lastOpenAt = -Infinity;
+    this.pointSince = null;
+    this.lastPointAt = -Infinity;
+    this.scale = 0;
+    this.trail = [];
+    this.preview = null;
+    this.lastCommitAt = -Infinity;
+    this.rearmNotBefore = -Infinity;
+    this.stillSince = null;
+    this.dial.reset();
+    this.clearShapes();
+    this.recent = [];
+  }
+
+  private clearShapes() {
+    this.fist.clear();
+    this.pyramid.clear();
+    this.snapReady.clear();
+    this.shapePreview = null;
+    this.closingFrom = -Infinity;
+  }
+
+  /**
+   * Another input (a touch) took over: cancel any preview and require the
+   * gesture to start again. Timing gates and rearm state are kept.
+   */
+  interrupt() {
+    // Arming again needs a still, open palm, so the rest of an interrupted
+    // sweep can't complete it.
+    this.preview = null;
+    this.trail = [];
+    this.openSince = null;
+    this.pointSince = null;
+    this.dial.reset();
+    this.clearShapes();
+    this.state = 'searching';
+  }
+
+  update(sample: Sample): ControllerOutput {
+    const events: GestureEvent[] = [];
+    const t = sample.t;
+    // Out-of-order or duplicate samples are dropped.
+    if (!(t > this.lastT)) return this.output(events);
+    this.lastT = t;
+
+    let pts = toPoints(sample.hand, sample.w > 0 && sample.h > 0 ? sample.h / sample.w : NaN);
+    let scale = pts ? palmScale(pts) : 0;
+    if (pts && scale < MIN_PALM) pts = null;
+    let center: Point | null = pts ? palmCenter(pts) : null;
+    // Reject implausible jumps (tracking glitches) against the last sample.
+    const prev = this.recent[this.recent.length - 1];
+    if (center && prev && t - prev.t < GAP_MS * 2 && Math.hypot(center.x - prev.x, center.y - prev.y) > MAX_JUMP * scale) {
+      pts = null;
+      center = null;
+    }
+
+    if (!pts) {
+      this.pose = t - this.lastHandAt > GAP_MS ? 'none' : this.pose;
+      if (t - this.lastHandAt > GAP_MS) this.lose();
+      return this.output(events);
+    }
+
+    // Samples resuming after a stale gap: treat as a new hand, never continue the old gesture.
+    if (t - this.lastHandAt > GAP_MS) this.lose();
+    this.lastHandAt = t;
+    this.scale = this.scale ? this.scale * 0.7 + scale * 0.3 : scale;
+    scale = this.scale;
+    const seen = classifyPose(pts);
+    this.pose = seen;
+    this.recent.push({ t, x: center!.x, y: center!.y });
+    while (this.recent.length > 1 && t - this.recent[0].t > 300) this.recent.shift();
+    this.fist.update(t, seen === 'fist');
+    this.pyramid.update(t, seen === 'pyramid');
+    this.snapReady.update(t, seen === 'snapReady');
+    const shape = this.shapes(t, seen, pts, scale, events);
+    if (shape) return this.output(events);
+
+    // Pose timing with a short gap tolerance: one misread sample doesn't reset it.
+    if (seen === 'open') {
+      if (this.openSince === null || t - this.lastOpenAt > GAP_MS) this.openSince = t;
+      this.lastOpenAt = t;
+    } else if (t - this.lastOpenAt > GAP_MS) {
+      this.openSince = null;
+    }
+    if (seen === 'point') {
+      if (this.pointSince === null || t - this.lastPointAt > GAP_MS) this.pointSince = t;
+      this.lastPointAt = t;
+    } else if (t - this.lastPointAt > GAP_MS) {
+      this.pointSince = null;
+    }
+
+    // Dial: a settled pointing finger.
+    if (this.pointSince !== null && t - this.pointSince >= POINT_DWELL_MS && seen === 'point') {
+      if (this.state !== 'dial') {
+        this.dial.reset();
+        this.preview = null;
+        this.trail = [];
+      }
+      this.state = 'dial';
+      const steps = this.dial.update(pts[INDEX.tip]);
+      if (steps !== 0) events.push({ type: 'dial', steps });
+      return this.output(events);
+    }
+    if (this.state === 'dial' && this.pointSince === null) {
+      this.dial.reset();
+      this.state = 'searching';
+    }
+
+    if (this.openSince === null) {
+      // Hand in view but not open: a release, which also completes any rearm.
+      this.preview = null;
+      this.trail = [];
+      if (this.state !== 'dial') this.state = 'searching';
+      return this.output(events);
+    }
+    if (seen !== 'open' || !center) {
+      // A tolerated misread inside an open-palm gesture: hold state, add nothing.
+      return this.output(events);
+    }
+
+    this.trail.push({ t, x: center.x, y: center.y });
+    while (this.trail.length > 1 && t - this.trail[0].t > WINDOW_MS) this.trail.shift();
+
+    if (this.state === 'rearm') {
+      if (this.rearmed(t, scale)) {
+        this.state = 'armed';
+        this.trail = [{ t, x: center.x, y: center.y }];
+      }
+      return this.output(events);
+    }
+
+    if (t - this.openSince < ARM_MS) {
+      this.state = 'candidate';
+      return this.output(events);
+    }
+    if ((this.state === 'searching' || this.state === 'candidate') && Math.hypot(...this.velocity(t)) / scale > ARM_STILL_SPEED) {
+      this.state = 'candidate'; // open long enough, but still moving into place
+      return this.output(events);
+    }
+    if (this.state === 'searching' || this.state === 'candidate') {
+      // Freshly armed: movement before this point doesn't count.
+      this.state = 'armed';
+      this.trail = [{ t, x: center.x, y: center.y }];
+      return this.output(events);
+    }
+
+    if (this.state === 'armed') {
+      const first = this.trail[0];
+      const dx = (center.x - first.x) / scale;
+      const dy = (center.y - first.y) / scale;
+      const horizontal = Math.abs(dx) >= Math.abs(dy);
+      const main = horizontal ? Math.abs(dx) : Math.abs(dy);
+      const cross = horizontal ? Math.abs(dy) : Math.abs(dx);
+      if (main >= PREVIEW_MIN && cross < main * MAX_CROSS) {
+        const dir: SwipeDirection = horizontal ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
+        this.preview = { dir, origin: first, furthest: 0 };
+        this.state = 'previewing';
+      }
+    }
+
+    if (this.state === 'previewing' && this.preview) {
+      const { dir, origin } = this.preview;
+      const along = alongAxis(dir, center.x - origin.x, center.y - origin.y);
+      const across = alongAxis(perpendicular(dir), center.x - origin.x, center.y - origin.y);
+      const travel = along / scale;
+      this.preview.furthest = Math.max(this.preview.furthest, travel);
+      const speed = this.speedAlong(dir, t) / scale;
+      const straight = Math.abs(across) < Math.abs(along) * MAX_CROSS;
+      const commit =
+        straight &&
+        Math.abs(along) >= MIN_ABS_TRAVEL &&
+        (travel >= COMMIT_TRAVEL || (travel >= FAST_COMMIT_TRAVEL && speed >= FAST_SPEED));
+      if (commit) {
+        events.push({ type: 'swipe', direction: dir });
+        this.preview = null;
+        this.state = 'rearm';
+        this.lastCommitAt = t;
+        this.rearmNotBefore = t + REARM_MIN_MS;
+        this.stillSince = null;
+        return this.output(events);
+      }
+      const reversed = travel < this.preview.furthest - CANCEL_REVERSAL;
+      const tooSlow = t - origin.t > WINDOW_MS;
+      if (reversed || tooSlow || !straight) {
+        // Incomplete sweep: the preview springs back, and the hand must settle
+        // before a new sweep, so pulling back can't start one the other way.
+        this.preview = null;
+        this.state = 'rearm';
+        this.lastCommitAt = t;
+        this.rearmNotBefore = t;
+        this.stillSince = null;
+      }
+    }
+    return this.output(events);
+  }
+
+  /**
+   * Shape gestures (grab, release, bloom, snap). Returns true when the sample
+   * was consumed by one of them.
+   */
+  private shapes(t: number, seen: Pose, pts: Point[], scale: number, events: GestureEvent[]): boolean {
+    this.shapePreview = null;
+    const still = Math.hypot(...this.velocity(t)) / scale <= ARM_STILL_SPEED;
+
+    // Snap: thumb on middle fingertip, held, then snapped apart.
+    if (this.state === 'snap') {
+      if (seen === 'snapReady') return true;
+      if (t - this.snapReady.last <= SNAP_WINDOW_MS) {
+        if (isSnapped(pts)) {
+          events.push({ type: 'snap' });
+          this.afterShape(t);
+        }
+        return true;
+      }
+      this.state = 'searching';
+    }
+    if (seen === 'snapReady' && this.snapReady.heldFor(t) >= SNAP_DWELL_MS) {
+      this.enterShape('snap');
+      return true;
+    }
+
+    // Bloom: fingertip pyramid, held, then opened.
+    if (this.state === 'pyramid') {
+      if (seen === 'pyramid') return true;
+      if (t - this.pyramid.last <= BLOOM_WINDOW_MS) {
+        if (seen === 'open') {
+          events.push({ type: 'bloom' });
+          this.afterShape(t);
+        }
+        return true;
+      }
+      this.state = 'searching';
+    }
+    if (seen === 'pyramid' && this.pyramid.heldFor(t) >= PYRAMID_DWELL_MS) {
+      this.enterShape('pyramid');
+      return true;
+    }
+
+    // Release: a held, still fist opens into a palm; the list moves up as it opens.
+    if (this.state === 'fist' || this.state === 'opening') {
+      if (seen === 'fist') {
+        this.state = 'fist';
+        return true;
+      }
+      if (t - this.fist.last <= RELEASE_WINDOW_MS) {
+        if (seen === 'open') {
+          events.push({ type: 'release' });
+          this.afterShape(t);
+          return true;
+        }
+        if (seen !== 'pyramid' && seen !== 'snapReady') {
+          this.state = 'opening';
+          this.shapePreview = { dir: 'up', progress: openness(pts) };
+          return true;
+        }
+      }
+      this.state = 'searching';
+    }
+    if (seen === 'fist' && this.fist.heldFor(t) >= FIST_ARM_MS && still && this.state !== 'closing') {
+      this.enterShape('fist');
+      return true;
+    }
+
+    // Grab: a Ready (armed, still) open palm closes into a fist; the list moves down with the fingers.
+    if (this.state === 'armed' || this.state === 'closing') {
+      if (seen === 'open') {
+        if (this.state === 'closing') {
+          // Opened again before reaching a fist: cancel.
+          this.state = 'armed';
+          this.trail = [{ t, x: this.recent[this.recent.length - 1].x, y: this.recent[this.recent.length - 1].y }];
+        }
+        return false;
+      }
+      if (seen === 'pyramid' || seen === 'snapReady') return false;
+      // A misread sample with the fingers still mostly out isn't a close.
+      if (this.state === 'armed' && openness(pts) > 0.75) return false;
+      if (this.state === 'armed') {
+        this.state = 'closing';
+        this.closingFrom = this.lastOpenAt;
+      }
+      if (t - this.closingFrom > GRAB_WINDOW_MS) {
+        this.state = 'searching';
+        this.trail = [];
+        return true;
+      }
+      if (seen === 'fist') {
+        events.push({ type: 'grab' });
+        this.afterShape(t);
+        // Opening this fist again (a release) needs it held first.
+        this.fist.since = t;
+        return true;
+      }
+      this.shapePreview = { dir: 'down', progress: 1 - openness(pts) };
+      return true;
+    }
+    return false;
+  }
+
+  private enterShape(state: 'snap' | 'pyramid' | 'fist') {
+    this.state = state;
+    this.preview = null;
+    this.trail = [];
+    this.dial.reset();
+  }
+
+  /** After a shape commit: nothing else fires until the hand settles or changes shape. */
+  private afterShape(t: number) {
+    this.state = 'rearm';
+    this.preview = null;
+    this.shapePreview = null;
+    this.trail = [];
+    this.lastCommitAt = t;
+    this.rearmNotBefore = t + REARM_MIN_MS;
+    this.stillSince = null;
+    this.pyramid.clear();
+    this.snapReady.clear();
+  }
+
+  /** After a commit or a cancel, the return stroke can't commit: wait for the hand to settle. */
+  private rearmed(t: number, scale: number): boolean {
+    if (t < this.rearmNotBefore) return false;
+    if (t - this.lastCommitAt > REARM_MAX_MS) return true;
+    const speed = Math.hypot(...this.velocity(t)) / scale;
+    if (speed > STILL_SPEED) {
+      this.stillSince = null;
+      return false;
+    }
+    if (this.stillSince === null) this.stillSince = t;
+    return t - this.stillSince >= STILL_MS;
+  }
+
+  /** Palm velocity (frame widths per second) over roughly the last 100 ms, whatever the pose. */
+  private velocity(t: number): [number, number] {
+    const last = this.recent[this.recent.length - 1];
+    if (!last) return [0, 0];
+    let ref = last;
+    for (let i = this.recent.length - 2; i >= 0; i--) {
+      ref = this.recent[i];
+      if (t - ref.t >= 100) break;
+    }
+    const dt = (last.t - ref.t) / 1000;
+    return dt > 0 ? [(last.x - ref.x) / dt, (last.y - ref.y) / dt] : [0, 0];
+  }
+
+  private speedAlong(dir: SwipeDirection, t: number): number {
+    const [vx, vy] = this.velocity(t);
+    return alongAxis(dir, vx, vy);
+  }
+
+  private lose() {
+    // Tracking lost or stale: cancel, never extrapolate. Leaving view also
+    // counts as releasing after a commit.
+    this.preview = null;
+    this.trail = [];
+    this.openSince = null;
+    this.pointSince = null;
+    this.dial.reset();
+    this.clearShapes();
+    this.recent = [];
+    this.state = 'searching';
+  }
+
+  private output(events: GestureEvent[]): ControllerOutput {
+    let preview: Preview = null;
+    if (this.shapePreview) {
+      preview = { axis: 'y', direction: this.shapePreview.dir, progress: this.shapePreview.progress };
+    } else if (this.state === 'previewing' && this.preview) {
+      const last = this.trail[this.trail.length - 1];
+      const { dir, origin } = this.preview;
+      const travel = last ? alongAxis(dir, last.x - origin.x, last.y - origin.y) / (this.scale || 1) : 0;
+      preview = {
+        axis: dir === 'left' || dir === 'right' ? 'x' : 'y',
+        direction: dir,
+        progress: Math.max(0, Math.min(1, travel / COMMIT_TRAVEL)),
+      };
+    }
+    return { state: this.state, pose: this.pose, preview, events };
+  }
+}
+
+/** Component of (x, y) along a swipe direction (positive = that way). */
+function alongAxis(dir: SwipeDirection, x: number, y: number): number {
+  switch (dir) {
+    case 'right':
+      return x;
+    case 'left':
+      return -x;
+    case 'down':
+      return y;
+    case 'up':
+      return -y;
+  }
+}
+
+function perpendicular(dir: SwipeDirection): SwipeDirection {
+  return dir === 'left' || dir === 'right' ? 'down' : 'right';
+}
