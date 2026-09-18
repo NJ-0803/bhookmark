@@ -177,6 +177,16 @@ r = run(sweep(FIST, [0.5, 0.6], [0.5, 0.3]));
 check('fist sweep up → no swipe', r.events.length === 0, show(r));
 r = run(sweep(POINT, [0.3, 0.5], [0.7, 0.5]));
 check('pointing sweep → no swipe', swipes(r.events).length === 0, show(r));
+{
+  // Regression (recording, 2026-09-18): a long "Ready" hold, then an up swipe
+  // that takes a few frames. It was cancelled one frame into its preview.
+  r = run([...still(OPEN, 0.5, 0.62, 20), ...move(OPEN, [0.5, 0.62], [0.5, 0.35], 7)]);
+  check('up swipe after a long Ready hold → one swipe up', only(r.events, 'up'), show(r));
+  r = run([...still(OPEN, 0.5, 0.35, 20), ...move(OPEN, [0.5, 0.35], [0.5, 0.62], 7)]);
+  check('down swipe after a long Ready hold → one swipe down', only(r.events, 'down'), show(r));
+  r = run([...still(OPEN, 0.5, 0.6, 20), ...move(OPEN, [0.5, 0.6], [0.5, 0.56], 14), ...still(OPEN, 0.5, 0.56, 10)]);
+  check('a slow up drift after a long hold → no swipe', r.events.length === 0, show(r));
+}
 r = run(sweep(OPEN, [0.47, 0.5], [0.53, 0.5]));
 check('small open-palm drift → no swipe', r.events.length === 0, show(r));
 r = run(sweep(OPEN, [0.3, 0.35], [0.6, 0.6]));

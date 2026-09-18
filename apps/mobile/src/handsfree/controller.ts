@@ -106,6 +106,13 @@ const SWIPE_ATTEMPT_TRAVEL = 0.25;
 const MIN_ABS_TRAVEL = 0.08;
 /** The cross axis must stay under this share of the main axis. */
 const MAX_CROSS = 0.6;
+/**
+ * A sweep must commit within this of its preview starting. Timed from the
+ * preview, not from the oldest motion sample: after a long "Ready" hold that
+ * sample is already ~WINDOW_MS old, which cancelled real up-swipes one frame
+ * into their preview (recording, 2026-09-18).
+ */
+const PREVIEW_MAX_MS = 600;
 /** Pulling back this far (palm lengths) from the furthest point cancels a preview. */
 const CANCEL_REVERSAL = 0.2;
 /** After a commit: a minimum lockout, then the hand must settle (or leave, or change shape). */
@@ -176,7 +183,7 @@ export class HandsFreeController {
   private lastPointAt = -Infinity;
   private scale = 0;
   private trail: TrailPoint[] = [];
-  private preview: { dir: SwipeDirection; origin: TrailPoint; furthest: number; peakSpeed: number } | null = null;
+  private preview: { dir: SwipeDirection; origin: TrailPoint; startedAt: number; furthest: number; peakSpeed: number } | null = null;
   private lastCommitAt = -Infinity;
   /** Rearm can't complete before this time (a lockout after commits, none after a cancel). */
   private rearmNotBefore = -Infinity;
@@ -390,7 +397,7 @@ export class HandsFreeController {
       const cross = horizontal ? Math.abs(dy) : Math.abs(dx);
       if (main >= PREVIEW_MIN && cross < main * MAX_CROSS) {
         const dir: SwipeDirection = horizontal ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
-        this.preview = { dir, origin: first, furthest: 0, peakSpeed: 0 };
+        this.preview = { dir, origin: first, startedAt: t, furthest: 0, peakSpeed: 0 };
         this.state = 'previewing';
       }
     }
@@ -420,7 +427,7 @@ export class HandsFreeController {
         return this.output(events);
       }
       const reversed = travel < this.preview.furthest - CANCEL_REVERSAL;
-      const tooSlow = t - origin.t > WINDOW_MS;
+      const tooSlow = t - this.preview.startedAt > PREVIEW_MAX_MS;
       if (reversed || tooSlow || !straight) {
         // Incomplete sweep: the preview springs back, and the hand must settle
         // before a new sweep, so pulling back can't start one the other way.
