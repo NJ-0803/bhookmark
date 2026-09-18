@@ -192,40 +192,54 @@ export function palmScale(p: Point[]): number {
   return dist(p[WRIST], p[MIDDLE.mcp]);
 }
 
-// The dial follows how the fingertip's direction of travel turns: a circle
-// turns it by a full 2π per lap wherever the circle is, a straight move by ~0.
-const DIAL_MIN_MOVE = 0.012;
-const DIAL_MAX_TURN_PER_SAMPLE = Math.PI / 2;
+// The dial measures the angle the fingertip sweeps around the centre of its
+// recent path (the mean of the last DIAL_WINDOW samples): a circle sweeps a full
+// 2π per lap wherever it is drawn; a straight move, whose centre trails behind
+// it on the same line, sweeps ~0. Replaces following how the direction of
+// travel turns, which at ~8 samples a second changed by more than the jitter
+// limit between most samples and lost most quarter turns (recording rec13,
+// 2026-09-18: p75 78°, p90 139° per sample).
+const DIAL_WINDOW = 8;
+/** The tip must be at least this far from the centre (frame widths) to count: near the centre, jitter spins the angle. */
+const DIAL_MIN_RADIUS = 0.025;
+/** A sweep larger than this in one sample is a glitch or a reversal, not part of a circle. */
+const DIAL_MAX_SWEEP_PER_SAMPLE = (5 * Math.PI) / 6;
 const DIAL_STEP = Math.PI / 2;
 
 export class DialTracker {
-  private last: Point | null = null;
-  private heading: number | null = null;
+  private path: Point[] = [];
+  private angle: number | null = null;
   private accum = 0;
 
   reset() {
-    this.last = null;
-    this.heading = null;
+    this.path = [];
+    this.angle = null;
     this.accum = 0;
   }
 
   /** Feed the fingertip; returns whole quarter-turn steps (+ clockwise). */
   update(tip: Point): number {
-    if (!this.last) this.last = tip;
-    const mx = tip.x - this.last.x;
-    const my = tip.y - this.last.y;
-    if (Math.hypot(mx, my) < DIAL_MIN_MOVE) return 0;
-    // y grows downwards, so an increasing heading turns clockwise on screen.
-    const heading = Math.atan2(my, mx);
-    if (this.heading !== null) {
-      let d = heading - this.heading;
+    this.path.push(tip);
+    if (this.path.length > DIAL_WINDOW) this.path.shift();
+    if (this.path.length < 3) return 0;
+    let cx = 0;
+    let cy = 0;
+    for (const q of this.path) {
+      cx += q.x;
+      cy += q.y;
+    }
+    cx /= this.path.length;
+    cy /= this.path.length;
+    if (Math.hypot(tip.x - cx, tip.y - cy) < DIAL_MIN_RADIUS) return 0;
+    // y grows downwards, so an increasing angle turns clockwise on screen.
+    const angle = Math.atan2(tip.y - cy, tip.x - cx);
+    if (this.angle !== null) {
+      let d = angle - this.angle;
       if (d > Math.PI) d -= 2 * Math.PI;
       if (d < -Math.PI) d += 2 * Math.PI;
-      // A sudden reversal is jitter or a new stroke, not part of a circle.
-      if (Math.abs(d) <= DIAL_MAX_TURN_PER_SAMPLE) this.accum += d;
+      if (Math.abs(d) <= DIAL_MAX_SWEEP_PER_SAMPLE) this.accum += d;
     }
-    this.heading = heading;
-    this.last = tip;
+    this.angle = angle;
     const steps = Math.trunc(this.accum / DIAL_STEP);
     this.accum -= steps * DIAL_STEP;
     return steps;

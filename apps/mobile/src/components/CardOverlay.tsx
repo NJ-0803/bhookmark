@@ -791,14 +791,34 @@ function TiltSensor({ tiltX, tiltY }: { tiltX: SharedValue<number>; tiltY: Share
 // Hands-free "window": with the camera on, the user's head position (not the
 // phone's tilt) moves the artwork against the hologram layer, like looking
 // through a window. Eases back to rest when no face is visible or on unmount.
+// Relative to where the head was when the dish opened (drifting slowly with
+// posture), not to a fixed centre: people hold phones low, and a fixed centre
+// left the art pushed to one side (recording rec13, 2026-09-18: head y offset
+// never went below +0.18). Heads move far less than phones tilt, hence the gain.
+const HEAD_GAIN = 2.2;
+/** Per animation frame; ~5 s to follow a change in posture. */
+const HEAD_BASE_DRIFT = 0.003;
 function HeadTilt({ tiltX, tiltY }: { tiltX: SharedValue<number>; tiltY: SharedValue<number> }) {
-  const { headX, headY, requestHeadTracking } = useHandsFree();
+  const { headX, headY, faceVisible, requestHeadTracking } = useHandsFree();
   useEffect(() => requestHeadTracking(), [requestHeadTracking]);
+  const base = useSharedValue<{ x: number; y: number } | null>(null);
   useAnimatedReaction(
-    () => [headX.value, headY.value] as const,
-    ([x, y]) => {
-      tiltX.value = x;
-      tiltY.value = y;
+    () => [headX.value, headY.value, faceVisible.value] as const,
+    ([x, y, seen]) => {
+      if (!seen) {
+        // No face: ease back to rest.
+        tiltX.value += (0 - tiltX.value) * 0.15;
+        tiltY.value += (0 - tiltY.value) * 0.15;
+        return;
+      }
+      const b = base.value;
+      if (!b) {
+        base.value = { x, y };
+        return;
+      }
+      base.value = { x: b.x + (x - b.x) * HEAD_BASE_DRIFT, y: b.y + (y - b.y) * HEAD_BASE_DRIFT };
+      tiltX.value = Math.max(-1, Math.min(1, (x - b.x) * HEAD_GAIN));
+      tiltY.value = Math.max(-1, Math.min(1, (y - b.y) * HEAD_GAIN));
     },
   );
   useEffect(

@@ -182,9 +182,10 @@ export function HandsFreeProvider({ children }: { children: ReactNode }) {
       if (frame.face) {
         const o = headOffset(frame.face);
         faceVisible.value = true;
-        // Frames arrive ~30/s; ease between them so the depth moves at 60+ fps.
-        headX.value = withTiming(o.x, { duration: 40, easing: Easing.linear });
-        headY.value = withTiming(o.y, { duration: 40, easing: Easing.linear });
+        // Frames arrive ~7–15/s on the Pixel 4a (recordings, 2026-09-18); ease
+        // over about one interval so the depth glides instead of stepping.
+        headX.value = withTiming(o.x, { duration: 110, easing: Easing.linear });
+        headY.value = withTiming(o.y, { duration: 110, easing: Easing.linear });
       } else if (faceVisible.value) {
         faceVisible.value = false;
         headX.value = withTiming(0, { duration: 300 });

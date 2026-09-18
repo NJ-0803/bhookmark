@@ -2,7 +2,7 @@
 // Record: start Metro with EXPO_PUBLIC_HANDSFREE_TRACE=1; the app then logs
 //   `[hfraw] {"t":…,"W":…,"H":…,"h":[…]}` for every analysed camera frame.
 //   adb logcat -d -s ReactNativeJS:V > recording.log
-// Run: node --experimental-strip-types scripts/gestures-replay.ts recording.log [--frames]
+// Run: node --experimental-strip-types scripts/gestures-replay.ts recording.log [--frames] [--learn] [--dial]
 // Prints committed gestures, state/pose counts and (when present) timing
 // percentiles; --frames adds one line per frame with each finger's measurement.
 import { readFileSync } from 'node:fs';
@@ -39,6 +39,8 @@ if (!frames.length) {
 // Recordings made before sizes were logged came from the Pixel 4a's 240×320 upright frame.
 const size = (f: Frame) => ({ w: f.W ?? 240, h: f.H ?? 320 });
 const c = new HandsFreeController();
+// --dial: replay as if the rating screen (and its dial) were showing.
+if (flags.includes('--dial')) c.setDialEnabled(true);
 const t0 = frames[0].t;
 const poses: Record<string, number> = { none: 0, open: 0, point: 0, fist: 0, pyramid: 0, snapReady: 0, other: 0 };
 const states: Record<string, number> = {};

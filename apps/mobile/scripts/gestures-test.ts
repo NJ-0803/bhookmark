@@ -583,7 +583,7 @@ check('snap after the window has passed → no snap', r.events.length === 0, sho
 }
 
 // --- dial (pointing circles)
-function circle(turns: number, clockwise: boolean, n = 40): Frame[] {
+function circle(turns: number, clockwise: boolean, n = 40, shapeAt: (i: number) => Shape = () => POINT): Frame[] {
   return Array.from({ length: n }, (_, i) => {
     const a = (clockwise ? 1 : -1) * (i / (n - 1)) * turns * 2 * Math.PI;
     // Move the whole hand so the index tip traces a circle (round in aspect-correct space).
@@ -591,7 +591,7 @@ function circle(turns: number, clockwise: boolean, n = 40): Frame[] {
     const tipOffsetY = 0.05 - 0.14;
     const tx = 0.5 + 0.1 * Math.cos(a);
     const ty = 0.5 + 0.1 * (W / H) * Math.sin(a);
-    return hand(POINT, tx - tipOffsetX, ty - tipOffsetY);
+    return hand(shapeAt(i), tx - tipOffsetX, ty - tipOffsetY);
   });
 }
 const withDwell = (frames: Frame[]) => [frames[0], frames[0], frames[0], ...frames];
@@ -625,6 +625,37 @@ check('pointing straight line → no dial', dialSum(r.events) === 0, `sum ${dial
 {
   r = run(withDwell(circle(1, true)), 55, dialOn());
   check('dial state is reported while pointing', r.outs.slice(4).every((o) => o.state === 'dial'));
+}
+
+// Dial at a real camera rate, with misread samples (recording rec13, 2026-09-18).
+{
+  // Two turns in 16 samples (~8/s, as recorded): 45° per sample.
+  r = run(withDwell(circle(2, true, 17)), 125, dialOn());
+  check('two fast turns at ~8 samples/s → about +8 steps', dialSum(r.events) >= 6 && dialSum(r.events) <= 8, `sum ${dialSum(r.events)}`);
+  // Every third sample misread, the hand still on its circle: the finger read
+  // short (pointing at the camera → a fist), or the other fingers mangled.
+  const misread = (frames: Frame[], every: number, as: (i: number) => Frame) => frames.map((f, i) => (i > 4 && i % every === 0 ? as(i) : f));
+  const base = withDwell(circle(2, true, 60));
+  // Read short, as when the finger points at the camera (index reach ~0.8–0.95 in rec13): half-curled.
+  const SHORT: Shape = { ...POINT, index: 'half' };
+  const shortFinger = withDwell(circle(2, true, 60, (i) => (i > 1 && i % 3 === 0 ? SHORT : POINT)));
+  r = run(shortFinger, 55, dialOn());
+  check('circling with a third of samples reading the finger short → still about +8', dialSum(r.events) >= 6, `sum ${dialSum(r.events)}`);
+  const mangled = withDwell(circle(2, true, 60, (i) => (i > 1 && i % 3 === 0 ? { ...POINT, middle: true, ring: true } : POINT)));
+  r = run(mangled, 55, dialOn());
+  check('…with the other fingers misread → still about +8', dialSum(r.events) >= 6, `sum ${dialSum(r.events)}`);
+  r = run(misread(base, 3, () => snapReadyHand()), 55, dialOn());
+  check('snap set-ups mixed into circling → never snap on the rating screen', !r.events.some((e) => e.type === 'snap'), show(r));
+  r = run(misread(base, 4, () => null), 55, dialOn());
+  check('…with samples lost to blur → still about +8', dialSum(r.events) >= 6, `sum ${dialSum(r.events)}`);
+  // One stray "open" sample doesn't end the dial; an open palm held does.
+  r = run(misread(base, 20, () => hand(OPEN, 0.5, 0.5)), 55, dialOn());
+  check('a single stray open sample mid-circle → dial continues', dialSum(r.events) >= 6, `sum ${dialSum(r.events)}`);
+  r = run([...withDwell(circle(0.5, true, 12)), hand(OPEN), hand(OPEN), hand(OPEN)], 55, dialOn());
+  check('an open palm held → the dial ends', r.outs[r.outs.length - 1].state !== 'dial', r.outs.map((o) => o.state).join(','));
+  // Nothing on the rating screen snaps, even a real snap.
+  r = run([...Array(4).fill(snapReadyHand()), snappedHand()], 60, dialOn());
+  check('a real snap on the rating screen → ignored there', !r.events.some((e) => e.type === 'snap'), show(r));
 }
 
 console.log(failures ? `\n${failures} FAILED` : '\nall passed');

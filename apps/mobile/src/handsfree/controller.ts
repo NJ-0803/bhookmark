@@ -111,6 +111,17 @@ const FLICK_SPEED = 2.8;
 const FLICK_MIN_MS = 150;
 /** A pointing finger must hold this long before the dial listens. */
 const POINT_DWELL_MS = 110;
+/**
+ * Once dialling, the dial keeps following the fingertip through samples that
+ * misread the pose (a finger pointing at the camera reads short, as a fist;
+ * blur mangles the other fingers into "other" or snap-ready) or lose the hand,
+ * for this long after the last clean pointing sample. An open palm ends it at
+ * once. Recording rec13 (2026-09-18): only 99 of 250 samples while circling
+ * read as pointing, and the dial counted 5 of ~19 quarter turns.
+ */
+const DIAL_GRACE_MS = 700;
+/** Loose pointing on the rating screen: index reach (palm lengths) above this, and above every other finger. */
+const DIAL_POINT_REACH = 1.05;
 /** Motion older than this doesn't count towards a swipe. */
 const WINDOW_MS = 550;
 /** Preview starts once the hand has moved this far (palm lengths) in one clear direction. */
@@ -250,6 +261,8 @@ export class HandsFreeController {
   private lastSteadyAt = -Infinity;
   /** When an open palm was last seen (a grab starts from one). */
   private lastOpenAt = -Infinity;
+  /** Consecutive open-palm samples (two end a dial). */
+  private openRun = 0;
   /** A rating dial is on screen: a pointing finger dials instead of swiping. */
   private dialEnabled = false;
   private pointSince: number | null = null;
@@ -484,7 +497,10 @@ export class HandsFreeController {
     this.fist.update(t, seen === 'fist', GAP_MS);
     this.pyramid.update(t, seen === 'pyramid', GAP_MS);
     this.snapReady.update(t, seen === 'snapReady', GAP_MS);
-    const shape = this.shapes(t, seen, pts, scale, events);
+    // The rating screen only dials: other shape gestures there would steal
+    // samples from the dial (a thumb resting on the curled middle finger while
+    // pointing read as a snap set-up), and nothing on it reacts to them.
+    const shape = !this.dialEnabled && this.shapes(t, seen, pts, scale, events);
     if (shape) return this.output(events);
 
     // Pose timing with a short gap tolerance: one misread sample doesn't reset it.
@@ -496,26 +512,42 @@ export class HandsFreeController {
       this.steadySince = null;
     }
     if (seen === 'open') this.lastOpenAt = t;
-    if (seen === 'point') {
+    // On the rating screen (nothing else to do there) pointing is read loosely:
+    // the index finger out and the most extended finger. Circling turns the
+    // finger towards the camera, where it reads short, and blur mangles the
+    // other fingers (rec13: loose 125 vs strict 99 of 190 samples).
+    let dialPoint = seen === 'point';
+    if (this.dialEnabled && !dialPoint && seen !== 'open') {
+      const d = poseDetail(pts);
+      dialPoint = d.index > DIAL_POINT_REACH && d.index > Math.max(d.middle, d.ring, d.pinky);
+    }
+    if (dialPoint) {
       if (this.pointSince === null || t - this.lastPointAt > GAP_MS) this.pointSince = t;
       this.lastPointAt = t;
     } else if (t - this.lastPointAt > GAP_MS) {
       this.pointSince = null;
     }
 
-    // Dial: a settled pointing finger, only while a rating dial is on screen.
-    if (this.dialEnabled && this.pointSince !== null && t - this.pointSince >= POINT_DWELL_MS && seen === 'point') {
+    // Dial: a settled pointing finger, only while a rating dial is on screen;
+    // once dialling, it rides through misread samples (DIAL_GRACE_MS).
+    const pointing = this.pointSince !== null && t - this.pointSince >= POINT_DWELL_MS && dialPoint;
+    // A single "open" sample mid-circle is usually blur; two in a row end the dial.
+    this.openRun = seen === 'open' ? this.openRun + 1 : 0;
+    const riding = this.state === 'dial' && this.openRun < 2 && t - this.lastPointAt <= DIAL_GRACE_MS;
+    if (this.dialEnabled && (pointing || riding)) {
       if (this.state !== 'dial') {
         this.dial.reset();
         this.preview = null;
         this.trail = [];
       }
       this.state = 'dial';
+      // Misread samples count too: on real recordings their tips stay close
+      // enough to the circle (rec13: 14 steps with them, 9 without).
       const steps = this.dial.update(pts[INDEX.tip]);
       if (steps !== 0) events.push({ type: 'dial', steps });
       return this.output(events);
     }
-    if (this.state === 'dial' && this.pointSince === null) {
+    if (this.state === 'dial') {
       this.dial.reset();
       this.state = 'searching';
     }
@@ -524,7 +556,7 @@ export class HandsFreeController {
       // Hand in view but in a non-swiping shape: a release, which also completes any rearm.
       this.preview = null;
       this.trail = [];
-      if (this.state !== 'dial') this.state = 'searching';
+      this.state = 'searching';
       return this.output(events);
     }
     if (!swipeable || !center) {
@@ -901,15 +933,18 @@ export class HandsFreeController {
     if (seenGone && wasReady && speed >= TOO_FAST_SPEED) this.lostFastAt = this.lastHandAt;
     // Tracking lost or stale: cancel, never extrapolate. Leaving view also
     // counts as releasing after a commit.
+    // A dial rides through a short dropout (blur mid-circle); DIAL_GRACE_MS ends it.
+    const keepDial = this.state === 'dial' && this.dialEnabled && t - this.lastPointAt <= DIAL_GRACE_MS;
     this.preview = null;
     this.trail = [];
     this.steadySince = null;
-    this.pointSince = null;
-    this.dial.reset();
     this.clearShapes();
     this.recent = [];
     this.noiseYs = [];
     this.resetFollow();
+    if (keepDial) return;
+    this.pointSince = null;
+    this.dial.reset();
     this.state = 'searching';
     if (snapPending) {
       this.state = 'snap';
