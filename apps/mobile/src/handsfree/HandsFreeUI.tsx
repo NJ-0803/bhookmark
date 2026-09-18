@@ -74,8 +74,8 @@ function Snap({ color, size = 56 }: { color: string; size?: number }) {
 const GESTURES = [
   {
     key: 'swipe',
-    title: 'Open-palm air swipe',
-    body: 'Hold an open hand still about a forearm\'s length in front of the screen. When the top of the screen says "Ready", sweep up or down to scroll, or sideways to move between open dishes. The screen follows your hand as you move; a half-finished sweep springs back.',
+    title: 'Air swipe',
+    body: 'Hold your hand still, in any shape, about a forearm\'s length in front of the screen. When the top of the screen says "Ready", sweep up or down to scroll, or sideways to move between open dishes. The screen follows your hand; a half-finished sweep springs back. Right after a swipe, a quick flick swipes again.',
     Art: OpenPalm,
   },
   {

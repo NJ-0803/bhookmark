@@ -92,6 +92,16 @@ export const ARM_MS = 300;
  */
 const GAP_MIN_MS = 120;
 const GAP_MAX_MS = 250;
+/**
+ * Swipes work from any steady hand shape (user decision, 2026-09-18: "palm,
+ * fist, 2 fingers, 1 finger, everything"), except the set-ups that belong to
+ * other gestures (pyramid, snap), and a pointing finger while a rating dial is
+ * on screen.
+ */
+/** Right after a swipe, a fast flick (this speed or more, palm lengths/s) may swipe again; a slower return of the hand doesn't. */
+const FLICK_SPEED = 2.8;
+/** …but not sooner than this after the last swipe. */
+const FLICK_MIN_MS = 150;
 /** A pointing finger must hold this long before the dial listens. */
 const POINT_DWELL_MS = 110;
 /** Motion older than this doesn't count towards a swipe. */
@@ -177,14 +187,21 @@ export class HandsFreeController {
   private intervals: number[] = [];
   private gap = GAP_MIN_MS;
   private lastHandAt = -Infinity;
-  private openSince: number | null = null;
+  /** When a swipe-capable hand shape was first and last seen (gap-tolerant). */
+  private steadySince: number | null = null;
+  private lastSteadyAt = -Infinity;
+  /** When an open palm was last seen (a grab starts from one). */
   private lastOpenAt = -Infinity;
+  /** A rating dial is on screen: a pointing finger dials instead of swiping. */
+  private dialEnabled = false;
   private pointSince: number | null = null;
   private lastPointAt = -Infinity;
   private scale = 0;
   private trail: TrailPoint[] = [];
   private preview: { dir: SwipeDirection; origin: TrailPoint; startedAt: number; furthest: number; peakSpeed: number } | null = null;
   private lastCommitAt = -Infinity;
+  /** Direction of the last swipe (or abandoned sweep); a flick must go another way. Null after other gestures. */
+  private lastSwipeDir: SwipeDirection | null = null;
   /** Rearm can't complete before this time (a lockout after commits, none after a cancel). */
   private rearmNotBefore = -Infinity;
   private stillSince: number | null = null;
@@ -217,6 +234,15 @@ export class HandsFreeController {
     return this.state;
   }
 
+  /** The rating screen turns the pointing-finger dial on; elsewhere one finger swipes. */
+  setDialEnabled(on: boolean) {
+    this.dialEnabled = on;
+    if (!on && this.state === 'dial') {
+      this.dial.reset();
+      this.state = 'searching';
+    }
+  }
+
   /** Thresholds adapted per user by the learner (learning.ts). */
   setTuning(tuning: ControllerTuning) {
     this.tuning = { snap: { ...tuning.snap }, swipe: { ...tuning.swipe }, shape: { ...tuning.shape } };
@@ -230,7 +256,8 @@ export class HandsFreeController {
     this.intervals = [];
     this.gap = GAP_MIN_MS;
     this.lastHandAt = -Infinity;
-    this.openSince = null;
+    this.steadySince = null;
+    this.lastSteadyAt = -Infinity;
     this.lastOpenAt = -Infinity;
     this.pointSince = null;
     this.lastPointAt = -Infinity;
@@ -238,6 +265,7 @@ export class HandsFreeController {
     this.trail = [];
     this.preview = null;
     this.lastCommitAt = -Infinity;
+    this.lastSwipeDir = null;
     this.rearmNotBefore = -Infinity;
     this.stillSince = null;
     this.dial.reset();
@@ -265,7 +293,7 @@ export class HandsFreeController {
     // sweep can't complete it.
     this.preview = null;
     this.trail = [];
-    this.openSince = null;
+    this.steadySince = null;
     this.pointSince = null;
     this.dial.reset();
     this.clearShapes();
@@ -320,12 +348,14 @@ export class HandsFreeController {
     if (shape) return this.output(events);
 
     // Pose timing with a short gap tolerance: one misread sample doesn't reset it.
-    if (seen === 'open') {
-      if (this.openSince === null || t - this.lastOpenAt > GAP_MS) this.openSince = t;
-      this.lastOpenAt = t;
-    } else if (t - this.lastOpenAt > GAP_MS) {
-      this.openSince = null;
+    const swipeable = seen !== 'pyramid' && seen !== 'snapReady' && !(seen === 'point' && this.dialEnabled);
+    if (swipeable) {
+      if (this.steadySince === null || t - this.lastSteadyAt > GAP_MS) this.steadySince = t;
+      this.lastSteadyAt = t;
+    } else if (t - this.lastSteadyAt > GAP_MS) {
+      this.steadySince = null;
     }
+    if (seen === 'open') this.lastOpenAt = t;
     if (seen === 'point') {
       if (this.pointSince === null || t - this.lastPointAt > GAP_MS) this.pointSince = t;
       this.lastPointAt = t;
@@ -333,8 +363,8 @@ export class HandsFreeController {
       this.pointSince = null;
     }
 
-    // Dial: a settled pointing finger.
-    if (this.pointSince !== null && t - this.pointSince >= POINT_DWELL_MS && seen === 'point') {
+    // Dial: a settled pointing finger, only while a rating dial is on screen.
+    if (this.dialEnabled && this.pointSince !== null && t - this.pointSince >= POINT_DWELL_MS && seen === 'point') {
       if (this.state !== 'dial') {
         this.dial.reset();
         this.preview = null;
@@ -350,15 +380,15 @@ export class HandsFreeController {
       this.state = 'searching';
     }
 
-    if (this.openSince === null) {
-      // Hand in view but not open: a release, which also completes any rearm.
+    if (this.steadySince === null) {
+      // Hand in view but in a non-swiping shape: a release, which also completes any rearm.
       this.preview = null;
       this.trail = [];
       if (this.state !== 'dial') this.state = 'searching';
       return this.output(events);
     }
-    if (seen !== 'open' || !center) {
-      // A tolerated misread inside an open-palm gesture: hold state, add nothing.
+    if (!swipeable || !center) {
+      // A tolerated misread inside a swipe: hold state, add nothing.
       return this.output(events);
     }
 
@@ -366,6 +396,7 @@ export class HandsFreeController {
     while (this.trail.length > 1 && t - this.trail[0].t > WINDOW_MS) this.trail.shift();
 
     if (this.state === 'rearm') {
+      if (this.flick(t, scale, events)) return this.output(events);
       if (this.rearmed(t, scale)) {
         this.state = 'armed';
         this.trail = [{ t, x: center.x, y: center.y }];
@@ -373,12 +404,12 @@ export class HandsFreeController {
       return this.output(events);
     }
 
-    if (t - this.openSince < ARM_MS) {
+    if (t - this.steadySince < ARM_MS) {
       this.state = 'candidate';
       return this.output(events);
     }
     if ((this.state === 'searching' || this.state === 'candidate') && Math.hypot(...this.velocity(t)) / scale > ARM_STILL_SPEED) {
-      this.state = 'candidate'; // open long enough, but still moving into place
+      this.state = 'candidate'; // steady long enough, but still moving into place
       return this.output(events);
     }
     if (this.state === 'searching' || this.state === 'candidate') {
@@ -422,6 +453,7 @@ export class HandsFreeController {
         this.preview = null;
         this.state = 'rearm';
         this.lastCommitAt = t;
+        this.lastSwipeDir = dir;
         this.rearmNotBefore = t + REARM_MIN_MS;
         this.stillSince = null;
         return this.output(events);
@@ -437,6 +469,7 @@ export class HandsFreeController {
         this.preview = null;
         this.state = 'rearm';
         this.lastCommitAt = t;
+        this.lastSwipeDir = dir;
         this.rearmNotBefore = t;
         this.stillSince = null;
       }
@@ -514,6 +547,11 @@ export class HandsFreeController {
     // Release: a held, still fist opens into a palm; the list moves up as it opens.
     if (this.state === 'fist' || this.state === 'opening') {
       if (seen === 'fist') {
+        if (!still && this.state === 'fist') {
+          // A held fist that starts moving is swiping, not opening.
+          this.state = 'armed';
+          return false;
+        }
         this.state = 'fist';
         return true;
       }
@@ -551,6 +589,8 @@ export class HandsFreeController {
         return false;
       }
       if (seen === 'pyramid') return false;
+      // A close starts from an open palm; other steady shapes just swipe.
+      if (this.state === 'armed' && t - this.lastOpenAt > this.gap) return false;
       // A misread sample with the fingers still mostly out isn't a close.
       if (this.state === 'armed' && openness(pts) > 0.75) return false;
       if (this.state === 'armed') {
@@ -595,6 +635,7 @@ export class HandsFreeController {
   /** After a shape commit: nothing else fires until the hand settles or changes shape. */
   private afterShape(t: number) {
     this.state = 'rearm';
+    this.lastSwipeDir = null; // no flicks straight after a close/open, bloom or snap
     this.preview = null;
     this.shapePreview = null;
     this.trail = [];
@@ -603,6 +644,43 @@ export class HandsFreeController {
     this.stillSince = null;
     this.pyramid.clear();
     this.snapReady.clear();
+  }
+
+  /**
+   * Right after a swipe (or an abandoned one), a fast, straight flick of at
+   * least the commit distance swipes again, in any direction. A slower return
+   * of the hand doesn't (user decision, 2026-09-18; recorded returns were about
+   * half the speed of real swipes).
+   */
+  private flick(t: number, scale: number, events: GestureEvent[]): boolean {
+    const prevDir = this.lastSwipeDir;
+    if (!prevDir || t - this.lastCommitAt < FLICK_MIN_MS) return false;
+    const since = this.trail.filter((p) => p.t >= this.lastCommitAt);
+    // Measure from the turning point: the rest of the previous sweep isn't a flick.
+    let turn = 0;
+    for (let i = 1; i < since.length; i++) {
+      if (alongAxis(prevDir, since[i].x - since[0].x, since[i].y - since[0].y) > alongAxis(prevDir, since[turn].x - since[0].x, since[turn].y - since[0].y)) turn = i;
+    }
+    const path = since.slice(turn);
+    if (path.length < 2) return false;
+    const first = path[0];
+    const last = path[path.length - 1];
+    const dx = (last.x - first.x) / scale;
+    const dy = (last.y - first.y) / scale;
+    const horizontal = Math.abs(dx) >= Math.abs(dy);
+    const main = horizontal ? Math.abs(dx) : Math.abs(dy);
+    const cross = horizontal ? Math.abs(dy) : Math.abs(dx);
+    const dir: SwipeDirection = horizontal ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
+    const speed = this.speedAlong(dir, t) / scale;
+    if (dir === prevDir) return false;
+    if (main * scale < MIN_ABS_TRAVEL || main < this.tuning.swipe.commitTravel || cross >= main * MAX_CROSS || speed < FLICK_SPEED) return false;
+    events.push({ type: 'swipe', direction: dir });
+    this.lastSwipeDir = dir;
+    this.attempt = { kind: 'swipe', t, fired: true, direction: dir, travel: main, speed };
+    this.lastCommitAt = t;
+    this.rearmNotBefore = t + REARM_MIN_MS;
+    this.stillSince = null;
+    return true;
   }
 
   /** After a commit or a cancel, the return stroke can't commit: wait for the hand to settle. */
@@ -648,7 +726,7 @@ export class HandsFreeController {
     // counts as releasing after a commit.
     this.preview = null;
     this.trail = [];
-    this.openSince = null;
+    this.steadySince = null;
     this.pointSince = null;
     this.dial.reset();
     this.clearShapes();

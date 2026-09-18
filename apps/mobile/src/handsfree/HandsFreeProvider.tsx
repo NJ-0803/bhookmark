@@ -58,6 +58,8 @@ type HandsFreeContextValue = {
   cancelSnap: () => void;
   /** Forget everything learned about this user's gestures and go back to the defaults. */
   resetLearning: () => void;
+  /** A rating dial is on screen: a pointing finger dials instead of swiping. */
+  setDialActive: (on: boolean) => void;
   /**
    * Gesture listeners run newest-first; a listener that returns true consumes
    * the event, so an open panel or the rating screen takes priority over the
@@ -304,6 +306,8 @@ export function HandsFreeProvider({ children }: { children: ReactNode }) {
     saveLearning();
   }, [saveLearning]);
 
+  const setDialActive = useCallback((on: boolean) => controller.current.setDialEnabled(on), []);
+
   const resetLearning = useCallback(() => {
     learner.current = new GestureLearner();
     controller.current.setTuning(learner.current.tuning());
@@ -311,8 +315,8 @@ export function HandsFreeProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ available, enabled, status, error, setEnabled, introSeen, markIntroSeen, showIntro, headX, headY, faceVisible, previewX, previewY, interrupt, cancelSnap, resetLearning, subscribe, requestHeadTracking }),
-    [available, enabled, status, error, setEnabled, introSeen, markIntroSeen, showIntro, headX, headY, faceVisible, previewX, previewY, interrupt, cancelSnap, resetLearning, subscribe, requestHeadTracking],
+    () => ({ available, enabled, status, error, setEnabled, introSeen, markIntroSeen, showIntro, headX, headY, faceVisible, previewX, previewY, interrupt, cancelSnap, resetLearning, setDialActive, subscribe, requestHeadTracking }),
+    [available, enabled, status, error, setEnabled, introSeen, markIntroSeen, showIntro, headX, headY, faceVisible, previewX, previewY, interrupt, cancelSnap, resetLearning, setDialActive, subscribe, requestHeadTracking],
   );
   return (
     <HandsFreeContext.Provider value={value}>
@@ -330,6 +334,16 @@ export function useHandsFree(): HandsFreeContextValue {
   const ctx = useContext(HandsFreeContext);
   if (!ctx) throw new Error('useHandsFree must be used inside HandsFreeProvider');
   return ctx;
+}
+
+/** While `active`, a pointing finger drives the rating dial (elsewhere one finger swipes). */
+export function useHandsFreeDial(active: boolean) {
+  const { setDialActive } = useHandsFree();
+  useEffect(() => {
+    if (!active) return;
+    setDialActive(true);
+    return () => setDialActive(false);
+  }, [active, setDialActive]);
 }
 
 /** Subscribe to gestures while `active`; return true from the handler to consume an event. */

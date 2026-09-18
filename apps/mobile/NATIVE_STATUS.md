@@ -202,6 +202,16 @@ The fixes:
 - **Replay with learning on,** over all four recordings: the same gestures fire as without it (no new false triggers). None of the recordings contains a swipe near-miss followed by a retry, so swipe learning is proven by tests, not yet by a real session.
 - **Tests:** 106 checks.
 
+### Swipes: any hand shape, quick flicks, preview timing (2026-09-18, late)
+
+- **Preview timing bug:** "too slow" was timed from the oldest motion sample, so after a long Ready hold, real up-swipes were cancelled one frame into their preview. In the user's session, 0 of the up swipes fired. It's now 600 ms from the preview starting.
+- **User decisions:**
+  - Swipes work from **any hand shape** (palm, fist, two fingers, one finger). The exceptions are the pyramid and snap set-ups, and a pointing finger while the rating dial is on screen: `useHandsFreeDial` in LogFlow's rating step.
+  - A held, still fist that starts moving swipes instead of waiting to open. Grab (close) still has to start from an open palm.
+  - **Quick flicks back-to-back:** right after a swipe, a fast (≥ 2.8 palm/s), straight flick of at least the commit distance in another direction swipes again. It's measured from the turning point, so the tail of the same sweep never counts. Recorded returns were about 1.5 palm/s. There are no flicks straight after close/open, bloom or snap.
+- **Replays:** in the swipe sessions, up swipes went from 1 to 3 and from 0 to 1. The new gestures are the flicks the user asked for and a fast straight down sweep. Left/right sweeps now fire in recordings where the hand moved sideways; on Crave they do nothing.
+- **Tests:** 116 checks.
+
 ## Also changed on 2026-09-17
 
 - **Crave opens on dishes.** The start screen used to show only the search box and chips, so there was nothing to swipe or look at ("i dont see any dish on the page"). It now loads a "Worth a look · <craving>" grid, rotating daily through the catalog's categories, with a "See all" link.

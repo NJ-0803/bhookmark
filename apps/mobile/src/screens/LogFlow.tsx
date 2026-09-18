@@ -16,7 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { createLog, type RemoteLog } from '../api/client';
-import { useHandsFree, useHandsFreeGestures } from '../handsfree/HandsFreeProvider';
+import { useHandsFree, useHandsFreeDial, useHandsFreeGestures } from '../handsfree/HandsFreeProvider';
 import CategoryArt from '../components/CategoryArt';
 import type { OverlayDish } from '../components/CardOverlay';
 import RatingPicker from '../components/RatingPicker';
@@ -66,6 +66,7 @@ export default function LogFlow({
 
   // Hands-free rating dial: point one finger and draw circles in the air.
   // Clockwise raises, anticlockwise lowers, half a point per quarter turn.
+  useHandsFreeDial(step === 'rate' && !saving);
   useHandsFreeGestures(step === 'rate' && !saving, (event) => {
     if (event.type === 'dial') {
       setRating((r) => Math.min(10, Math.max(0, (r ?? 5) + event.steps * 0.5)));

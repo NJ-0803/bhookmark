@@ -169,14 +169,23 @@ check('open sweep down → one swipe down', only(r.events, 'down'), show(r));
 }
 
 // --- shapes and motions that must not swipe
-r = run(sweep(TWO, [0.3, 0.5], [0.7, 0.5]));
-check('two-finger sweep → no swipe', r.events.length === 0, show(r));
+// Any hand shape swipes (user decision, 2026-09-18).
+r = run(sweep(TWO, [0.5, 0.6], [0.5, 0.3]));
+check('two-finger sweep up → one swipe up', only(r.events, 'up'), show(r));
 r = run(sweep(THREE, [0.3, 0.5], [0.7, 0.5]));
-check('three-finger sweep → no swipe', r.events.length === 0, show(r));
-r = run(sweep(FIST, [0.5, 0.6], [0.5, 0.3]));
-check('fist sweep up → no swipe', r.events.length === 0, show(r));
-r = run(sweep(POINT, [0.3, 0.5], [0.7, 0.5]));
-check('pointing sweep → no swipe', swipes(r.events).length === 0, show(r));
+check('three-finger sweep right → one swipe right', only(r.events, 'right'), show(r));
+r = run(sweep(FIST, [0.5, 0.3], [0.5, 0.6]));
+check('fist sweep down → one swipe down (not a release)', only(r.events, 'down'), show(r));
+r = run(sweep(POINT, [0.5, 0.6], [0.5, 0.3]));
+check('pointing sweep up → one swipe up (no rating dial on screen)', only(r.events, 'up'), show(r));
+{
+  const c = new HandsFreeController();
+  c.setDialEnabled(true);
+  r = run(sweep(POINT, [0.5, 0.6], [0.5, 0.3]), 55, { c });
+  check('pointing sweep on the rating screen → no swipe (the finger dials there)', swipes(r.events).length === 0, show(r));
+}
+r = run(sweep(snapReadyHand(), [0.5, 0.6], [0.5, 0.3]).map(() => snapReadyHand()));
+check('snap set-up held still → no swipe', swipes(r.events).length === 0, show(r));
 {
   // Regression (recording, 2026-09-18): a long "Ready" hold, then an up swipe
   // that takes a few frames. It was cancelled one frame into its preview.
@@ -208,7 +217,7 @@ check('open hand still rising 770 ms after entering → no swipe', r.events.leng
   frames[HOLD + 2] = hand(FIST, 0.4);
   frames[HOLD + 3] = hand(FIST, 0.43); // the hand closes for ~165 ms mid-sweep
   r = run(frames);
-  check('hand closes mid-sweep → cancelled', r.events.length === 0, show(r));
+  check('hand closes mid-sweep → the swipe carries on (any shape swipes)', only(r.events, 'right'), show(r));
 }
 
 // --- tracking gaps, timing and bad data
@@ -261,10 +270,15 @@ for (const fps of [10, 18, 30]) {
 // --- exactly once, return stroke, rearm
 r = run(sweep(OPEN, [0.3, 0.5], [0.8, 0.5], 10));
 check('long sweep → exactly one swipe', only(r.events, 'right'), show(r));
-r = run([...sweep(OPEN, [0.5, 0.6], [0.5, 0.3]), ...move(OPEN, [0.5, 0.3], [0.5, 0.6], 6)]);
-check('swipe up then bring the hand straight back → only up', only(r.events, 'up'), show(r));
-r = run([...sweep(OPEN, [0.5, 0.6], [0.5, 0.3]), ...move(OPEN, [0.5, 0.3], [0.5, 0.6], 6), ...still(OPEN, 0.5, 0.6, 5), ...move(OPEN, [0.5, 0.6], [0.5, 0.3], 6)]);
-check('up, return, settle, up again → two swipes up', only(r.events, 'up', 'up'), show(r));
+// Returns at a realistic pace (~1.5–2 palm/s, as recorded) versus a deliberate flick.
+r = run([...sweep(OPEN, [0.5, 0.6], [0.5, 0.3]), ...move(OPEN, [0.5, 0.3], [0.5, 0.6], 26)]);
+check('swipe up then slowly bring the hand back → only up', only(r.events, 'up'), show(r));
+r = run([...sweep(OPEN, [0.5, 0.6], [0.5, 0.3]), ...move(OPEN, [0.5, 0.3], [0.5, 0.6], 26), ...still(OPEN, 0.5, 0.6, 5), ...move(OPEN, [0.5, 0.6], [0.5, 0.3], 6)]);
+check('up, slow return, settle, up again → two swipes up', only(r.events, 'up', 'up'), show(r));
+r = run([...sweep(OPEN, [0.5, 0.3], [0.5, 0.6]), ...move(OPEN, [0.5, 0.6], [0.5, 0.3], 5)]);
+check('down, then a quick flick straight back up → down, up', only(r.events, 'down', 'up'), show(r));
+r = run([...sweep(OPEN, [0.5, 0.3], [0.5, 0.65], 12)]);
+check('one long down sweep → still one swipe (no flick from its own tail)', only(r.events, 'down'), show(r));
 r = run([...sweep(OPEN, [0.3, 0.5], [0.7, 0.5]), ...Array(10).fill(null), ...sweep(OPEN, [0.7, 0.5], [0.3, 0.5])]);
 check('right, hand leaves, then left → both', only(r.events, 'right', 'left'), show(r));
 {
@@ -496,29 +510,35 @@ function circle(turns: number, clockwise: boolean, n = 40): Frame[] {
   });
 }
 const withDwell = (frames: Frame[]) => [frames[0], frames[0], frames[0], ...frames];
+// The rating screen turns the dial on; every dial test runs as if it's on screen.
+const dialOn = () => {
+  const c = new HandsFreeController();
+  c.setDialEnabled(true);
+  return { c };
+};
 const dialSum = (e: GestureEvent[]) => e.reduce((a, x) => a + (x.type === 'dial' ? x.steps : 0), 0);
-r = run(withDwell(circle(1, true)));
+r = run(withDwell(circle(1, true)), 55, dialOn());
 check('one clockwise turn → about +4 steps', dialSum(r.events) >= 3 && dialSum(r.events) <= 4, `sum ${dialSum(r.events)}`);
-r = run(withDwell(circle(1, false)));
+r = run(withDwell(circle(1, false)), 55, dialOn());
 check('one anticlockwise turn → about −4 steps', dialSum(r.events) <= -3 && dialSum(r.events) >= -4, `sum ${dialSum(r.events)}`);
-r = run(withDwell(circle(2, true, 80)));
+r = run(withDwell(circle(2, true, 80)), 55, dialOn());
 check('two clockwise turns → about +8 steps', dialSum(r.events) >= 7 && dialSum(r.events) <= 8, `sum ${dialSum(r.events)}`);
 {
   const jitter = rng(11);
-  r = run(Array.from({ length: 40 }, () => hand(POINT, 0.5 + (jitter() - 0.5) * 0.01, 0.5)));
+  r = run(Array.from({ length: 40 }, () => hand(POINT, 0.5 + (jitter() - 0.5) * 0.01, 0.5)), 55, dialOn());
   check('pointing but still (jitter) → no steps', dialSum(r.events) === 0, `sum ${dialSum(r.events)}`);
 }
 {
   const frames = withDwell(circle(1, true));
-  r = run(frames.map((f, i) => (i % 10 === 5 ? hand(OPEN) : f)));
+  r = run(frames.map((f, i) => (i % 10 === 5 ? hand(OPEN) : f)), 55, dialOn());
   check('open hand interrupts circling → fewer steps', Math.abs(dialSum(r.events)) < 4, `sum ${dialSum(r.events)}`);
 }
-r = run(Array.from({ length: 40 }, (_, i) => hand(OPEN, 0.5 + 0.1 * Math.cos(i / 6), 0.5 + 0.1 * Math.sin(i / 6))));
+r = run(Array.from({ length: 40 }, (_, i) => hand(OPEN, 0.5 + 0.1 * Math.cos(i / 6), 0.5 + 0.1 * Math.sin(i / 6))), 55, dialOn());
 check('open-palm circle → no dial', dialSum(r.events) === 0);
-r = run(withDwell(move(POINT, [0.2, 0.5], [0.8, 0.5], 16)));
+r = run(withDwell(move(POINT, [0.2, 0.5], [0.8, 0.5], 16)), 55, dialOn());
 check('pointing straight line → no dial', dialSum(r.events) === 0, `sum ${dialSum(r.events)}`);
 {
-  r = run(withDwell(circle(1, true)));
+  r = run(withDwell(circle(1, true)), 55, dialOn());
   check('dial state is reported while pointing', r.outs.slice(4).every((o) => o.state === 'dial'));
 }
 
