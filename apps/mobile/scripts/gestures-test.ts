@@ -3,8 +3,8 @@
 // Run: node --experimental-strip-types scripts/gestures-test.ts
 import { HandsFreeController, type ControllerOutput } from '../src/handsfree/controller.ts';
 import { classifyPose, toPoints, type GestureEvent } from '../src/handsfree/gestures.ts';
-import { SNAP_CEIL, SNAP_FLOOR, SnapLearner } from '../src/handsfree/snapLearning.ts';
-import { DEFAULT_SNAP_TUNING } from '../src/handsfree/controller.ts';
+import { GestureLearner, SHAPE_WINDOW_MAX_MS, SNAP_CEIL, SNAP_FLOOR, SWIPE_FLOOR, SnapLearner } from '../src/handsfree/learning.ts';
+import { DEFAULT_SNAP_TUNING, DEFAULT_TUNING } from '../src/handsfree/controller.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = '') {
@@ -327,6 +327,10 @@ r = run([snappedHand(), snappedHand(), snappedHand()]);
 check('snapped shape without the set-up → no snap', r.events.length === 0, show(r));
 r = run([snapApproachHand(), snapReadyHand(), snappedHand(), snappedHand()]);
 check('one-sample touch after a snap-shape lead-in, then snapped (a quick real snap) → one snap', JSON.stringify(types(r.events)) === '["snap"]', show(r));
+r = run([...Array(4).fill(snapReadyHand()), null, null, snappedHand()], 60);
+check('the snap blurs the hand out for 2 frames (~180 ms), then snapped → one snap', JSON.stringify(types(r.events)) === '["snap"]', show(r));
+r = run([...Array(4).fill(snapReadyHand()), ...Array(8).fill(null), snappedHand()], 60);
+check('hand gone longer than the snap window, then a snapped shape → no snap', r.events.length === 0, show(r));
 r = run([hand(OPEN), snapReadyHand(), snappedHand(), snappedHand()]);
 check('one-sample "touch" straight out of an open hand (a misread) → no snap', r.events.length === 0, show(r));
 {
@@ -358,7 +362,7 @@ check('snap after the window has passed → no snap', r.events.length === 0, sho
   check('learning never goes below the floor', tuned.minRate >= SNAP_FLOOR.minRate && tuned.minDelta >= SNAP_FLOOR.minDelta);
   // The same user's style now fires through the controller.
   const c = new HandsFreeController();
-  c.setSnapTuning(tuned);
+  c.setTuning({ ...DEFAULT_TUNING, snap: tuned });
   // Modelled on a real near-miss (781.8 s in the 2026-09-18 recording): thumb
   // resting ~0.2 palm from the middle fingertip, then ~0.4 apart one 40 ms frame later.
   const lightTouch = hand({ thumb: false, index: true, middle: true, ring: false, pinky: false }, 0.5, 0.5, { ...SNAP_READY, 4: [-0.03, -0.02] });
@@ -383,9 +387,77 @@ check('snap after the window has passed → no snap', r.events.length === 0, sho
   const t = L.tuning();
   check('a cancelled snap tightens the thresholds past it', !(0.3 >= t.minDelta && 4 >= t.minRate), JSON.stringify(t));
   check('tightening never exceeds the ceiling', t.minDelta <= SNAP_CEIL.minDelta && t.minRate <= SNAP_CEIL.minRate);
-  const back = SnapLearner.from(JSON.parse(JSON.stringify(L)));
+  const back = new SnapLearner();
+  back.load(JSON.parse(JSON.stringify(L)));
   check('learning survives save and reload', JSON.stringify(back.tuning()) === JSON.stringify(t));
-  check('corrupt saved learning is ignored', JSON.stringify(SnapLearner.from({ v: 1, positives: [{ delta: 'x' }, null], negatives: 7 }).tuning()) === JSON.stringify(DEFAULT_SNAP_TUNING));
+  const corrupt = new SnapLearner();
+  corrupt.load({ positives: [{ delta: 'x' }, null], negatives: 7 });
+  check('corrupt saved learning is ignored', JSON.stringify(corrupt.tuning()) === JSON.stringify(DEFAULT_SNAP_TUNING));
+}
+
+// --- swipe and close/open learning
+{
+  // This user's up-swipes are short and gentle: ~0.55 palm at ~2.5 palm/s,
+  // which the default (0.66, or 0.45 at 3 palm/s) misses.
+  const shortSwipe = () => [...still(OPEN, 0.5, 0.55, HOLD), ...move(OPEN, [0.5, 0.55], [0.5, 0.47], 8), ...still(OPEN, 0.5, 0.47, 8)];
+  const def = run(shortSwipe());
+  check('a short, gentle swipe misses at the default thresholds', def.events.length === 0, show(def));
+  const missed = def.outs.find((o) => o.attempt)?.attempt;
+  check('the miss is reported as a swipe attempt', missed?.kind === 'swipe' && !missed.fired, JSON.stringify(missed));
+  const L = new GestureLearner();
+  // Twice: the gentle swipe misses, then a bigger one in the same direction fires.
+  for (let k = 0; k < 2; k++) {
+    L.observe({ kind: 'swipe', t: 10000 * k, fired: false, direction: 'up', travel: 0.55, speed: 2.5 });
+    L.observe({ kind: 'swipe', t: 10000 * k + 1500, fired: true, direction: 'up', travel: 0.7, speed: 5 });
+  }
+  const tuned = L.tuning();
+  check('swipe near-misses followed by a swipe loosen the commit distance', tuned.swipe.commitTravel < 0.55 && tuned.swipe.commitTravel >= SWIPE_FLOOR.commitTravel, JSON.stringify(tuned.swipe));
+  const c = new HandsFreeController();
+  c.setTuning(tuned);
+  const learned = run(shortSwipe(), 55, { c });
+  check('the same gentle swipe fires once learned', only(learned.events, 'up'), show(learned));
+  const drift = new HandsFreeController();
+  drift.setTuning(tuned);
+  const d = run(sweep(OPEN, [0.5, 0.5], [0.5, 0.47]), 55, { c: drift });
+  check('a small drift still never scrolls after learning', d.events.length === 0, show(d));
+}
+{
+  const L = new GestureLearner();
+  L.observe({ kind: 'swipe', t: 0, fired: false, direction: 'down', travel: 0.5, speed: 2 });
+  L.observe({ kind: 'swipe', t: 1000, fired: true, direction: 'up', travel: 0.7, speed: 5 });
+  L.observe({ kind: 'swipe', t: 20000, fired: false, direction: 'up', travel: 0.5, speed: 2 });
+  L.observe({ kind: 'swipe', t: 26000, fired: true, direction: 'up', travel: 0.7, speed: 5 });
+  check('misses in another direction, or long before, are not learned', JSON.stringify(L.tuning().swipe) === JSON.stringify(DEFAULT_TUNING.swipe), JSON.stringify(L.tuning().swipe));
+}
+{
+  // A slow closer: 800 ms from open to fist; the default allows 600.
+  const slowClose = () => [...still(OPEN, 0.5, 0.5, HOLD), ...Array(12).fill(hand(HALF)), hand(FIST), hand(FIST)];
+  check('a slow close misses at the default window', run(slowClose()).events.length === 0);
+  const L = new GestureLearner();
+  for (let k = 0; k < 3; k++) {
+    L.observe({ kind: 'grab', t: 10000 * k, fired: false, ms: 650 });
+    L.observe({ kind: 'grab', t: 10000 * k + 2000, fired: true, ms: 400 });
+  }
+  check('close near-misses followed by a close give more time', L.tuning().shape.grabWindowMs > 750 && L.tuning().shape.grabWindowMs <= SHAPE_WINDOW_MAX_MS, JSON.stringify(L.tuning().shape));
+  const c = new HandsFreeController();
+  c.setTuning(L.tuning());
+  check('the same slow close fires once learned', JSON.stringify(types(run(slowClose(), 55, { c }).events)) === '["grab"]');
+  for (let k = 3; k < 30; k++) {
+    L.observe({ kind: 'grab', t: 10000 * k, fired: false, ms: 650 });
+    L.observe({ kind: 'grab', t: 10000 * k + 2000, fired: true, ms: 400 });
+  }
+  check('the close window never grows past its maximum', L.tuning().shape.grabWindowMs === SHAPE_WINDOW_MAX_MS);
+}
+{
+  const L = new GestureLearner();
+  L.observe({ kind: 'swipe', t: 0, fired: false, direction: 'up', travel: 0.5, speed: 2.4 });
+  L.observe({ kind: 'swipe', t: 900, fired: false, direction: 'up', travel: 0.52, speed: 2.6 });
+  L.observe({ kind: 'swipe', t: 1500, fired: true, direction: 'up', travel: 0.7, speed: 5 });
+  L.observe({ kind: 'grab', t: 3000, fired: false, ms: 650 });
+  L.observe({ kind: 'grab', t: 4000, fired: true, ms: 400 });
+  const back = GestureLearner.from(JSON.parse(JSON.stringify(L)));
+  check('all gesture learning survives save and reload', JSON.stringify(back.tuning()) === JSON.stringify(L.tuning()), JSON.stringify(back.tuning()));
+  check('unknown saved data falls back to defaults', JSON.stringify(GestureLearner.from({ v: 99 }).tuning()) === JSON.stringify(DEFAULT_TUNING));
 }
 
 // --- dial (pointing circles)

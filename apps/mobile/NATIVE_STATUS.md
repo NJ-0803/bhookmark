@@ -191,6 +191,17 @@ The fixes:
   - "Forget my snap style" in You resets it.
 - **Tests:** 92 checks, including the recorded false positive and the learner.
 
+### Learning for every gesture (2026-09-18, night)
+
+- **Snap blackout fix:** the snap's own speed blurs the hand out of a frame or two. A 167 ms blackout had thrown away a 2-second set-up just before a clean snap. The set-up now waits through blackouts shorter than the snap window. In a replay of the user's latest session, both snap attempts fire (only one did live).
+- **`learning.ts` replaces `snapLearning.ts`** (user request: learning "should be for swiping up and down" too). The controller reports every attempt, fired or missed, with its measurements:
+  - **Swipes:** a near-miss followed within 3 s by a swipe in the same direction loosens the commit distance and flick speed. The floors are 0.4 palm and 2 palm/s, so drifts still never scroll.
+  - **Close/open:** a timed-out close or open followed within 4 s by a successful one gives 80 ms more time, up to 1 s.
+  - **Snap:** as before. It is the only gesture with negative examples ("Tap anywhere to stay"); scrolling has no reliable undo signal, so swipes and close/open only ever loosen, within bounds.
+- **Storage:** everything stays on the phone under `bhookmark.handsFreeLearning`, migrated from the snap-only key. "Forget my gesture style" in You resets it.
+- **Replay with learning on,** over all four recordings: the same gestures fire as without it (no new false triggers). None of the recordings contains a swipe near-miss followed by a retry, so swipe learning is proven by tests, not yet by a real session.
+- **Tests:** 106 checks.
+
 ## Also changed on 2026-09-17
 
 - **Crave opens on dishes.** The start screen used to show only the search box and chips, so there was nothing to swipe or look at ("i dont see any dish on the page"). It now loads a "Worth a look · <craving>" grid, rotating daily through the catalog's categories, with a "See all" link.

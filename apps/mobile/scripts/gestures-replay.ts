@@ -8,7 +8,7 @@
 import { readFileSync } from 'node:fs';
 import { HandsFreeController } from '../src/handsfree/controller.ts';
 import { classifyPose, palmCenter, poseDetail, toPoints } from '../src/handsfree/gestures.ts';
-import { SnapLearner } from '../src/handsfree/snapLearning.ts';
+import { GestureLearner } from '../src/handsfree/learning.ts';
 
 const [file, ...flags] = process.argv.slice(2);
 if (!file) {
@@ -16,9 +16,9 @@ if (!file) {
   process.exit(2);
 }
 const showFrames = flags.includes('--frames');
-// --learn: run the per-user snap learner live, as the app does.
+// --learn: run the per-user gesture learner live, as the app does.
 const learn = flags.includes('--learn');
-const learner = new SnapLearner();
+const learner = new GestureLearner();
 
 type Frame = { t: number; W?: number; H?: number; h: number[] | null; age?: number | null; queued?: number | null; cost?: number[] };
 const frames: Frame[] = [];
@@ -49,9 +49,9 @@ for (const f of frames) {
   const pts = toPoints(f.h, h / w);
   poses[pts ? classifyPose(pts) : 'none']++;
   const out = c.update({ t: f.t, w, h, hand: f.h });
-  if (learn && out.snapAttempt) {
-    learner.observe(out.snapAttempt);
-    c.setSnapTuning(learner.tuning());
+  if (learn && out.attempt) {
+    learner.observe(out.attempt);
+    c.setTuning(learner.tuning());
   }
   states[out.state] = (states[out.state] ?? 0) + 1;
   if (out.preview) previews++;
@@ -63,13 +63,21 @@ for (const f of frames) {
     console.log(`${String(Math.round(f.t - t0)).padStart(6)}ms  ${out.state.padEnd(10)} ${m}${pc ? ` palm ${f2(pc.x)},${f2(pc.y)}` : ''}${p}${out.events.length ? '  → ' + JSON.stringify(out.events) : ''}`);
   } else {
     for (const e of out.events) console.log(`${String(Math.round(f.t - t0)).padStart(6)}ms  ${JSON.stringify(e)}`);
-    const a = out.snapAttempt;
-    if (a && !a.fired) console.log(`${String(Math.round(f.t - t0)).padStart(6)}ms  snap miss: apart ${a.delta.toFixed(2)} palm at ${a.rate.toFixed(1)} palm/s`);
+    const a = out.attempt;
+    if (a && !a.fired) {
+      const what =
+        a.kind === 'snap'
+          ? `apart ${a.delta.toFixed(2)} palm at ${a.rate.toFixed(1)} palm/s`
+          : a.kind === 'swipe'
+            ? `${a.direction} ${a.travel.toFixed(2)} palm, peak ${a.speed.toFixed(1)} palm/s`
+            : `${a.ms} ms`;
+      console.log(`${String(Math.round(f.t - t0)).padStart(6)}ms  ${a.kind} miss: ${what}`);
+    }
   }
 }
 const span = (frames[frames.length - 1].t - t0) / 1000;
 console.log(`\n${frames.length} frames over ${span.toFixed(1)} s (${(frames.length / span).toFixed(1)} fps)`);
-if (learn) console.log(`learned snap tuning ${JSON.stringify(learner.tuning())} from ${learner.positiveCount} examples`);
+if (learn) console.log(`learned tuning ${JSON.stringify(learner.tuning())} from ${JSON.stringify(learner.examples)} examples`);
 console.log(`poses ${JSON.stringify(poses)}  states ${JSON.stringify(states)}  preview frames ${previews}`);
 
 const pct = (xs: number[], p: number) => {

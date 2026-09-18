@@ -48,21 +48,35 @@ export type ControllerState =
 export type Preview = { axis: 'x' | 'y'; direction: SwipeDirection; progress: number } | null;
 export type Sample = { t: number; w: number; h: number; hand: readonly number[] | null | undefined };
 /**
- * One snap attempt: how far (palm lengths) and how fast (palm lengths per
- * second) thumb and middle finger came apart after touching. `fired` says
- * whether it closed the app; misses are kept so the learner can use them.
+ * One gesture attempt, fired or missed, with the measurements the per-user
+ * learner (learning.ts) adapts from. Reported on the sample where it resolved.
+ * - snap: how far (palm lengths) and how fast (palm lengths/s) thumb and middle came apart.
+ * - swipe: the furthest travel (palm lengths) and peak speed (palm lengths/s) along its direction.
+ * - grab / release: how long the close or open took (ms).
  */
-export type SnapAttempt = { t: number; fired: boolean; delta: number; rate: number };
-/** The two snap thresholds the learner adjusts (snapLearning.ts). */
+export type GestureAttempt =
+  | { kind: 'snap'; t: number; fired: boolean; delta: number; rate: number }
+  | { kind: 'swipe'; t: number; fired: boolean; direction: SwipeDirection; travel: number; speed: number }
+  | { kind: 'grab' | 'release'; t: number; fired: boolean; ms: number };
+export type SnapAttempt = Extract<GestureAttempt, { kind: 'snap' }>;
+/** The two snap thresholds the learner adjusts. */
 export type SnapTuning = { minDelta: number; minRate: number };
 export const DEFAULT_SNAP_TUNING: SnapTuning = { minDelta: 0.25, minRate: 3.5 };
+/** Swipe commit distances (palm lengths) and the flick speed (palm lengths/s). */
+export type SwipeTuning = { commitTravel: number; fastTravel: number; fastSpeed: number };
+export const DEFAULT_SWIPE_TUNING: SwipeTuning = { commitTravel: 0.66, fastTravel: 0.45, fastSpeed: 3 };
+/** How long a close (grab) or open (release) may take. */
+export type ShapeTuning = { grabWindowMs: number; releaseWindowMs: number };
+export const DEFAULT_SHAPE_TUNING: ShapeTuning = { grabWindowMs: 600, releaseWindowMs: 600 };
+export type ControllerTuning = { snap: SnapTuning; swipe: SwipeTuning; shape: ShapeTuning };
+export const DEFAULT_TUNING: ControllerTuning = { snap: DEFAULT_SNAP_TUNING, swipe: DEFAULT_SWIPE_TUNING, shape: DEFAULT_SHAPE_TUNING };
 export type ControllerOutput = {
   state: ControllerState;
   pose: Pose | 'none';
   preview: Preview;
   events: GestureEvent[];
-  /** Set on the sample where a snap attempt resolved (fired or missed). */
-  snapAttempt?: SnapAttempt;
+  /** Set on the sample where a gesture attempt resolved (fired or missed). */
+  attempt?: GestureAttempt;
 };
 
 // Baseline values carried over from the frame-based recogniser (tuned on real
@@ -84,11 +98,10 @@ const POINT_DWELL_MS = 110;
 const WINDOW_MS = 550;
 /** Preview starts once the hand has moved this far (palm lengths) in one clear direction. */
 const PREVIEW_MIN = 0.15;
-/** Full commit distance. 0.66 palm ≈ the old 22% of frame width at a typical distance. */
-const COMMIT_TRAVEL = 0.66;
-/** A fast flick commits earlier. */
-const FAST_COMMIT_TRAVEL = 0.45;
-const FAST_SPEED = 3; // palm lengths per second
+// Swipe commit distance: DEFAULT_SWIPE_TUNING (0.66 palm ≈ the old 22% of frame
+// width at a typical distance; a fast flick commits at 0.45), adapted per user.
+/** An abandoned sweep shorter than this isn't reported as an attempt (palm lengths). */
+const SWIPE_ATTEMPT_TRAVEL = 0.25;
 /** Never commit on less than this absolute travel (frame widths): far hands are noisy. */
 const MIN_ABS_TRAVEL = 0.08;
 /** The cross axis must stay under this share of the main axis. */
@@ -103,12 +116,10 @@ const REARM_MAX_MS = 1500;
 /** Arming also needs the palm roughly still: a hand still moving into place can't arm. */
 const ARM_STILL_SPEED = 1.2; // palm lengths per second
 // Shape gestures: proposed starting values, to be tuned on real recordings.
-/** Closing a held open palm must reach a fist within this. */
-const GRAB_WINDOW_MS = 600;
+// Closing a held open palm must reach a fist, and opening a held fist must
+// reach an open palm, within DEFAULT_SHAPE_TUNING's windows (adapted per user).
 /** A fist must be held (and still) this long before opening it counts. */
 const FIST_ARM_MS = 300;
-/** Opening a held fist must reach an open palm within this. */
-const RELEASE_WINDOW_MS = 600;
 /** A fingertip pyramid must be held this long… */
 const PYRAMID_DWELL_MS = 200;
 /** …and open into a palm within this. */
@@ -165,7 +176,7 @@ export class HandsFreeController {
   private lastPointAt = -Infinity;
   private scale = 0;
   private trail: TrailPoint[] = [];
-  private preview: { dir: SwipeDirection; origin: TrailPoint; furthest: number } | null = null;
+  private preview: { dir: SwipeDirection; origin: TrailPoint; furthest: number; peakSpeed: number } | null = null;
   private lastCommitAt = -Infinity;
   /** Rearm can't complete before this time (a lockout after commits, none after a cancel). */
   private rearmNotBefore = -Infinity;
@@ -177,14 +188,15 @@ export class HandsFreeController {
   /** Palm centres of every recent sample, whatever the pose (for stillness and glitch checks). */
   private recent: TrailPoint[] = [];
   private closingFrom = -Infinity;
-  private snapTuning: SnapTuning = { ...DEFAULT_SNAP_TUNING };
+  private tuning: ControllerTuning = DEFAULT_TUNING;
+  private openingFrom = -Infinity;
   /** The last thumb-on-middle sample: when, and how close. */
   private snapTouch: { t: number; tm: number } | null = null;
   private snapMissLogged = false;
   /** Consecutive thumb-on-middle samples, and the previous hand sample's measurements. */
   private snapReadyRun = 0;
   private prevDetail: ReturnType<typeof poseDetail> | null = null;
-  private snapAttempt: SnapAttempt | undefined;
+  private attempt: GestureAttempt | undefined;
   /** Close/open preview: the list moves with the fingers. */
   private shapePreview: { dir: SwipeDirection; progress: number } | null = null;
 
@@ -192,9 +204,9 @@ export class HandsFreeController {
     return this.state;
   }
 
-  /** Snap thresholds, adapted per user by the learner. */
-  setSnapTuning(tuning: SnapTuning) {
-    this.snapTuning = { ...tuning };
+  /** Thresholds adapted per user by the learner (learning.ts). */
+  setTuning(tuning: ControllerTuning) {
+    this.tuning = { snap: { ...tuning.snap }, swipe: { ...tuning.swipe }, shape: { ...tuning.shape } };
   }
 
   /** Full reset: mode off, backgrounded, camera restarted. */
@@ -275,12 +287,12 @@ export class HandsFreeController {
 
     if (!pts) {
       this.pose = t - this.lastHandAt > GAP_MS ? 'none' : this.pose;
-      if (t - this.lastHandAt > GAP_MS) this.lose();
+      if (t - this.lastHandAt > GAP_MS) this.lose(t);
       return this.output(events);
     }
 
     // Samples resuming after a stale gap: treat as a new hand, never continue the old gesture.
-    if (t - this.lastHandAt > GAP_MS) this.lose();
+    if (t - this.lastHandAt > GAP_MS) this.lose(t);
     this.lastHandAt = t;
     this.scale = this.scale ? this.scale * 0.7 + scale * 0.3 : scale;
     scale = this.scale;
@@ -372,7 +384,7 @@ export class HandsFreeController {
       const cross = horizontal ? Math.abs(dy) : Math.abs(dx);
       if (main >= PREVIEW_MIN && cross < main * MAX_CROSS) {
         const dir: SwipeDirection = horizontal ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
-        this.preview = { dir, origin: first, furthest: 0 };
+        this.preview = { dir, origin: first, furthest: 0, peakSpeed: 0 };
         this.state = 'previewing';
       }
     }
@@ -384,13 +396,16 @@ export class HandsFreeController {
       const travel = along / scale;
       this.preview.furthest = Math.max(this.preview.furthest, travel);
       const speed = this.speedAlong(dir, t) / scale;
+      this.preview.peakSpeed = Math.max(this.preview.peakSpeed, speed);
       const straight = Math.abs(across) < Math.abs(along) * MAX_CROSS;
+      const { commitTravel, fastTravel, fastSpeed } = this.tuning.swipe;
       const commit =
         straight &&
         Math.abs(along) >= MIN_ABS_TRAVEL &&
-        (travel >= COMMIT_TRAVEL || (travel >= FAST_COMMIT_TRAVEL && speed >= FAST_SPEED));
+        (travel >= commitTravel || (travel >= fastTravel && speed >= fastSpeed));
       if (commit) {
         events.push({ type: 'swipe', direction: dir });
+        this.attempt = { kind: 'swipe', t, fired: true, direction: dir, travel, speed: this.preview.peakSpeed };
         this.preview = null;
         this.state = 'rearm';
         this.lastCommitAt = t;
@@ -403,6 +418,9 @@ export class HandsFreeController {
       if (reversed || tooSlow || !straight) {
         // Incomplete sweep: the preview springs back, and the hand must settle
         // before a new sweep, so pulling back can't start one the other way.
+        if (this.preview.furthest >= SWIPE_ATTEMPT_TRAVEL) {
+          this.attempt = { kind: 'swipe', t, fired: false, direction: dir, travel: this.preview.furthest, speed: this.preview.peakSpeed };
+        }
         this.preview = null;
         this.state = 'rearm';
         this.lastCommitAt = t;
@@ -446,16 +464,16 @@ export class HandsFreeController {
         const rate = delta / Math.max(dt / 1000, 1e-3);
         const ringDown = d.ring < 1.05 && d.pinky < 1.05;
         const fold = isSnapped(pts);
-        const split = ringDown && seen !== 'open' && delta >= this.snapTuning.minDelta && rate >= this.snapTuning.minRate;
+        const split = ringDown && seen !== 'open' && delta >= this.tuning.snap.minDelta && rate >= this.tuning.snap.minRate;
         if (fold || split) {
           events.push({ type: 'snap' });
-          this.snapAttempt = { t, fired: true, delta, rate };
+          this.attempt = { kind: 'snap', t, fired: true, delta, rate };
           this.afterShape(t);
           return true;
         }
         if (delta >= SNAP_ATTEMPT_DELTA && !this.snapMissLogged) {
           // Came apart, but not like a snap (yet): remember it for the learner.
-          this.snapAttempt = { t, fired: false, delta, rate };
+          this.attempt = { kind: 'snap', t, fired: false, delta, rate };
           this.snapMissLogged = true;
         }
         return true;
@@ -487,18 +505,22 @@ export class HandsFreeController {
         this.state = 'fist';
         return true;
       }
-      if (t - this.fist.last <= RELEASE_WINDOW_MS) {
+      if (t - this.fist.last <= this.tuning.shape.releaseWindowMs) {
         if (seen === 'open') {
           events.push({ type: 'release' });
+          this.attempt = { kind: 'release', t, fired: true, ms: t - this.fist.last };
           this.afterShape(t);
           return true;
         }
         if (seen !== 'pyramid') {
+          if (this.state === 'fist') this.openingFrom = this.fist.last;
           this.state = 'opening';
           this.shapePreview = { dir: 'up', progress: openness(pts) };
           return true;
         }
       }
+      // Too slow to open (or turned into something else): report it for the learner.
+      if (this.state === 'opening') this.attempt = { kind: 'release', t, fired: false, ms: t - this.openingFrom };
       this.state = 'searching';
     }
     if (seen === 'fist' && this.fist.heldFor(t) >= FIST_ARM_MS && still && this.state !== 'closing') {
@@ -523,13 +545,15 @@ export class HandsFreeController {
         this.state = 'closing';
         this.closingFrom = this.lastOpenAt;
       }
-      if (t - this.closingFrom > GRAB_WINDOW_MS) {
+      if (t - this.closingFrom > this.tuning.shape.grabWindowMs) {
+        this.attempt = { kind: 'grab', t, fired: false, ms: t - this.closingFrom };
         this.state = 'searching';
         this.trail = [];
         return true;
       }
       if (seen === 'fist') {
         events.push({ type: 'grab' });
+        this.attempt = { kind: 'grab', t, fired: true, ms: t - this.closingFrom };
         this.afterShape(t);
         // Opening this fist again (a release) needs it held first.
         this.fist.since = t;
@@ -592,7 +616,12 @@ export class HandsFreeController {
     return alongAxis(dir, vx, vy);
   }
 
-  private lose() {
+  private lose(t: number) {
+    // A snap's own speed blurs the hand out of a frame or two (recording,
+    // 2026-09-18: a clean snap was lost to a 167 ms blackout right after a
+    // 2-second set-up). Within the snap window, keep the set-up waiting.
+    const touch = this.snapTouch;
+    const snapPending = this.state === 'snap' && touch !== null && t - touch.t <= SNAP_WINDOW_MS;
     // Tracking lost or stale: cancel, never extrapolate. Leaving view also
     // counts as releasing after a commit.
     this.preview = null;
@@ -603,6 +632,10 @@ export class HandsFreeController {
     this.clearShapes();
     this.recent = [];
     this.state = 'searching';
+    if (snapPending) {
+      this.state = 'snap';
+      this.snapTouch = touch;
+    }
   }
 
   private output(events: GestureEvent[]): ControllerOutput {
@@ -616,12 +649,12 @@ export class HandsFreeController {
       preview = {
         axis: dir === 'left' || dir === 'right' ? 'x' : 'y',
         direction: dir,
-        progress: Math.max(0, Math.min(1, travel / COMMIT_TRAVEL)),
+        progress: Math.max(0, Math.min(1, travel / this.tuning.swipe.commitTravel)),
       };
     }
-    const snapAttempt = this.snapAttempt;
-    this.snapAttempt = undefined;
-    return { state: this.state, pose: this.pose, preview, events, snapAttempt };
+    const attempt = this.attempt;
+    this.attempt = undefined;
+    return { state: this.state, pose: this.pose, preview, events, attempt };
   }
 }
 

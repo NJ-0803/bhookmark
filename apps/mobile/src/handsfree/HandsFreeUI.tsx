@@ -93,7 +93,7 @@ const GESTURES = [
   {
     key: 'snap',
     title: 'Snap to close',
-    body: 'Press your thumb to your middle finger, then snap. Bhookmark closes after a moment — tap the screen to stay. It learns how you snap as you use it (on this phone only), and snaps are ignored while you are logging a bite.',
+    body: 'Press your thumb to your middle finger, then snap. Bhookmark closes after a moment — tap the screen to stay. Snaps are ignored while you are logging a bite.',
     Art: Snap,
   },
   {
@@ -111,7 +111,7 @@ const GESTURES = [
 ] as const;
 
 const PRIVACY =
-  'Uses your front camera while Hands-free is on and the app is open. Everything is processed on your phone — no photos or video are saved or sent anywhere.';
+  'Uses your front camera while Hands-free is on and the app is open. Everything is processed on your phone — no photos or video are saved or sent anywhere. It learns how you swipe, close and open your hand, and snap, so misses become rarer; that learning also stays on this phone.';
 
 /** One-time introduction after sign-in: Bhookmark's signature feature. */
 export function HandsFreeIntro() {
@@ -194,8 +194,8 @@ export function HandsFreePill() {
 
 /** The settings section in You. */
 export function HandsFreeSettings({ c }: { c: ThemeColors }) {
-  const { available, enabled, status, error, setEnabled, showIntro, resetSnapLearning } = useHandsFree();
-  const [snapReset, setSnapReset] = useState(false);
+  const { available, enabled, status, error, setEnabled, showIntro, resetLearning } = useHandsFree();
+  const [learningReset, setLearningReset] = useState(false);
   const [busy, setBusy] = useState(false);
   if (!available) {
     return (
@@ -241,16 +241,16 @@ export function HandsFreeSettings({ c }: { c: ThemeColors }) {
       <Pressable onPress={showIntro} accessibilityRole="button" style={styles.guideLink}>
         <Text style={[styles.guideText, { color: c.rose }]}>How Hands-free works</Text>
       </Pressable>
-      {/* Snap-to-close learns how you snap, on this phone only. */}
+      {/* Hands-free learns how you swipe, close/open and snap, on this phone only. */}
       <Pressable
         onPress={() => {
-          resetSnapLearning();
-          setSnapReset(true);
+          resetLearning();
+          setLearningReset(true);
         }}
         accessibilityRole="button"
         style={styles.guideLink}
       >
-        <Text style={[styles.guideText, { color: c.muted }]}>{snapReset ? 'Snap style forgotten' : 'Forget my snap style'}</Text>
+        <Text style={[styles.guideText, { color: c.muted }]}>{learningReset ? 'Gesture style forgotten' : 'Forget my gesture style'}</Text>
       </Pressable>
     </View>
   );

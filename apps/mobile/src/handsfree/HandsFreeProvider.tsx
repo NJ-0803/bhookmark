@@ -5,7 +5,7 @@ import { Easing, useSharedValue, withSpring, withTiming, type SharedValue } from
 import HandsFree from '../../modules/hands-free';
 import { HandsFreeController, type ControllerOutput } from './controller';
 import { headOffset, type GestureEvent } from './gestures';
-import { SnapLearner } from './snapLearning';
+import { GestureLearner } from './learning';
 
 // Hands-free mode: Bhookmark's signature feature. Off by default; while it's on
 // and the app is in the foreground, the front camera tracks the user's head
@@ -18,8 +18,10 @@ const ENABLED_KEY = 'bhookmark.handsFree';
 // Logs landmarks and timing for scripts/gestures-replay.ts. Never on by default.
 const TRACE = process.env.EXPO_PUBLIC_HANDSFREE_TRACE === '1';
 const INTRO_KEY = 'bhookmark.handsFreeIntroSeen';
-// How this user snaps, learned on the phone (snapLearning.ts). Never leaves the device.
-const SNAP_KEY = 'bhookmark.handsFreeSnapLearning';
+// How this user gestures, learned on the phone (learning.ts). Never leaves the device.
+const LEARNING_KEY = 'bhookmark.handsFreeLearning';
+// Earlier snap-only learning (same day), carried over once.
+const OLD_SNAP_KEY = 'bhookmark.handsFreeSnapLearning';
 
 export type HandsFreeStatus = 'unavailable' | 'off' | 'starting' | 'on' | 'denied' | 'error';
 /** What the controller can do right now: nothing in view, a hand it can't use yet, or which gesture is ready. */
@@ -54,8 +56,8 @@ type HandsFreeContextValue = {
   interrupt: () => void;
   /** The user cancelled the snap-to-close: learn that it wasn't meant. */
   cancelSnap: () => void;
-  /** Forget the learned snap style and go back to the defaults. */
-  resetSnapLearning: () => void;
+  /** Forget everything learned about this user's gestures and go back to the defaults. */
+  resetLearning: () => void;
   /**
    * Gesture listeners run newest-first; a listener that returns true consumes
    * the event, so an open panel or the rating screen takes priority over the
@@ -90,9 +92,9 @@ export function HandsFreeProvider({ children }: { children: ReactNode }) {
   const [appActive, setAppActive] = useState(AppState.currentState === 'active');
   const listeners = useRef<Listener[]>([]);
   const controller = useRef(new HandsFreeController());
-  const snapLearner = useRef(new SnapLearner());
-  const saveSnapLearning = useCallback(() => {
-    AsyncStorage.setItem(SNAP_KEY, JSON.stringify(snapLearner.current)).catch(() => {});
+  const learner = useRef(new GestureLearner());
+  const saveLearning = useCallback(() => {
+    AsyncStorage.setItem(LEARNING_KEY, JSON.stringify(learner.current)).catch(() => {});
   }, []);
   const headUsers = useRef(0);
   const headX = useSharedValue(0);
@@ -117,11 +119,15 @@ export function HandsFreeProvider({ children }: { children: ReactNode }) {
   }, [available]);
 
   useEffect(() => {
-    AsyncStorage.getItem(SNAP_KEY)
-      .then((raw) => {
-        if (!raw) return;
-        snapLearner.current = SnapLearner.from(JSON.parse(raw));
-        controller.current.setSnapTuning(snapLearner.current.tuning());
+    AsyncStorage.multiGet([LEARNING_KEY, OLD_SNAP_KEY])
+      .then(([[, raw], [, oldSnap]]) => {
+        if (raw) learner.current = GestureLearner.from(JSON.parse(raw));
+        else if (oldSnap) {
+          learner.current.snap.load(JSON.parse(oldSnap));
+          AsyncStorage.setItem(LEARNING_KEY, JSON.stringify(learner.current)).catch(() => {});
+          AsyncStorage.removeItem(OLD_SNAP_KEY).catch(() => {});
+        }
+        controller.current.setTuning(learner.current.tuning());
       })
       .catch(() => {});
   }, []);
@@ -179,12 +185,12 @@ export function HandsFreeProvider({ children }: { children: ReactNode }) {
       }
       const out = controller.current.update({ t: frame.cap ?? frame.t, w: frame.w, h: frame.h, hand: frame.hand });
       const events = out.events;
-      if (out.snapAttempt) {
-        snapLearner.current.observe(out.snapAttempt);
-        controller.current.setSnapTuning(snapLearner.current.tuning());
-        // Saved at once: a fired snap closes the app a moment later.
-        if (out.snapAttempt.fired) saveSnapLearning();
-        if (TRACE) console.log(`[hf] snap ${JSON.stringify(out.snapAttempt)} → ${JSON.stringify(snapLearner.current.tuning())}`);
+      if (out.attempt) {
+        learner.current.observe(out.attempt);
+        controller.current.setTuning(learner.current.tuning());
+        // Saved on every fired gesture (a fired snap closes the app a moment later).
+        if (out.attempt.fired) saveLearning();
+        if (TRACE) console.log(`[hf] attempt ${JSON.stringify(out.attempt)} → ${JSON.stringify(learner.current.tuning())}`);
       }
       publishPreview(out);
       setHandSight(sightOf(out));
@@ -293,20 +299,20 @@ export function HandsFreeProvider({ children }: { children: ReactNode }) {
   }, [previewX, previewY]);
 
   const cancelSnap = useCallback(() => {
-    snapLearner.current.cancelLast();
-    controller.current.setSnapTuning(snapLearner.current.tuning());
-    saveSnapLearning();
-  }, [saveSnapLearning]);
+    learner.current.cancelLastSnap();
+    controller.current.setTuning(learner.current.tuning());
+    saveLearning();
+  }, [saveLearning]);
 
-  const resetSnapLearning = useCallback(() => {
-    snapLearner.current = new SnapLearner();
-    controller.current.setSnapTuning(snapLearner.current.tuning());
-    AsyncStorage.removeItem(SNAP_KEY).catch(() => {});
+  const resetLearning = useCallback(() => {
+    learner.current = new GestureLearner();
+    controller.current.setTuning(learner.current.tuning());
+    AsyncStorage.multiRemove([LEARNING_KEY, OLD_SNAP_KEY]).catch(() => {});
   }, []);
 
   const value = useMemo(
-    () => ({ available, enabled, status, error, setEnabled, introSeen, markIntroSeen, showIntro, headX, headY, faceVisible, previewX, previewY, interrupt, cancelSnap, resetSnapLearning, subscribe, requestHeadTracking }),
-    [available, enabled, status, error, setEnabled, introSeen, markIntroSeen, showIntro, headX, headY, faceVisible, previewX, previewY, interrupt, cancelSnap, resetSnapLearning, subscribe, requestHeadTracking],
+    () => ({ available, enabled, status, error, setEnabled, introSeen, markIntroSeen, showIntro, headX, headY, faceVisible, previewX, previewY, interrupt, cancelSnap, resetLearning, subscribe, requestHeadTracking }),
+    [available, enabled, status, error, setEnabled, introSeen, markIntroSeen, showIntro, headX, headY, faceVisible, previewX, previewY, interrupt, cancelSnap, resetLearning, subscribe, requestHeadTracking],
   );
   return (
     <HandsFreeContext.Provider value={value}>
