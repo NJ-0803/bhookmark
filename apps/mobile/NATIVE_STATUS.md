@@ -172,6 +172,25 @@ Following the user's *Bhookmark Handsfree and Spatial Assistant* brief (stages 1
   - Hand model (CPU): p50 60 ms.
 - **Voice assistant (brief §7) not started:** it specifies paid OpenAI APIs and needs the user's sign-off on cost. iOS parity is blocked on Xcode or the Apple Developer Program.
 
+### Snap refinement and learning (2026-09-18, evening)
+
+The user reported the snap took 5–6 tries. Their recording showed why:
+- The set-up (thumb on the middle fingertip) was recognised every time.
+- Real snaps were either set up and fired within one frame (blocked by the 120 ms hold), or the fold happened between camera frames, leaving only a fast thumb–middle split.
+- Underneath both: frames with a hand in view often arrive 130–200 ms apart, and the fixed 120 ms gap tolerance kept resetting gestures mid-way.
+
+The fixes:
+- **Adaptive gap tolerance:** 3× the median recent frame interval, kept within 120–250 ms.
+- **Snap check:** one touch sample is enough, provided there's a snap-shape lead-in or a second sample. A single-frame "touch" straight out of an open hand was a misread in an older recording. A snap fires on a seen fold **or** a fast split: at least 0.25 palm apart at 3.5 palm/s or more, with ring and little finger folded.
+- **Replay of the user's snap session:** 6 snaps, up from 1. Close/open: 7 gestures, up from 1, because of the same gap bug. No snaps in the non-snapping recordings.
+- **`snapLearning.ts`, per-user learning, stored on the phone only:**
+  - Fired, uncancelled snaps are positive examples.
+  - Near-misses followed within 4 s by a fired snap are positives too.
+  - A snap the user cancels ("Tap anywhere to stay") is a negative example.
+  - The split thresholds adapt within fixed bounds: minDelta 0.15–0.45, minRate 2.5–7. Replaying the session with learning moved minDelta from 0.25 to 0.22.
+  - "Forget my snap style" in You resets it.
+- **Tests:** 92 checks, including the recorded false positive and the learner.
+
 ## Also changed on 2026-09-17
 
 - **Crave opens on dishes.** The start screen used to show only the search box and chips, so there was nothing to swipe or look at ("i dont see any dish on the page"). It now loads a "Worth a look · <craving>" grid, rotating daily through the catalog's categories, with a "See all" link.

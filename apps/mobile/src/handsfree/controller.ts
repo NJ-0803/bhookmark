@@ -23,6 +23,7 @@ import {
   INDEX,
   isSnapped,
   openness,
+  poseDetail,
   palmCenter,
   palmScale,
   toPoints,
@@ -46,14 +47,37 @@ export type ControllerState =
   | 'snap';
 export type Preview = { axis: 'x' | 'y'; direction: SwipeDirection; progress: number } | null;
 export type Sample = { t: number; w: number; h: number; hand: readonly number[] | null | undefined };
-export type ControllerOutput = { state: ControllerState; pose: Pose | 'none'; preview: Preview; events: GestureEvent[] };
+/**
+ * One snap attempt: how far (palm lengths) and how fast (palm lengths per
+ * second) thumb and middle finger came apart after touching. `fired` says
+ * whether it closed the app; misses are kept so the learner can use them.
+ */
+export type SnapAttempt = { t: number; fired: boolean; delta: number; rate: number };
+/** The two snap thresholds the learner adjusts (snapLearning.ts). */
+export type SnapTuning = { minDelta: number; minRate: number };
+export const DEFAULT_SNAP_TUNING: SnapTuning = { minDelta: 0.25, minRate: 3.5 };
+export type ControllerOutput = {
+  state: ControllerState;
+  pose: Pose | 'none';
+  preview: Preview;
+  events: GestureEvent[];
+  /** Set on the sample where a snap attempt resolved (fired or missed). */
+  snapAttempt?: SnapAttempt;
+};
 
 // Baseline values carried over from the frame-based recogniser (tuned on real
 // Pixel 4a recordings), expressed in time and palm lengths.
 /** An open palm must be held this long before it can swipe (a hand rising into view reads as "up"). */
 export const ARM_MS = 300;
-/** A missing or misread sample shorter than this doesn't break a pose. */
-const GAP_MS = 120;
+/**
+ * A missing or misread stretch shorter than the gap tolerance doesn't break a
+ * pose. The tolerance follows the measured frame cadence: 3× the median recent
+ * interval, kept within these bounds. (On the Pixel 4a, frames with a hand in
+ * view regularly arrive 130–200 ms apart; a fixed 120 ms kept resetting
+ * gestures mid-way — recordings, 2026-09-18.)
+ */
+const GAP_MIN_MS = 120;
+const GAP_MAX_MS = 250;
 /** A pointing finger must hold this long before the dial listens. */
 const POINT_DWELL_MS = 110;
 /** Motion older than this doesn't count towards a swipe. */
@@ -89,20 +113,26 @@ const RELEASE_WINDOW_MS = 600;
 const PYRAMID_DWELL_MS = 200;
 /** …and open into a palm within this. */
 const BLOOM_WINDOW_MS = 600;
-/** Thumb-on-middle must be held this long… */
-const SNAP_DWELL_MS = 120;
-/** …and snap within this. A real snap takes one or two camera frames. */
+/**
+ * Snap: thumb on the middle fingertip (one sample is enough — real snaps were
+ * set up and fired within 30 ms), then within this window either the middle
+ * finger is seen folded into the palm, or thumb and middle finger fly apart
+ * fast. On the Pixel 4a most snaps showed only the fast split: the fold happens
+ * between camera frames (recordings, 2026-09-18).
+ */
 const SNAP_WINDOW_MS = 350;
+/** A separation smaller than this is a wobble, not an attempt (palm lengths). */
+const SNAP_ATTEMPT_DELTA = 0.12;
 
 /** When a pose was first and last seen, tolerating short gaps. */
 class Held {
   since: number | null = null;
   last = -Infinity;
-  update(t: number, seen: boolean) {
+  update(t: number, seen: boolean, gap: number) {
     if (seen) {
-      if (this.since === null || t - this.last > GAP_MS) this.since = t;
+      if (this.since === null || t - this.last > gap) this.since = t;
       this.last = t;
-    } else if (t - this.last > GAP_MS) {
+    } else if (t - this.last > gap) {
       this.since = null;
     }
   }
@@ -125,6 +155,9 @@ export class HandsFreeController {
   private state: ControllerState = 'searching';
   private pose: Pose | 'none' = 'none';
   private lastT = -Infinity;
+  /** Recent sample intervals (ms), for the adaptive gap tolerance. */
+  private intervals: number[] = [];
+  private gap = GAP_MIN_MS;
   private lastHandAt = -Infinity;
   private openSince: number | null = null;
   private lastOpenAt = -Infinity;
@@ -144,6 +177,14 @@ export class HandsFreeController {
   /** Palm centres of every recent sample, whatever the pose (for stillness and glitch checks). */
   private recent: TrailPoint[] = [];
   private closingFrom = -Infinity;
+  private snapTuning: SnapTuning = { ...DEFAULT_SNAP_TUNING };
+  /** The last thumb-on-middle sample: when, and how close. */
+  private snapTouch: { t: number; tm: number } | null = null;
+  private snapMissLogged = false;
+  /** Consecutive thumb-on-middle samples, and the previous hand sample's measurements. */
+  private snapReadyRun = 0;
+  private prevDetail: ReturnType<typeof poseDetail> | null = null;
+  private snapAttempt: SnapAttempt | undefined;
   /** Close/open preview: the list moves with the fingers. */
   private shapePreview: { dir: SwipeDirection; progress: number } | null = null;
 
@@ -151,11 +192,18 @@ export class HandsFreeController {
     return this.state;
   }
 
+  /** Snap thresholds, adapted per user by the learner. */
+  setSnapTuning(tuning: SnapTuning) {
+    this.snapTuning = { ...tuning };
+  }
+
   /** Full reset: mode off, backgrounded, camera restarted. */
   reset() {
     this.state = 'searching';
     this.pose = 'none';
     this.lastT = -Infinity;
+    this.intervals = [];
+    this.gap = GAP_MIN_MS;
     this.lastHandAt = -Infinity;
     this.openSince = null;
     this.lastOpenAt = -Infinity;
@@ -178,6 +226,9 @@ export class HandsFreeController {
     this.snapReady.clear();
     this.shapePreview = null;
     this.closingFrom = -Infinity;
+    this.snapTouch = null;
+    this.snapReadyRun = 0;
+    this.prevDetail = null;
   }
 
   /**
@@ -201,7 +252,15 @@ export class HandsFreeController {
     const t = sample.t;
     // Out-of-order or duplicate samples are dropped.
     if (!(t > this.lastT)) return this.output(events);
+    if (Number.isFinite(this.lastT)) {
+      this.intervals.push(t - this.lastT);
+      if (this.intervals.length > 15) this.intervals.shift();
+      const sorted = [...this.intervals].sort((a, b) => a - b);
+      const median = sorted[Math.floor(sorted.length / 2)];
+      this.gap = Math.max(GAP_MIN_MS, Math.min(GAP_MAX_MS, median * 3));
+    }
     this.lastT = t;
+    const GAP_MS = this.gap;
 
     let pts = toPoints(sample.hand, sample.w > 0 && sample.h > 0 ? sample.h / sample.w : NaN);
     let scale = pts ? palmScale(pts) : 0;
@@ -229,9 +288,9 @@ export class HandsFreeController {
     this.pose = seen;
     this.recent.push({ t, x: center!.x, y: center!.y });
     while (this.recent.length > 1 && t - this.recent[0].t > 300) this.recent.shift();
-    this.fist.update(t, seen === 'fist');
-    this.pyramid.update(t, seen === 'pyramid');
-    this.snapReady.update(t, seen === 'snapReady');
+    this.fist.update(t, seen === 'fist', GAP_MS);
+    this.pyramid.update(t, seen === 'pyramid', GAP_MS);
+    this.snapReady.update(t, seen === 'snapReady', GAP_MS);
     const shape = this.shapes(t, seen, pts, scale, events);
     if (shape) return this.output(events);
 
@@ -362,21 +421,47 @@ export class HandsFreeController {
     this.shapePreview = null;
     const still = Math.hypot(...this.velocity(t)) / scale <= ARM_STILL_SPEED;
 
-    // Snap: thumb on middle fingertip, held, then snapped apart.
-    if (this.state === 'snap') {
-      if (seen === 'snapReady') return true;
-      if (t - this.snapReady.last <= SNAP_WINDOW_MS) {
-        if (isSnapped(pts)) {
+    // Snap: thumb on middle fingertip, then snapped apart.
+    const d = poseDetail(pts);
+    const prev = this.prevDetail;
+    this.prevDetail = d;
+    this.snapReadyRun = seen === 'snapReady' ? this.snapReadyRun + 1 : 0;
+    if (seen === 'snapReady') {
+      // A real set-up: the touch lasts two samples, or the hand was already in
+      // snap shape just before (thumb near the middle finger, ring and little
+      // finger folded). A single-sample "touch" out of an open hand is a
+      // misread (seen in a recording where the user wasn't snapping).
+      const approached = prev !== null && prev.thumbMiddle < 0.6 && prev.ring < 1.05 && prev.pinky < 1.05;
+      if (this.snapReadyRun >= 2 || approached) {
+        if (this.state !== 'snap') this.enterShape('snap');
+        this.snapTouch = { t, tm: d.thumbMiddle };
+        this.snapMissLogged = false;
+      }
+      return true;
+    }
+    if (this.state === 'snap' && this.snapTouch) {
+      const dt = t - this.snapTouch.t;
+      if (dt <= SNAP_WINDOW_MS) {
+        const delta = d.thumbMiddle - this.snapTouch.tm;
+        const rate = delta / Math.max(dt / 1000, 1e-3);
+        const ringDown = d.ring < 1.05 && d.pinky < 1.05;
+        const fold = isSnapped(pts);
+        const split = ringDown && seen !== 'open' && delta >= this.snapTuning.minDelta && rate >= this.snapTuning.minRate;
+        if (fold || split) {
           events.push({ type: 'snap' });
+          this.snapAttempt = { t, fired: true, delta, rate };
           this.afterShape(t);
+          return true;
+        }
+        if (delta >= SNAP_ATTEMPT_DELTA && !this.snapMissLogged) {
+          // Came apart, but not like a snap (yet): remember it for the learner.
+          this.snapAttempt = { t, fired: false, delta, rate };
+          this.snapMissLogged = true;
         }
         return true;
       }
       this.state = 'searching';
-    }
-    if (seen === 'snapReady' && this.snapReady.heldFor(t) >= SNAP_DWELL_MS) {
-      this.enterShape('snap');
-      return true;
+      this.snapTouch = null;
     }
 
     // Bloom: fingertip pyramid, held, then opened.
@@ -408,7 +493,7 @@ export class HandsFreeController {
           this.afterShape(t);
           return true;
         }
-        if (seen !== 'pyramid' && seen !== 'snapReady') {
+        if (seen !== 'pyramid') {
           this.state = 'opening';
           this.shapePreview = { dir: 'up', progress: openness(pts) };
           return true;
@@ -431,7 +516,7 @@ export class HandsFreeController {
         }
         return false;
       }
-      if (seen === 'pyramid' || seen === 'snapReady') return false;
+      if (seen === 'pyramid') return false;
       // A misread sample with the fingers still mostly out isn't a close.
       if (this.state === 'armed' && openness(pts) > 0.75) return false;
       if (this.state === 'armed') {
@@ -534,7 +619,9 @@ export class HandsFreeController {
         progress: Math.max(0, Math.min(1, travel / COMMIT_TRAVEL)),
       };
     }
-    return { state: this.state, pose: this.pose, preview, events };
+    const snapAttempt = this.snapAttempt;
+    this.snapAttempt = undefined;
+    return { state: this.state, pose: this.pose, preview, events, snapAttempt };
   }
 }
 

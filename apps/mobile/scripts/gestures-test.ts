@@ -3,6 +3,8 @@
 // Run: node --experimental-strip-types scripts/gestures-test.ts
 import { HandsFreeController, type ControllerOutput } from '../src/handsfree/controller.ts';
 import { classifyPose, toPoints, type GestureEvent } from '../src/handsfree/gestures.ts';
+import { SNAP_CEIL, SNAP_FLOOR, SnapLearner } from '../src/handsfree/snapLearning.ts';
+import { DEFAULT_SNAP_TUNING } from '../src/handsfree/controller.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = '') {
@@ -70,6 +72,9 @@ const pyramidHand = (cx = 0.5, cy = 0.5) => hand(OPEN, cx, cy, PYRAMID_TIPS);
 // Snap-ready: thumb tip on the middle fingertip, ring and little finger curled.
 const SNAP_READY: Overrides = { 12: [-0.03, -0.05], 11: [-0.025, -0.03], 4: [-0.035, -0.05], 3: [-0.06, 0.0] };
 const snapReadyHand = (cx = 0.5, cy = 0.5) => hand({ thumb: false, index: true, middle: true, ring: false, pinky: false }, cx, cy, SNAP_READY);
+// Getting into snap shape: ring and little finger folded, thumb near (not yet on) the middle fingertip.
+const snapApproachHand = (cx = 0.5, cy = 0.5) =>
+  hand({ thumb: false, index: true, middle: true, ring: false, pinky: false }, cx, cy, { ...SNAP_READY, 4: [-0.05, -0.02] });
 // Just snapped: middle finger down in the palm, thumb flicked out beside the index finger.
 const snappedHand = (cx = 0.5, cy = 0.5) =>
   hand({ thumb: true, index: true, middle: false, ring: false, pinky: false }, cx, cy, { 4: [-0.12, -0.08], 3: [-0.1, -0.02] });
@@ -320,10 +325,68 @@ r = run([...Array(4).fill(snapReadyHand()), hand(OPEN), hand(OPEN), hand(OPEN)])
 check('thumb-on-middle then relaxed open → no snap', !types(r.events).includes('snap'), show(r));
 r = run([snappedHand(), snappedHand(), snappedHand()]);
 check('snapped shape without the set-up → no snap', r.events.length === 0, show(r));
-r = run([snapReadyHand(), snappedHand(), snappedHand()]);
-check('thumb-on-middle for one sample only → no snap', r.events.length === 0, show(r));
+r = run([snapApproachHand(), snapReadyHand(), snappedHand(), snappedHand()]);
+check('one-sample touch after a snap-shape lead-in, then snapped (a quick real snap) → one snap', JSON.stringify(types(r.events)) === '["snap"]', show(r));
+r = run([hand(OPEN), snapReadyHand(), snappedHand(), snappedHand()]);
+check('one-sample "touch" straight out of an open hand (a misread) → no snap', r.events.length === 0, show(r));
+{
+  // Thumb and middle finger fly apart fast, the fold itself falling between camera frames (most real snaps).
+  const split = hand({ thumb: true, index: true, middle: true, ring: false, pinky: false }, 0.5, 0.5, { ...SNAP_READY, 4: [-0.14, -0.1] });
+  r = run([...Array(3).fill(snapReadyHand()), split, split]);
+  check('fast thumb–middle split without a seen fold → one snap', JSON.stringify(types(r.events)) === '["snap"]', show(r));
+  const slow = Array.from({ length: 8 }, (_, i) =>
+    hand({ thumb: true, index: true, middle: true, ring: false, pinky: false }, 0.5, 0.5, { ...SNAP_READY, 4: [-0.035 - i * 0.013, -0.05 - i * 0.006] }),
+  );
+  r = run([...Array(3).fill(snapReadyHand()), ...slow]);
+  check('thumb slowly sliding off the middle finger → no snap', r.events.length === 0, show(r));
+}
 r = run([...Array(4).fill(snapReadyHand()), ...Array(8).fill(snapReadyHand()), ...Array(8).fill(hand(HALF)), snappedHand()]);
 check('snap after the window has passed → no snap', r.events.length === 0, show(r));
+
+// --- snap learning
+{
+  const L = new SnapLearner();
+  check('learner starts at the default snap thresholds', JSON.stringify(L.tuning()) === JSON.stringify(DEFAULT_SNAP_TUNING));
+  // A user whose snaps come apart less than the default expects: each fired
+  // snap is preceded by a near-miss 0.2 palm apart at 5 palm/s.
+  for (let i = 0; i < 4; i++) {
+    L.observe({ t: 10000 * i, fired: false, delta: 0.2, rate: 5 });
+    L.observe({ t: 10000 * i + 700, fired: true, delta: 0.6, rate: 9 });
+  }
+  const tuned = L.tuning();
+  check('near-misses before real snaps loosen the split threshold', tuned.minDelta <= 0.2 && tuned.minDelta >= SNAP_FLOOR.minDelta, JSON.stringify(tuned));
+  check('learning never goes below the floor', tuned.minRate >= SNAP_FLOOR.minRate && tuned.minDelta >= SNAP_FLOOR.minDelta);
+  // The same user's style now fires through the controller.
+  const c = new HandsFreeController();
+  c.setSnapTuning(tuned);
+  // Modelled on a real near-miss (781.8 s in the 2026-09-18 recording): thumb
+  // resting ~0.2 palm from the middle fingertip, then ~0.4 apart one 40 ms frame later.
+  const lightTouch = hand({ thumb: false, index: true, middle: true, ring: false, pinky: false }, 0.5, 0.5, { ...SNAP_READY, 4: [-0.03, -0.02] });
+  const shortSplit = hand({ thumb: false, index: true, middle: true, ring: false, pinky: false }, 0.5, 0.5, { ...SNAP_READY, 4: [-0.03, 0.01] });
+  const before = run([...Array(3).fill(lightTouch), shortSplit, shortSplit], 40);
+  const after = run([...Array(3).fill(lightTouch), shortSplit, shortSplit], 40, { c });
+  check('a smaller split misses by default but fires once learned', before.events.length === 0 && JSON.stringify(types(after.events)) === '["snap"]', `${show(before)} → ${show(after)}`);
+}
+{
+  const L = new SnapLearner();
+  L.observe({ t: 0, fired: false, delta: 0.19, rate: 5 });
+  L.observe({ t: 9000, fired: true, delta: 0.6, rate: 9 }); // 9 s later: not the same attempt
+  L.observe({ t: 20000, fired: true, delta: 0.6, rate: 9 });
+  L.observe({ t: 30000, fired: true, delta: 0.6, rate: 9 });
+  check('a near-miss long before a snap is not learned', L.tuning().minDelta > 0.19, JSON.stringify(L.tuning()));
+}
+{
+  const L = new SnapLearner();
+  for (let i = 0; i < 4; i++) L.observe({ t: 10000 * i, fired: true, delta: 0.5, rate: 8 });
+  L.observe({ t: 50000, fired: true, delta: 0.3, rate: 4 });
+  L.cancelLast(); // the user tapped "stay": that one wasn't meant
+  const t = L.tuning();
+  check('a cancelled snap tightens the thresholds past it', !(0.3 >= t.minDelta && 4 >= t.minRate), JSON.stringify(t));
+  check('tightening never exceeds the ceiling', t.minDelta <= SNAP_CEIL.minDelta && t.minRate <= SNAP_CEIL.minRate);
+  const back = SnapLearner.from(JSON.parse(JSON.stringify(L)));
+  check('learning survives save and reload', JSON.stringify(back.tuning()) === JSON.stringify(t));
+  check('corrupt saved learning is ignored', JSON.stringify(SnapLearner.from({ v: 1, positives: [{ delta: 'x' }, null], negatives: 7 }).tuning()) === JSON.stringify(DEFAULT_SNAP_TUNING));
+}
 
 // --- dial (pointing circles)
 function circle(turns: number, clockwise: boolean, n = 40): Frame[] {

@@ -23,7 +23,7 @@ import YouScreen from './You';
 // card overlay for every screen, and BiteLog as a sheet above everything.
 export default function AppShell() {
   const { colors: c } = useTheme();
-  const { status: handsFreeStatus, interrupt } = useHandsFree();
+  const { status: handsFreeStatus, interrupt, cancelSnap } = useHandsFree();
   const handsFreeOn = handsFreeStatus === 'on';
   // Hands-free Thanos snap closes the app, after a short, cancellable notice so
   // an accidental snap can be undone with a touch. Never while a bite is being
@@ -119,7 +119,15 @@ export default function AppShell() {
           <HandsFreeIntro />
           {closing && (
             <Animated.View entering={FadeIn.duration(120)} exiting={FadeOut.duration(150)} style={[StyleSheet.absoluteFill, styles.closing, { backgroundColor: c.scrim }]}>
-              <Pressable style={StyleSheet.absoluteFill} onPress={() => setClosing(false)} accessibilityRole="button" accessibilityLabel="Cancel closing Bhookmark">
+              <Pressable
+                style={StyleSheet.absoluteFill}
+                onPress={() => {
+                  setClosing(false);
+                  cancelSnap(); // teaches the snap learner this one wasn't meant
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel closing Bhookmark"
+              >
                 <View style={styles.closingBox}>
                   <Text style={[styles.closingTitle, { color: c.ink }]}>Closing Bhookmark…</Text>
                   <Text style={[styles.closingHint, { color: c.muted }]}>Tap anywhere to stay</Text>
