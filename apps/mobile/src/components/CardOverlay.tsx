@@ -44,6 +44,7 @@ import { effectsFor, flight, flightEasing, flightPeak, limits, timing, type Tier
 import { fonts } from '../theme/brand';
 import { useTheme } from '../theme/ThemeProvider';
 import CategoryArt from './CategoryArt';
+import AssistantRibbon from './AssistantRibbon';
 import HoloHud from './HoloHud';
 import { perfOff } from '../motion/perfFlags';
 import { useHandsFree, useHandsFreeGestures } from '../handsfree/HandsFreeProvider';
@@ -635,6 +636,9 @@ function OverlayScene({ entry }: { entry: Entry }) {
         <Image source={CONTACT_SHADOW} resizeMode="stretch" style={[styles.stretch, { tintColor: c.shadow }]} accessible={false} />
       </Animated.View>}
 
+      {/* Hands-free assistant, behind the card: the ribbon's tail peeks over its top edge. */}
+      {phase === 'open' && <AssistantRibbon layer="back" panel={panel} photo={photo} dish={dish} tiltX={tiltX} reduce={reduce} />}
+
       {/* Card surface */}
       <Animated.View pointerEvents="none" style={[styles.abs, styles.originTopLeft, rect(panel), shellTravel]}>
         <Animated.View
@@ -738,6 +742,9 @@ function OverlayScene({ entry }: { entry: Entry }) {
         {/* Hologram layer: rings, frame corners and one scan line in the brand's rose light. */}
         <HoloHud progress={progress} tiltX={tiltX} tiltY={tiltY} width={photo.width} height={photo.height} color={c.rose} enabled={!reduce && !perfOff('hud')} />
       </Animated.View>
+
+      {/* Hands-free assistant, saved: the ribbon drops across the photo's corner. */}
+      {phase === 'open' && <AssistantRibbon layer="front" panel={panel} photo={photo} dish={dish} tiltX={tiltX} reduce={reduce} />}
 
       <Animated.View
         style={[styles.abs, { left: panel.x + panel.width - inset - 12 - 44, top: panel.y + inset + 12 }, closeReveal]}

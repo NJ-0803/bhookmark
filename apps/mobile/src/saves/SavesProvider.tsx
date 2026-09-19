@@ -84,6 +84,11 @@ export function SavesProvider({ children }: { children: ReactNode }) {
   return <SavesContext.Provider value={value}>{children}</SavesContext.Provider>;
 }
 
+/** For decoration that may render outside SavesProvider (MotionLab): null there. */
+export function useSavesOptional(): SavesContextValue | null {
+  return useContext(SavesContext);
+}
+
 export function useSaves(): SavesContextValue {
   const ctx = useContext(SavesContext);
   if (!ctx) throw new Error('useSaves must be used inside SavesProvider');
