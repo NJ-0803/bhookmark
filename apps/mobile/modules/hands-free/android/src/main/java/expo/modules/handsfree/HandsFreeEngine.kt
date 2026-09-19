@@ -8,6 +8,7 @@ import android.graphics.RectF
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraMetadata
 import android.hardware.camera2.CaptureRequest
+import android.os.Process
 import android.os.SystemClock
 import android.util.Log
 import android.util.Range
@@ -50,7 +51,19 @@ class HandsFreeEngine(
   private val emit: (Map<String, Any?>) -> Unit,
   private val onError: (String) -> Unit,
 ) {
-  private val executor: ExecutorService = Executors.newSingleThreadExecutor()
+  // Analysis runs one notch below normal priority, and so do the hand model's
+  // worker threads (created from this thread, they inherit it): the UI and
+  // render threads win the two fast cores when both want them. Measured on a
+  // Pixel 4a (2026-09-18): the model's workers took ~57% CPU with no hand in
+  // view, mostly on the fast cores, and made the slowest frames worse. Not
+  // THREAD_PRIORITY_BACKGROUND: on many devices that confines a thread to the
+  // slow cores, which would slow recognition itself.
+  private val executor: ExecutorService = Executors.newSingleThreadExecutor { r ->
+    Thread({
+      Process.setThreadPriority(ANALYSIS_PRIORITY)
+      r.run()
+    }, "HandsFree-analysis")
+  }
   private var provider: ProcessCameraProvider? = null
   private var analysis: ImageAnalysis? = null
   private var hands: HandLandmarker? = null
@@ -235,8 +248,10 @@ class HandsFreeEngine(
     try {
       if (!running || gen != generation) return
       val nowMs = SystemClock.elapsedRealtime()
-      val idle = !faceTracking && nowMs - lastHandSeenMs > IDLE_AFTER_MS
-      if (idle && nowMs - lastAnalysedMs < IDLE_INTERVAL_MS) return
+      val away = nowMs - lastHandSeenMs
+      val idle = !faceTracking && away > IDLE_AFTER_MS
+      val interval = if (away > DEEP_IDLE_AFTER_MS) DEEP_IDLE_INTERVAL_MS else IDLE_INTERVAL_MS
+      if (idle && nowMs - lastAnalysedMs < interval) return
       lastAnalysedMs = nowMs
       ensureModels()
 
@@ -313,5 +328,11 @@ class HandsFreeEngine(
   private companion object {
     const val IDLE_AFTER_MS = 2000L
     const val IDLE_INTERVAL_MS = 125L // ~8 frames a second while no hand is in view
+    // After longer without a hand, ~3 a second: a hand is noticed within ~⅓ s,
+    // and must be held still for 0.3 s before any gesture anyway (ARM_MS).
+    const val DEEP_IDLE_AFTER_MS = 6000L
+    const val DEEP_IDLE_INTERVAL_MS = 333L
+    // Nice 5: between normal (0) and background (10).
+    const val ANALYSIS_PRIORITY = 5
   }
 }
