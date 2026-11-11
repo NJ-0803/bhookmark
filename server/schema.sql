@@ -47,6 +47,10 @@ CREATE TABLE IF NOT EXISTS refresh_families (
   revoked BOOLEAN NOT NULL DEFAULT false
 );
 
+-- Additive refresh concurrency protection. Apply before deploying this branch.
+ALTER TABLE refresh_families ADD COLUMN IF NOT EXISTS previous_jti TEXT;
+ALTER TABLE refresh_families ADD COLUMN IF NOT EXISTS rotated_at BIGINT;
+
 CREATE TABLE IF NOT EXISTS security_events (
   id SERIAL PRIMARY KEY,
   type TEXT NOT NULL,
