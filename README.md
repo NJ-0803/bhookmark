@@ -91,3 +91,7 @@ Tests run against an isolated in-process PostgreSQL engine (PGlite), DOM
 components and mocked provider responses; they never mutate a live database
 or call paid services. Public production migration, catalog refresh, Google credentials,
 live photo verification and real-phone QA remain deployment steps.
+
+## Conversational preview (development only)
+
+A channel-neutral, authenticated read-only preview is documented in [docs/CHAT_PREVIEW.md](docs/CHAT_PREVIEW.md). It never saves data or connects a messaging provider.
