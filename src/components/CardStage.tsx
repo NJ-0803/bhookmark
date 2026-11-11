@@ -413,6 +413,7 @@ export function FloatCard({
   }
 
   function handlePointerDown(e: ReactPointerEvent<HTMLDivElement>) {
+    if ((e.target as Element).closest("a, button")) return;
     downAt.current = { x: e.clientX, y: e.clientY };
     if (reduce || !buttonRef.current) return;
     const rect = buttonRef.current.getBoundingClientRect();
@@ -420,6 +421,7 @@ export function FloatCard({
   }
 
   function handleTap(e: MouseEvent | TouchEvent | PointerEvent) {
+    if ((e.target as Element).closest("a, button")) return;
     const start = downAt.current;
     downAt.current = null;
     if (start && "clientX" in e && Math.hypot(e.clientX - start.x, e.clientY - start.y) > TAP_SLOP_PX) return;
@@ -445,6 +447,7 @@ export function FloatCard({
         onTap={handleTap}
         onPointerDown={handlePointerDown}
         onKeyDown={(e) => {
+          if (e.target !== e.currentTarget) return;
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
             trigger();

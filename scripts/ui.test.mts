@@ -57,9 +57,17 @@ test('saved food groups distinct branches, supports notes search and shows manua
   fireEvent.change(screen.getByLabelText('Search saved dishes and notes'), { target: { value: 'weekend' } }); assert.ok(screen.getByRole('heading', { name: 'Coffee' }));
 });
 
-test('restaurant photo failure uses an honest empty state', () => {
+test('failed restaurant photos collapse without leaving an empty image box', () => {
   render(React.createElement(RestaurantPhoto, { restaurant: { ...restaurant, photos: [{ url: 'https://example.com/photo.jpg', sourceUrl: 'https://maps.google.com', authors: [{ name: 'Author', url: 'https://maps.google.com/author' }] }] } }));
   assert.ok(screen.getByRole('link', { name: 'Photo: Author' }));
   fireEvent.error(screen.getByRole('img'));
-  assert.ok(screen.getByText('Restaurant photo unavailable')); assert.equal(screen.queryByRole('img'), null);
+  assert.equal(screen.queryByRole('img'), null); assert.equal(document.querySelector('figure'), null);
+});
+
+
+test('Commons photos show their actual provider, author, date and license', () => {
+  render(React.createElement(RestaurantPhoto, { restaurant: { ...restaurant, photos: [{ url: '/restaurant-photos/mtr-lalbagh.jpg', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Example.jpg', provider: 'Wikimedia Commons', year: 2021, authors: [{ name: 'Gpkp', url: 'https://commons.wikimedia.org/wiki/User:Gpkp' }], license: { name: 'CC BY-SA 4.0', url: 'https://creativecommons.org/licenses/by-sa/4.0/' } }] } }));
+  assert.ok(screen.getByRole('link', { name: 'Wikimedia Commons · 2021' }));
+  assert.ok(screen.getByRole('link', { name: 'CC BY-SA 4.0' }));
+  assert.equal(screen.queryByRole('link', { name: /Google Maps/ }), null);
 });

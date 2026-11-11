@@ -1,4 +1,5 @@
 import { sql } from "./bookmarks";
+import { verifiedRestaurants } from "./verifiedRestaurants";
 
 // Bangalore metro search boundary, including the suburbs omitted by the old
 // 12.90..13.02 seed import. This is a search region, not a completeness claim.
@@ -7,6 +8,9 @@ export interface RestaurantPhoto {
   url: string;
   sourceUrl: string;
   authors: { name: string; url: string }[];
+  provider?: string;
+  license?: { name: string; url: string };
+  year?: number;
 }
 export interface Restaurant {
   id: string; name: string; address: string; lat: number; lng: number;
@@ -56,20 +60,24 @@ export async function searchGoogle(q: string, pageToken?: string) {
 }
 
 function localRestaurant(v: Record<string, any>): Restaurant {
-  return { id: `osm:${v.id}`, name: v.name, address: `${v.area}, Bengaluru`, lat: v.lat, lng: v.lng,
+  // Photos belong to a reviewed OSM branch, never a fuzzy chain-name match.
+  const verified = verifiedRestaurants[v.osm_id];
+  const area = String(v.area || "").trim();
+  const address = !area || /^(bengaluru|bangalore)$/i.test(area) ? "Bengaluru" : /(?:bengaluru|bangalore)$/i.test(area) ? area : `${area}, Bengaluru`;
+  return { id: `osm:${v.id}`, name: verified?.name ?? v.name, address: verified?.address ?? address, lat: v.lat, lng: v.lng,
     source: "osm", mapsUrl: `https://www.google.com/maps/search/?api=1&query=${v.lat},${v.lng}`,
-    // Legacy photos were generic placeholders or seed images without a
-    // reliable per-branch provenance. Do not promote them to real photos.
-    photos: [] };
+    photos: verified ? [verified.photo] : [] };
 }
 
 export async function searchLocal(q: string, offset = 0, connect: typeof sql = sql) {
   const db = connect();
   const pattern = `%${q.replace(/[\\%_]/g, "\\$&")}%`;
-  const rows = await db`SELECT id, name, area, lat, lng FROM venues
+  const featured = Object.keys(verifiedRestaurants);
+  const aliases = Object.entries(verifiedRestaurants).filter(([, v]) => `${v.name} ${v.address} ${v.aliases}`.toLowerCase().includes(q.toLowerCase())).map(([id]) => id);
+  const rows = await db`SELECT id, osm_id, name, area, lat, lng FROM venues
     WHERE status = 'active' AND lat BETWEEN 12.75 AND 13.25 AND lng BETWEEN 77.30 AND 77.90
-      AND (name ILIKE ${pattern} OR area ILIKE ${pattern})
-    ORDER BY lower(name), area, id LIMIT 21 OFFSET ${offset}`;
+      AND (name ILIKE ${pattern} OR area ILIKE ${pattern} OR osm_id = ANY(${aliases}::text[]))
+    ORDER BY COALESCE(array_position(${featured}::text[], osm_id), 1000), lower(name), area, id LIMIT 21 OFFSET ${offset}`;
   return { restaurants: rows.slice(0, 20).map(localRestaurant), nextOffset: rows.length > 20 ? offset + 20 : null };
 }
 
@@ -81,7 +89,7 @@ export async function getRestaurant(id: string): Promise<Restaurant | null> {
     return isFood(p.types) && inBangalore(p.location?.latitude, p.location?.longitude) ? googleRestaurant(p) : null;
   }
   if (!id.startsWith("osm:")) return null;
-  const rows = await sql()`SELECT id, name, area, lat, lng FROM venues WHERE id = ${id.slice(4)} AND status = 'active'
+  const rows = await sql()`SELECT id, osm_id, name, area, lat, lng FROM venues WHERE id = ${id.slice(4)} AND status = 'active'
     AND lat BETWEEN 12.75 AND 13.25 AND lng BETWEEN 77.30 AND 77.90`;
   return rows[0] ? localRestaurant(rows[0]) : null;
 }

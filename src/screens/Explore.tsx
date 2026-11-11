@@ -13,6 +13,8 @@ export default function Explore({ bookmarks, onSave, onManual }: { bookmarks: Bo
   const [moreLoading, setMoreLoading] = useState(false);
   const [retry, setRetry] = useState(0);
   const [catalogOnly, setCatalogOnly] = useState(false);
+  const [browseAll, setBrowseAll] = useState(false);
+  const featuredOnly = !query && !browseAll && result?.source === "osm" && result.restaurants.some((r) => r.photos.length > 0);
   const sequence = useRef(0);
   useEffect(() => { getCoverage().then(setCoverage).catch(() => {}); }, []);
   useEffect(() => {
@@ -48,7 +50,7 @@ export default function Explore({ bookmarks, onSave, onManual }: { bookmarks: Bo
       {query && <button aria-label="Clear search" onClick={() => setQuery("")} className="absolute right-1 top-1 w-12 h-12 text-muted">✕</button>}
     </label>
     <div className="flex items-start justify-between gap-4 mb-6 text-[13px] text-muted">
-      <p>{result?.source === "google" ? "Live restaurant search · Google Maps" : "Bangalore restaurant catalog"}{coverage && result?.source !== "google" ? ` · ${coverage.catalogCount.toLocaleString()} places` : ""}</p>
+      <p>{result?.source === "google" ? "Live restaurant search · Google Maps" : query ? "Restaurants matching your search" : "A few Bengaluru favourites to start with"}</p>
       <button onClick={onManual} className="text-rose underline underline-offset-4 shrink-0 min-h-11 -mt-3">Add a missing place</button>
     </div>
     {coverage?.liveSearch && <div className="flex gap-2 mb-5" aria-label="Restaurant search source"><button onClick={() => setCatalogOnly(false)} aria-pressed={!catalogOnly} className={`secondary-button ${!catalogOnly ? "!border-accent !text-rose" : ""}`}>Live search</button><button onClick={() => setCatalogOnly(true)} aria-pressed={catalogOnly} className={`secondary-button ${catalogOnly ? "!border-accent !text-rose" : ""}`}>Bangalore catalog</button></div>}
@@ -56,8 +58,8 @@ export default function Explore({ bookmarks, onSave, onManual }: { bookmarks: Bo
     {error && <div role="alert" className="text-bad text-sm border border-bad/40 rounded-xl p-4 mb-5">{error} <button onClick={() => setRetry((n) => n + 1)} className="underline min-h-11 ml-2">Try again</button></div>}
     {loading ? <div role="status" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">{[1, 2, 3].map((n) => <div key={n} className="h-72 bg-surface border border-line rounded-card motion-safe:animate-pulse" />)}<span className="sr-only">Searching restaurants…</span></div> : <>
       {result && !result.restaurants.length && <div className="text-center border border-dashed border-line rounded-card px-5 py-12"><h2 className="dish-name text-[28px] mb-3">Couldn't find your spot?</h2><p className="text-muted text-sm mb-5">Try its branch or area, or add it yourself and save a food item.</p><button onClick={onManual} className="primary-button">Add restaurant & dish</button></div>}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-        {result?.restaurants.map((restaurant) => {
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 items-start">
+        {result?.restaurants.filter((r) => !featuredOnly || r.photos.length > 0).map((restaurant) => {
           const count = bookmarks.filter((b) => b.restaurantId === restaurant.id).length;
           return <FloatCard key={restaurant.id} id={restaurant.id} label={restaurant.name} wide className="bg-surface border border-line rounded-card overflow-hidden" panel={() => <RestaurantPanel restaurant={restaurant} onSave={onSave} />}>
             <RestaurantPhoto restaurant={restaurant} className="aspect-[16/10]" />
@@ -65,7 +67,7 @@ export default function Explore({ bookmarks, onSave, onManual }: { bookmarks: Bo
           </FloatCard>;
         })}
       </div>
-      {result && (result.nextPageToken || result.nextOffset !== null) && <button onClick={loadMore} disabled={moreLoading} className="secondary-button block mx-auto mt-7">{moreLoading ? "Loading…" : "More restaurants"}</button>}
+      {featuredOnly ? <button onClick={() => setBrowseAll(true)} className="secondary-button block mx-auto mt-7">Browse all restaurants</button> : result && (result.nextPageToken || result.nextOffset !== null) && <button onClick={loadMore} disabled={moreLoading} className="secondary-button block mx-auto mt-7">{moreLoading ? "Loading…" : "More restaurants"}</button>}
     </>}
     <p className="text-faint text-[12px] mt-8">{result?.source === "google" ? "Restaurant details and photos: Google Maps. Availability varies by restaurant." : <>Restaurant data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" className="underline">OpenStreetMap contributors</a>. Photos appear when a verified source is available.</>} Missing places can always be saved manually.</p>
   </div>;
@@ -74,7 +76,7 @@ export default function Explore({ bookmarks, onSave, onManual }: { bookmarks: Bo
 function RestaurantPanel({ restaurant, onSave }: { restaurant: Restaurant; onSave: (r: Restaurant) => void }) {
   const [detail, setDetail] = useState(restaurant);
   useEffect(() => { let active = true; getRestaurant(restaurant.id).then((r) => { if (active) setDetail(r); }).catch(() => {}); return () => { active = false; }; }, [restaurant.id]);
-  return <div className="lg:grid lg:grid-cols-2">
+  return <div className={detail.photos.length ? "lg:grid lg:grid-cols-2" : "max-w-2xl mx-auto"}>
     <div><RestaurantPhoto restaurant={detail} className="aspect-[4/3] lg:aspect-square" />{detail.photos.length > 1 && <div className="grid grid-cols-2 gap-2 p-3">{detail.photos.slice(1).map((_p, i) => <RestaurantPhoto key={i} restaurant={detail} index={i + 1} className="aspect-[4/3] rounded-xl" />)}</div>}</div>
     <div className="p-6 lg:p-8"><DepthLayer depth={6}><p className="text-[13px] text-rose mb-2">Bengaluru · {detail.source === "google" ? "Google Maps" : "OpenStreetMap"}</p><h2 className="dish-name text-[36px] pr-8">{detail.name}</h2><p className="text-[15px] text-muted mt-3">{detail.address}</p></DepthLayer>
       <DepthLayer depth={10} className="mt-6"><button onClick={() => onSave(detail)} className="primary-button w-full">Save a food item here</button><a href={detail.mapsUrl} target="_blank" rel="noreferrer" className="secondary-button block text-center mt-3">Open in Maps ↗</a><p className="text-[13px] text-muted mt-6">Remember a dish you want to try. Once you've eaten it, add your own rating in My Bhookmarks.</p>

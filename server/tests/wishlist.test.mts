@@ -145,3 +145,22 @@ test("removed feature APIs are unreachable", async () => {
     assert.equal((await nativeFetch(`http://127.0.0.1:${address.port}${path}`)).status, 404, path);
   } } finally { await new Promise<void>((resolve) => s.close(() => resolve())); }
 });
+
+
+test("verified photographs belong only to the exact branch and featured venues precede numeric names", async () => {
+  await pg.exec(`INSERT INTO venues (id, osm_id, name, area, lat, lng, source, created_at, updated_at) VALUES
+    ('verified-mtr', 'node/429833271', 'Mavalli Tiffin Rooms', 'Lalbagh Road', 12.9551683, 77.5855225, 'osm', 1, 1),
+    ('other-mtr', 'node/1675540997', 'Mavalli Tiffin Rooms', 'Bengaluru', 12.9721761, 77.6009542, 'osm', 1, 1),
+    ('numeric', 'node/test-numeric', '080 Lounge', 'Bengaluru', 12.97, 77.60, 'osm', 1, 1)`);
+  const defaultPage = await searchLocal('', 0, connect as unknown as typeof sql);
+  assert.equal(defaultPage.restaurants[0].id, 'osm:verified-mtr');
+  assert.ok(defaultPage.restaurants[0].photos[0].url.endsWith('/mtr-lalbagh.jpg'));
+  const branches = await searchLocal('Mavalli', 0, connect as unknown as typeof sql);
+  assert.equal(branches.restaurants.length, 2);
+  const other = branches.restaurants.find((r) => r.id === 'osm:other-mtr')!;
+  assert.equal(other.photos.length, 0); assert.equal(other.address, 'Bengaluru');
+  const acronym = await searchLocal('MTR', 0, connect as unknown as typeof sql);
+  assert.ok(acronym.restaurants.some((r) => r.id === 'osm:verified-mtr'));
+  const numeric = await searchLocal('080', 0, connect as unknown as typeof sql);
+  assert.equal(numeric.restaurants[0].name, '080 Lounge');
+});
