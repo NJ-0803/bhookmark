@@ -1,11 +1,13 @@
 import { Router } from "express";
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { z } from "zod";
 import { coverage, getRestaurant, hasPlaces, searchGoogle, searchLocal } from "../restaurants";
 
 export const restaurantsRouter = Router();
 restaurantsRouter.use((_req, res, next) => { res.set("Cache-Control", "private, no-store"); next(); });
 restaurantsRouter.use(rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: true, legacyHeaders: false,
+  // Match the existing Vercel-aware limiters and normalize IPv6 addresses.
+  keyGenerator: (req) => ipKeyGenerator(req.ip ?? ""),
   message: { ok: false, error: "Too many restaurant requests. Try again in a minute." } }));
 restaurantsRouter.get("/coverage", async (_req, res) => res.json({ ok: true, ...await coverage() }));
 
