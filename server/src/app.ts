@@ -1,4 +1,5 @@
 import express from "express";
+import { proxyTrust, permittedOrigin } from "./network";
 import { createChatPreviewRouter } from "./routes/chat";
 import cors from "cors";
 import helmet from "helmet";
@@ -9,27 +10,12 @@ import { restaurantsRouter } from "./routes/restaurants";
 
 const app = express();
 
-// Real production fix: this app has been deployed behind Vercel's edge
-// network for a while now, but this flag was never set — meaning req.ip
-// (and every IP-keyed rate limit/abuse signal built on it, including the
-// multi-account-per-network check below) was reading Vercel's internal
-// proxy IP, not the real client. Safe to trust unconditionally here
-// specifically because a Vercel serverless function has no other public
-// network path — every request genuinely did pass through Vercel's own
-// proxy first. This would NOT be safe on infrastructure with an
-// attacker-reachable path that bypasses the trusted proxy.
-app.set("trust proxy", true);
+app.set("trust proxy", proxyTrust());
 
 app.use(helmet());
-// In production, the frontend and API are served from the same Vercel
-// domain via rewrites (see vercel.json) — this only needs to cover local
-// dev (Vite's own dev server) and Vercel's preview-deployment domains,
-// not an open wildcard.
-app.use(
-  cors({
-    origin: [/^http:\/\/localhost:\d+$/, /^https:\/\/localhost:\d+$/, /\.vercel\.app$/],
-  })
-);
+// Same-origin requests need no CORS permission. Preview/custom origins must
+// be explicitly allowed, not every unrelated tenant on vercel.app.
+app.use(cors({ origin: (origin, done) => done(null, origin === undefined || permittedOrigin(origin)) }));
 app.use(express.json({ limit: "1mb" }));
 
 // Authenticated traffic is limited per verified user; anonymous requests
