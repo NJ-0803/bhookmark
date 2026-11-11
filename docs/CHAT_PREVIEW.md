@@ -40,3 +40,7 @@ Run `npm test`, `npm run build`, `npm run typecheck:server`, and `npm run lint`.
 ## Scope and checks
 
 Source baseline: c4d209870d938f1e12eac8f876547dfee1a82e9d. Existing application/package versions were left unchanged. Dependency auditing reported existing advisories including high/critical transitive dependencies; this branch does not claim to fix them or that production is security-audited. Review current audit results before release.
+
+## Visual localhost demo (no credentials required)
+
+Run `npm ci` then `npm run demo:chat` from this branch and open http://127.0.0.1:4040 on the same computer. Stop with Ctrl+C. This loopback-only demo uses fictional fixtures and the real preview engine, never the database, account login, messaging provider or a paid API. It shows proposed updates, ambiguous branches, score validation and sample recall. Messages do not persist or execute saves. It does not make a remote machine's localhost available on your own Mac.
