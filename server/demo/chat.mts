@@ -1,7 +1,7 @@
 import express from "express";
 import { pathToFileURL } from "node:url";
-import { previewMessage, type Preview } from "../src/chat/preview";
-import type { Bookmark } from "../src/bookmarks";
+import { previewMessage, type Preview } from "../src/chat/preview.js";
+import type { Bookmark } from "../src/bookmarks.js";
 
 // Fictional fixtures only. No database import, account session, AI or provider.
 const restaurants = [
