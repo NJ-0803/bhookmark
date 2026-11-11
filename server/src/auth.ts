@@ -1,4 +1,5 @@
 import jwt from "jsonwebtoken";
+import { z } from "zod";
 import { nanoid } from "nanoid";
 import { randomInt } from "node:crypto";
 import { findOrCreateUser as dbFindOrCreateUser, Role } from "./db";
@@ -34,15 +35,19 @@ export function issueAccessToken(userId: string, role: Role, authTime: number, d
 }
 
 export function verifyAccessToken(token: string): AccessPayload {
-  return jwt.verify(token, ACCESS_SECRET) as AccessPayload;
+  return z.object({ sub: z.string().min(1), role: z.enum(["user", "restaurant_owner", "moderator", "trust_analyst", "admin"]),
+    authTime: z.number().int().nonnegative(), deviceId: z.string().min(1) }).parse(jwt.verify(token, ACCESS_SECRET, { algorithms: ["HS256"] }));
 }
 
-export function issueRefreshToken(familyId: string, jti: string) {
-  return jwt.sign({ familyId, jti }, REFRESH_SECRET, { expiresIn: REFRESH_TTL_S });
+export function issueRefreshToken(familyId: string, jti: string, authTime = 0) {
+  return jwt.sign({ familyId, jti, authTime }, REFRESH_SECRET, { expiresIn: REFRESH_TTL_S });
 }
 
-export function verifyRefreshToken(token: string): { familyId: string; jti: string } {
-  return jwt.verify(token, REFRESH_SECRET) as { familyId: string; jti: string };
+export function verifyRefreshToken(token: string): { familyId: string; jti: string; authTime: number } {
+  // Legacy refresh tokens have no original-auth time. Zero fails recent-auth
+  // checks conservatively; a token refresh must never count as a new sign-in.
+  return z.object({ familyId: z.string().min(1), jti: z.string().min(1), authTime: z.number().int().nonnegative().default(0) })
+    .parse(jwt.verify(token, REFRESH_SECRET, { algorithms: ["HS256"] }));
 }
 
 // F01: Math.random() is not a cryptographic RNG — its output is
