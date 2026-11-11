@@ -164,3 +164,43 @@ test("verified photographs belong only to the exact branch and featured venues p
   const numeric = await searchLocal('080', 0, connect as unknown as typeof sql);
   assert.equal(numeric.restaurants[0].name, '080 Lounge');
 });
+
+test("luxury picks lead without ratings and numeric chain names retain distinct corrected branches", async () => {
+  await pg.exec(`INSERT INTO venues (id, osm_id, name, area, lat, lng, source, created_at, updated_at) VALUES
+    ('luxury-karavalli', 'node/3761073062', 'Karavalli', 'Residency Road', 12.9720694, 77.6089097, 'osm', 1, 1),
+    ('luxury-lupa', 'node/10591455581', 'LUPA', 'MG Road', 12.9755984, 77.6045793, 'osm', 1, 1),
+    ('pub-jp', 'node/11303671252', '1522', 'Bengaluru', 12.9062943, 77.5758493, 'osm', 1, 1),
+    ('pub-kor', 'node/3782893189', '1522', 'Bengaluru', 12.9342864, 77.6301111, 'osm', 1, 1)`);
+  const page = await searchLocal('', 0, connect as unknown as typeof sql);
+  assert.deepEqual(page.restaurants.slice(0, 2).map((r) => r.name), ['Karavalli', 'LUPA']);
+  assert.equal(page.restaurants[0].category, 'Fine dining');
+  const pubs = await searchLocal('1522', 0, connect as unknown as typeof sql);
+  assert.equal(pubs.restaurants.length, 2);
+  assert.deepEqual(new Set(pubs.restaurants.map((r) => r.name)), new Set(['1522 The Pub · JP Nagar', '1522 The Pub · Koramangala']));
+  const branch = await searchLocal('Koramangala', 0, connect as unknown as typeof sql);
+  assert.ok(branch.restaurants.some((r) => r.id === 'osm:pub-kor'));
+  assert.ok(!branch.restaurants.some((r) => r.id === 'osm:pub-jp'));
+});
+
+test("ranking counts real manual raters once per branch and responds to editing or removing ratings", async () => {
+  await pg.exec("INSERT INTO users (id, created_at) VALUES ('rank-alice', 1), ('rank-bob', 1)");
+  const inputFor = (id: string, name: string, rating: number | null, tried = true) => ({ ...input, restaurantId: `osm:${id}`, restaurantName: id, name, tried, rating });
+  await store.save('rank-alice', 'pop-1', inputFor('venue-1', 'First', 0));
+  await store.save('rank-alice', 'pop-2', inputFor('venue-1', 'Second', 9));
+  await store.save('rank-bob', 'pop-3', inputFor('venue-2', 'Only', 7));
+  await store.save('rank-bob', 'unrated', inputFor('luxury-karavalli', 'Unrated', null, false));
+  let results = (await searchLocal('', 0, connect as unknown as typeof sql)).restaurants;
+  assert.equal(results.find((r) => r.id === 'osm:venue-1')!.ratingCount, 1);
+  assert.equal(results.find((r) => r.id === 'osm:luxury-karavalli')!.ratingCount, 0);
+  assert.equal(results[0].ratingCount, 1); // zero is a valid manual rating
+  await store.save('rank-alice', 'pop-4', inputFor('venue-2', 'Another', 6));
+  results = (await searchLocal('', 0, connect as unknown as typeof sql)).restaurants;
+  assert.equal(results[0].id, 'osm:venue-2'); assert.equal(results[0].ratingCount, 2);
+  assert.ok(!('rating' in results[0])); assert.ok(!('userId' in results[0])); assert.ok(!('note' in results[0]));
+  await store.update('rank-alice', 'pop-4', inputFor('venue-2', 'Another', null));
+  await store.remove('rank-bob', 'pop-3');
+  results = (await searchLocal('', 0, connect as unknown as typeof sql)).restaurants;
+  assert.equal(results[0].id, 'osm:venue-1'); assert.equal(results[0].ratingCount, 1);
+  await store.remove('rank-alice', 'pop-1'); await store.remove('rank-alice', 'pop-2');
+  assert.equal((await searchLocal('', 0, connect as unknown as typeof sql)).restaurants[0].id, 'osm:luxury-karavalli');
+});

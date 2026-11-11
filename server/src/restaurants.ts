@@ -1,5 +1,5 @@
 import { sql } from "./bookmarks";
-import { verifiedRestaurants } from "./verifiedRestaurants";
+import { restaurantDirectory } from "./restaurantDirectory";
 
 // Bangalore metro search boundary, including the suburbs omitted by the old
 // 12.90..13.02 seed import. This is a search region, not a completeness claim.
@@ -11,11 +11,13 @@ export interface RestaurantPhoto {
   provider?: string;
   license?: { name: string; url: string };
   year?: number;
+  description?: string;
 }
 export interface Restaurant {
   id: string; name: string; address: string; lat: number; lng: number;
   source: "google" | "osm"; mapsUrl: string; photos: RestaurantPhoto[];
   attributions?: { provider: string; providerUri: string }[];
+  featured?: boolean; category?: string; identitySource?: string; ratingCount?: number;
 }
 export class PlacesUnavailable extends Error {}
 export const hasPlaces = () => Boolean(process.env.GOOGLE_PLACES_API_KEY);
@@ -61,23 +63,34 @@ export async function searchGoogle(q: string, pageToken?: string) {
 
 function localRestaurant(v: Record<string, any>): Restaurant {
   // Photos belong to a reviewed OSM branch, never a fuzzy chain-name match.
-  const verified = verifiedRestaurants[v.osm_id];
+  const verified = restaurantDirectory[v.osm_id];
   const area = String(v.area || "").trim();
   const address = !area || /^(bengaluru|bangalore)$/i.test(area) ? "Bengaluru" : /(?:bengaluru|bangalore)$/i.test(area) ? area : `${area}, Bengaluru`;
   return { id: `osm:${v.id}`, name: verified?.name ?? v.name, address: verified?.address ?? address, lat: v.lat, lng: v.lng,
     source: "osm", mapsUrl: `https://www.google.com/maps/search/?api=1&query=${v.lat},${v.lng}`,
-    photos: verified ? [verified.photo] : [] };
+    photos: verified?.photo ? [verified.photo] : [],
+    featured: verified?.featuredRank !== undefined, category: verified?.category, identitySource: verified?.identitySource,
+    ratingCount: Number(v.rating_count || 0) };
 }
 
 export async function searchLocal(q: string, offset = 0, connect: typeof sql = sql) {
   const db = connect();
   const pattern = `%${q.replace(/[\\%_]/g, "\\$&")}%`;
-  const featured = Object.keys(verifiedRestaurants);
-  const aliases = Object.entries(verifiedRestaurants).filter(([, v]) => `${v.name} ${v.address} ${v.aliases}`.toLowerCase().includes(q.toLowerCase())).map(([id]) => id);
-  const rows = await db`SELECT id, osm_id, name, area, lat, lng FROM venues
+  const featured = Object.entries(restaurantDirectory).filter(([, v]) => v.featuredRank !== undefined).sort((a, b) => a[1].featuredRank! - b[1].featuredRank!).map(([id]) => id);
+  const aliases = Object.entries(restaurantDirectory).filter(([, v]) => `${v.name} ${v.address} ${v.aliases}`.toLowerCase().includes(q.toLowerCase())).map(([id]) => id);
+  // One person counts once per branch, regardless of how many dishes they rate.
+  // Publish only the count, never private scores, notes or user identities.
+  const rows = await db`WITH ratings AS (
+      SELECT restaurant_id, COUNT(DISTINCT user_id)::int AS rating_count FROM food_bookmarks
+      WHERE tried AND rating IS NOT NULL GROUP BY restaurant_id
+    )
+    SELECT v.id, v.osm_id, v.name, v.area, v.lat, v.lng, COALESCE(r.rating_count, 0) AS rating_count
+    FROM venues v LEFT JOIN ratings r ON r.restaurant_id = 'osm:' || v.id
     WHERE status = 'active' AND lat BETWEEN 12.75 AND 13.25 AND lng BETWEEN 77.30 AND 77.90
       AND (name ILIKE ${pattern} OR area ILIKE ${pattern} OR osm_id = ANY(${aliases}::text[]))
-    ORDER BY COALESCE(array_position(${featured}::text[], osm_id), 1000), lower(name), area, id LIMIT 21 OFFSET ${offset}`;
+    ORDER BY COALESCE(r.rating_count, 0) DESC,
+      COALESCE(array_position(${featured}::text[], osm_id), 1000),
+      CASE WHEN ${q} = '' AND name ~ '^[0-9]' THEN 1 ELSE 0 END, lower(name), area, v.id LIMIT 21 OFFSET ${offset}`;
   return { restaurants: rows.slice(0, 20).map(localRestaurant), nextOffset: rows.length > 20 ? offset + 20 : null };
 }
 
@@ -89,7 +102,9 @@ export async function getRestaurant(id: string): Promise<Restaurant | null> {
     return isFood(p.types) && inBangalore(p.location?.latitude, p.location?.longitude) ? googleRestaurant(p) : null;
   }
   if (!id.startsWith("osm:")) return null;
-  const rows = await sql()`SELECT id, osm_id, name, area, lat, lng FROM venues WHERE id = ${id.slice(4)} AND status = 'active'
+  const rows = await sql()`SELECT id, osm_id, name, area, lat, lng,
+    (SELECT COUNT(DISTINCT user_id)::int FROM food_bookmarks WHERE restaurant_id = 'osm:' || v.id AND tried AND rating IS NOT NULL) AS rating_count
+    FROM venues v WHERE id = ${id.slice(4)} AND status = 'active'
     AND lat BETWEEN 12.75 AND 13.25 AND lng BETWEEN 77.30 AND 77.90`;
   return rows[0] ? localRestaurant(rows[0]) : null;
 }

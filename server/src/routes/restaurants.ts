@@ -18,7 +18,7 @@ restaurantsRouter.get("/search", async (req, res) => {
   if (!parsed.success) return res.status(400).json({ ok: false, error: "Check the restaurant search." });
   const { q, offset, pageToken, source } = parsed.data;
   let notice: string | null = null;
-  if (hasPlaces() && source !== "osm") {
+  if (hasPlaces() && source !== "osm" && (q || source === "google")) {
     try { return res.json({ ok: true, source: "google", ...await searchGoogle(q, pageToken), nextOffset: null, notice }); }
     catch { notice = "Live search is unavailable. These results are from our Bangalore catalog."; }
   }
