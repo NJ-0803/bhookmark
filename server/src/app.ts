@@ -1,4 +1,5 @@
 import express from "express";
+import { createChatPreviewRouter } from "./routes/chat";
 import cors from "cors";
 import helmet from "helmet";
 import { createGlobalLimiter } from "./globalRateLimit";
@@ -39,6 +40,7 @@ app.get("/health", (_req, res) => res.json({ ok: true }));
 app.use("/auth", authRouter);
 app.use("/bookmarks", createBookmarksRouter());
 app.use("/restaurants", restaurantsRouter);
+app.use("/chat", createChatPreviewRouter());
 app.use((_req, res) => res.status(404).json({ ok: false, error: "Not found." }));
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   if (error instanceof SyntaxError) return res.status(400).json({ ok: false, error: "Invalid request." });
