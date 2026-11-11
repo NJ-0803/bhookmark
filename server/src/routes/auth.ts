@@ -13,6 +13,7 @@ import {
   verifyRefreshToken,
 } from "../auth";
 import { requireAuth } from "../middleware";
+import { verifiedGoogleIdentity, refreshDisposition } from "../sessionSecurity";
 
 export const authRouter = Router();
 
@@ -51,10 +52,9 @@ authRouter.post("/google", googleAuthLimiter, async (req, res) => {
     // what makes it safe to trust the payload afterward, unlike decoding
     // the JWT without verification.
     const ticket = await googleClient.verifyIdToken({ idToken: parsed.data.idToken, audience: GOOGLE_CLIENT_ID! });
-    const payload = ticket.getPayload();
-    if (!payload?.sub || !payload.email) throw new Error("Incomplete Google payload");
-    sub = payload.sub;
-    email = payload.email;
+    const identity = verifiedGoogleIdentity(ticket.getPayload());
+    sub = identity.sub;
+    email = identity.email;
   } catch {
     return res.status(401).json({ ok: false, error: "That Google sign-in couldn't be verified." });
   }
@@ -75,7 +75,7 @@ authRouter.post("/google", googleAuthLimiter, async (req, res) => {
     ok: true,
     user: { id: user.id, phone: user.phone, email: user.email, role: user.role },
     accessToken: issueAccessToken(user.id, user.role, authTime, deviceId),
-    refreshToken: issueRefreshToken(familyId, jti),
+    refreshToken: issueRefreshToken(familyId, jti, authTime),
     deviceId,
   });
 });
@@ -86,7 +86,10 @@ authRouter.post("/google", googleAuthLimiter, async (req, res) => {
 const otpRequestLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
   limit: 3,
-  keyGenerator: (req) => (req.body?.phone ? `otp-req:${req.body.phone}` : `otp-req:${ipKeyGenerator(req.ip ?? "")}`),
+  keyGenerator: (req) => {
+    const parsed = phoneSchema.safeParse(req.body);
+    return parsed.success ? `otp-req:${parsed.data.phone}` : `otp-req:${ipKeyGenerator(req.ip ?? "")}`;
+  },
   standardHeaders: true,
   legacyHeaders: false,
   message: { ok: false, error: "Too many codes requested. Try again in a few minutes." },
@@ -95,13 +98,16 @@ const otpRequestLimiter = rateLimit({
 const otpVerifyLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
   limit: 8,
-  keyGenerator: (req) => (req.body?.phone ? `otp-verify:${req.body.phone}` : `otp-verify:${ipKeyGenerator(req.ip ?? "")}`),
+  keyGenerator: (req) => {
+    const parsed = phoneSchema.safeParse(req.body);
+    return parsed.success ? `otp-verify:${parsed.data.phone}` : `otp-verify:${ipKeyGenerator(req.ip ?? "")}`;
+  },
   standardHeaders: true,
   legacyHeaders: false,
   message: GENERIC_OTP_ERROR,
 });
 
-const phoneSchema = z.object({ phone: z.string().min(8).max(15) });
+const phoneSchema = z.object({ phone: z.string().trim().regex(/^\+?[1-9]\d{7,14}$/) });
 
 // F01 (implementation brief, 2026-09-08): devOtp used to be returned
 // unconditionally — a production login secret handed straight back to
@@ -118,9 +124,6 @@ authRouter.post("/otp/request", otpRequestLimiter, async (req, res) => {
   if (!parsed.success) return res.status(400).json({ ok: false, error: "Enter a valid phone number." });
   const { phone } = parsed.data;
 
-  const code = newOtp();
-  await db.setOtp(phone, { code, expiresAt: Date.now() + 5 * 60 * 1000, attempts: 0 });
-
   if (!DEV_OTP_ENABLED) {
     // No SMS provider is configured, so a real code genuinely can't reach
     // this phone yet. Say that plainly instead of silently handing back
@@ -131,10 +134,12 @@ authRouter.post("/otp/request", otpRequestLimiter, async (req, res) => {
       smsUnavailable: true,
     });
   }
+  const code = newOtp();
+  await db.setOtp(phone, { code, expiresAt: Date.now() + 5 * 60 * 1000, attempts: 0 });
   res.json({ ok: true, devOtp: code, expiresInSeconds: 300 });
 });
 
-const verifySchema = z.object({ phone: z.string(), otp: z.string().length(6), deviceLabel: z.string().default("Unknown device") });
+const verifySchema = z.object({ phone: phoneSchema.shape.phone, otp: z.string().regex(/^\d{6}$/), deviceLabel: z.string().default("Unknown device") });
 
 authRouter.post("/otp/verify", otpVerifyLimiter, async (req, res) => {
   const parsed = verifySchema.safeParse(req.body);
@@ -171,7 +176,7 @@ authRouter.post("/otp/verify", otpVerifyLimiter, async (req, res) => {
     ok: true,
     user: { id: user.id, phone: user.phone, role: user.role },
     accessToken: issueAccessToken(user.id, user.role, authTime, deviceId),
-    refreshToken: issueRefreshToken(familyId, jti),
+    refreshToken: issueRefreshToken(familyId, jti, authTime),
     deviceId,
   });
 });
@@ -182,7 +187,7 @@ authRouter.post("/refresh", async (req, res) => {
   const parsed = refreshSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ ok: false, error: "Missing refresh token." });
 
-  let payload: { familyId: string; jti: string };
+  let payload: { familyId: string; jti: string; authTime: number };
   try {
     payload = verifyRefreshToken(parsed.data.refreshToken);
   } catch {
@@ -197,7 +202,12 @@ authRouter.post("/refresh", async (req, res) => {
   // A04: refresh-token reuse detection. If the jti presented isn't the
   // current one for this family, someone replayed an old (likely stolen)
   // token — revoke the whole family rather than trusting either caller.
-  if (family.currentJti !== payload.jti) {
+  if (refreshDisposition(family, payload.jti) !== "current") {
+    // A recently consumed token can be a simultaneous request or retry after
+    // a lost response. Reject it without issuing a token or revoking the winner.
+    if (refreshDisposition(family, payload.jti) === "conflict") {
+      return res.status(409).json({ ok: false, error: "refresh_conflict", retryable: false });
+    }
     await db.revokeFamily(family.familyId);
     await db.logSecurityEvent("refresh_token_reuse", `family=${family.familyId} user=${family.userId}`);
     return res.status(401).json({ ok: false, error: "Session revoked for your safety. Sign in again." });
@@ -207,14 +217,16 @@ authRouter.post("/refresh", async (req, res) => {
   if (!user) return res.status(401).json({ ok: false, error: "Session revoked. Sign in again." });
 
   const newJti = nanoid();
-  await db.rotateFamilyJti(family.familyId, newJti);
+  if (!await db.rotateFamilyJti(family.familyId, payload.jti, newJti)) {
+    return res.status(409).json({ ok: false, error: "refresh_conflict", retryable: false });
+  }
   await db.touchDevice(family.deviceId);
 
-  const authTime = Math.floor(Date.now() / 1000);
+  const authTime = payload.authTime;
   res.json({
     ok: true,
     accessToken: issueAccessToken(user.id, user.role, authTime, family.deviceId),
-    refreshToken: issueRefreshToken(family.familyId, newJti),
+    refreshToken: issueRefreshToken(family.familyId, newJti, authTime),
   });
 });
 
