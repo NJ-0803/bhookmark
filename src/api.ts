@@ -16,7 +16,7 @@ const STORAGE_KEY = "bhookmark.session";
 
 export function getSession(): Session | null {
   const raw = localStorage.getItem(STORAGE_KEY);
-  return raw ? JSON.parse(raw) : null;
+  try { return raw ? JSON.parse(raw) : null; } catch { clearSession(); return null; }
 }
 
 function saveSession(session: Session) {
@@ -121,6 +121,7 @@ export async function api(path: string, opts: RequestInit = {}) {
       res = await fetch(`${BASE}${path}`, { ...opts, headers: retryHeaders });
     }
   }
+  if (res.status === 401) window.dispatchEvent(new Event("bhookmark:session-expired"));
   return res;
 }
 
@@ -138,382 +139,34 @@ export function currentDeviceId(): string | null {
   return getSession()?.deviceId ?? null;
 }
 
-export async function getDietProfile() {
-  return (await api("/profile")).json();
+async function json<T>(path: string, options?: RequestInit): Promise<T> {
+  const response = await api(path, options);
+  const body = await response.json();
+  if (!response.ok || !body.ok) throw new Error(body.error || "Couldn't complete that request.");
+  return body;
 }
 
-export async function setDietProfile(dietaryProfile: string, allergens: string[]) {
-  const res = await api("/profile/diet", { method: "PATCH", body: JSON.stringify({ dietaryProfile, allergens }) });
-  return res.json();
-}
-
-export async function getNextPicks() {
-  return (await api("/recommendations/next")).json();
-}
-
-export async function getDigest() {
-  return (await api("/recommendations/digest")).json();
-}
-
-export interface RemoteLog {
-  id: string;
-  category: string;
-  subtype: string;
-  name: string;
-  venue: string;
-  verdict: "loved" | "fine" | "not-for-me";
-  score: number;
-  note: string;
-  verified: boolean;
-  status: "published" | "held" | "removed";
-  createdAt: number;
-  ownerDisclosed?: boolean;
-  visibility?: "private" | "public";
-  visitId?: string | null;
-  photoUrl?: string | null;
-}
-
-export async function getMyLogs(): Promise<{ ok: boolean; logs: RemoteLog[]; error?: string }> {
-  const res = await api("/logs/mine");
-  return res.json();
-}
-
-export interface VenueClaim {
-  id: string;
-  userId: string;
-  venue: string;
-  status: "pending" | "approved" | "rejected";
-  createdAt: number;
-  reviewedAt: number | null;
-}
-
-// Brief 1.5: restaurant staff self-rating disclosure. Submitting a claim
-// grants nothing by itself — a moderator has to approve it before the
-// venue's own logs stop counting toward its public score.
-export async function claimVenue(venue: string): Promise<{ ok: boolean; error?: string }> {
-  const res = await api("/venues/claim", { method: "POST", body: JSON.stringify({ venue }) });
-  return res.json();
-}
-
-export async function getMyVenueClaims(): Promise<{ ok: boolean; claims: VenueClaim[] }> {
-  const res = await api("/venues/claims/mine");
-  return res.json();
-}
-
-export interface NearbyVenue {
-  id: string;
-  name: string;
-  area: string;
-  distanceKm: number;
-  // Phase 2 Session D: real venues (mostly from OpenStreetMap) often have
-  // no photo at all — null is the honest, expected state, not an error.
-  // A category-based placeholder renders in its place; never a fabricated
-  // or scraped image (see PROJECT_STATUS.md's Phase 2 photo-sourcing
-  // decision).
-  photo: string | null;
-  photoIsVerified: boolean;
-  dishName: string;
-  // Real evidence-gated rating (Phase 1's honesty fix, applied to real
-  // data) — score is null when count is 0, never a fabricated baseline.
-  community: { score: number | null; count: number };
-  reviews: { logId: string; verdict: string; note: string; score: number; createdAt: number; photoUrl: string | null }[];
-}
-
-export interface DishScoreResponse {
-  ok: boolean;
-  /** Real photos from public logs of this dish (reported-and-hidden ones excluded). */
-  photos: { logId: string; url: string; createdAt: number }[];
-  community: { score: number | null; count: number };
-  verifiedOnly: { score: number | null; count: number };
-  yours: { score: number; verdict: string } | null;
-  confidenceBand: "insufficient" | "early" | "developing" | "strong";
-  notes: { verdict: string; note: string; score: number; createdAt: number }[];
-  error?: string;
-}
-
-// Score separation (brief 1.2): Your / Community / Verified-only are always
-// distinct numbers with real sample sizes, never blended into one figure.
-// Unauthenticated on purpose (optionalAuth server-side) — browsing a dish
-// score shouldn't require signing in, but a session personalizes "yours".
-export async function getDishScore(venue: string, category: string, subtype: string, name: string): Promise<DishScoreResponse> {
-  const params = new URLSearchParams({ venue, category, subtype, name });
-  const res = await api(`/dishes/score?${params}`);
-  return res.json();
-}
-
-export interface TrendingResponse {
-  ok: boolean;
-  trending: { venue: string; category: string; subtype: string; name: string; count: number; distinctUsers: number } | null;
-  windowDays: number;
-}
-
-// A real, time-windowed signal — never render an urgency label from this
-// endpoint's absence. `trending: null` is the honest, expected answer
-// whenever real recent activity doesn't clear the evidence floor.
-export async function getTrending(): Promise<TrendingResponse> {
-  const res = await fetch("/dishes/trending");
-  return res.json();
-}
-
-export async function getNearbyVenues(category: string, lat: number, lng: number, radiusKm = 5) {
-  const params = new URLSearchParams({ category, lat: String(lat), lng: String(lng), radiusKm: String(radiusKm) });
-  // Unauthenticated on purpose — browsing nearby joints shouldn't require signing in first,
-  // and the query carries no persistent identity (see server/src/routes/venues.ts).
-  const res = await fetch(`/venues/nearby?${params}`);
-  return res.json() as Promise<{
-    ok: boolean;
-    category: string;
-    radiusKm: number;
-    count: number;
-    results: NearbyVenue[];
-    // false when the category doesn't resolve through category_aliases at
-    // all (a genuine typo/unknown term) — distinct from "resolved but zero
-    // results nearby," so the UI can be honest about which happened.
-    categoryResolved: boolean;
-    error?: string;
-  }>;
-}
-
-// The canonical category list, fetched from the backend instead of
-// hardcoded — see the route's own comment for why that matters here.
-export async function getVenueCategories(): Promise<{ ok: boolean; categories: string[] }> {
-  const res = await fetch("/venues/categories");
-  return res.json();
-}
-
-export interface BrowseDish {
-  id: string;
-  category: string;
-  subtype: string;
-  name: string;
-  venue: string;
-  area: string;
-  photo: string | null;
-  community: { score: number | null; count: number };
-}
-
-// Backs Home's Crave-tab category browsing — the real venues/dishes
-// tables, no location required (unlike Near Me). Category resolved
-// through category_aliases server-side, same as everywhere else.
-export async function browseDishes(category: string): Promise<{ ok: boolean; category: string; categoryResolved: boolean; count: number; results: BrowseDish[] }> {
-  const res = await fetch(`/dishes/browse?${new URLSearchParams({ category })}`);
-  return res.json();
-}
-
-export interface VenueSearchResult {
-  id: string;
-  name: string;
-  area: string;
-  category: string | null;
-  subtype: string | null;
-  dishName: string | null;
-  photo: string | null;
-  photoIsVerified: boolean;
-  distanceKm: number | null;
-}
-
-// Phase 2 Session D: find a specific real place by name, whether or not
-// it has a resolved category — this is the actual fix for "when a user
-// searches for a particular cafe/bakery/pub, it appears" (Session B
-// inserts every real, named venue unconditionally; this is what makes
-// that data reachable).
-export async function searchVenues(query: string, lat?: number, lng?: number): Promise<{ ok: boolean; count: number; results: VenueSearchResult[]; error?: string }> {
-  const params = new URLSearchParams({ q: query });
-  if (lat !== undefined && lng !== undefined) {
-    params.set("lat", String(lat));
-    params.set("lng", String(lng));
+export async function searchRestaurants(q: string, page?: { source: string; offset?: number; pageToken?: string }, signal?: AbortSignal) {
+  const query = new URLSearchParams({ q });
+  if (page) {
+    query.set("source", page.source);
+    if (page.offset !== undefined) query.set("offset", String(page.offset));
+    if (page.pageToken) query.set("pageToken", page.pageToken);
   }
-  const res = await fetch(`/venues/search?${params}`);
-  return res.json();
+  return json<import("./wishlist").SearchResult>(`/restaurants/search?${query}`, { signal });
 }
-
-export interface SubmitVenuePayload {
-  name: string;
-  area: string;
-  lat: number | null;
-  lng: number | null;
-  category: string;
-  subtype?: string | null;
-  dishName?: string | null;
-  note?: string;
+export async function getRestaurant(id: string) {
+  return (await json<{ restaurant: import("./wishlist").Restaurant }>(`/restaurants/${encodeURIComponent(id)}`)).restaurant;
 }
-
-// The fallback for a real place OSM doesn't have yet — cheap to submit,
-// a moderator has to approve it before it's live (same trust boundary as
-// the existing venue-claim flow).
-export async function submitVenue(payload: SubmitVenuePayload): Promise<{ ok: boolean; submission?: { id: string; status: string }; error?: string }> {
-  const res = await api("/venues/submit", { method: "POST", body: JSON.stringify(payload) });
-  return res.json();
+export function getCoverage() {
+  return json<{ catalogCount: number; catalogUpdatedAt: number | null; liveSearch: boolean; complete: false }>("/restaurants/coverage");
 }
-
-// ---------- Phase 4: Friends, Circles, Craving Rooms, Lists ----------
-
-// No phone here (see F02 in the 2026-09-08 implementation brief) — a
-// friend/circle-member/room-participant object never carries anything
-// sensitive, just an opaque id.
-export interface PublicUser { id: string; createdAt: number }
-
-export async function getMyFriendCode(): Promise<{ ok: boolean; code: string }> {
-  return (await api("/friends/code")).json();
+export async function getBookmarks() {
+  return (await json<{ bookmarks: import("./wishlist").Bookmark[] }>("/bookmarks")).bookmarks;
 }
-
-// Adding by code now goes through a pending-request step instead of
-// friending instantly — status is "pending" (request sent, or already
-// pending from earlier), "accepted" (the other person had already
-// requested you, so this completed it), or "already-friends".
-export async function addFriend(code: string): Promise<{ ok: boolean; status?: "pending" | "accepted" | "already-friends"; error?: string }> {
-  const res = await api("/friends/add", { method: "POST", body: JSON.stringify({ code }) });
-  return res.json();
+export async function putBookmark(input: import("./wishlist").BookmarkInput, id?: string) {
+  return (await json<{ bookmark: import("./wishlist").Bookmark }>(id ? `/bookmarks/${encodeURIComponent(id)}` : "/bookmarks", { method: id ? "PATCH" : "POST", body: JSON.stringify(input) })).bookmark;
 }
-
-export interface IncomingFriendRequest { id: string; sender: { id: string }; createdAt: number }
-
-export async function getIncomingFriendRequests(): Promise<{ ok: boolean; requests: IncomingFriendRequest[] }> {
-  return (await api("/friends/requests")).json();
-}
-
-export async function respondToFriendRequest(id: string, accept: boolean): Promise<{ ok: boolean; status?: string; error?: string }> {
-  const res = await api(`/friends/requests/${id}/respond`, { method: "POST", body: JSON.stringify({ accept }) });
-  return res.json();
-}
-
-export async function getFriends(): Promise<{ ok: boolean; friends: PublicUser[] }> {
-  return (await api("/friends")).json();
-}
-
-export interface Circle { id: string; name: string; creatorId: string; createdAt: number; memberCount: number; matchScore: number }
-
-export async function createCircle(name: string, memberIds: string[]): Promise<{ ok: boolean; circle?: Circle; error?: string }> {
-  const res = await api("/circles", { method: "POST", body: JSON.stringify({ name, memberIds }) });
-  return res.json();
-}
-
-export async function getCircles(): Promise<{ ok: boolean; circles: Circle[] }> {
-  return (await api("/circles")).json();
-}
-
-export async function getCircleDetail(id: string): Promise<{ ok: boolean; members: PublicUser[]; matchScore: number; error?: string }> {
-  return (await api(`/circles/${id}`)).json();
-}
-
-export interface CravingRoomInfo {
-  id: string; code: string; creatorId: string; mood: string; radiusKm: number;
-  status: "setup" | "swiping" | "revealed"; candidateIds: string[]; createdAt: number; expiresAt: number;
-}
-
-export async function createRoom(mood: string, radiusKm: number, candidateIds: string[]): Promise<{ ok: boolean; room?: CravingRoomInfo; error?: string }> {
-  const res = await api("/rooms", { method: "POST", body: JSON.stringify({ mood, radiusKm, candidateIds }) });
-  return res.json();
-}
-
-export async function joinRoom(code: string): Promise<{ ok: boolean; room?: CravingRoomInfo; error?: string }> {
-  const res = await api("/rooms/join", { method: "POST", body: JSON.stringify({ code }) });
-  return res.json();
-}
-
-export interface RoomParticipant { id: string; swipeCount: number; done: boolean }
-
-export async function getRoom(id: string): Promise<{ ok: boolean; room?: CravingRoomInfo; participants?: RoomParticipant[]; everyoneDone?: boolean; error?: string }> {
-  return (await api(`/rooms/${id}`)).json();
-}
-
-export async function swipeInRoom(id: string, dishId: string, liked: boolean): Promise<{ ok: boolean; everyoneDone?: boolean; error?: string }> {
-  const res = await api(`/rooms/${id}/swipe`, { method: "POST", body: JSON.stringify({ dishId, liked }) });
-  return res.json();
-}
-
-export async function getRoomReveal(id: string): Promise<{ ok: boolean; ready: boolean; unanimous?: string[]; partial?: string[]; doneCount?: number; totalCount?: number }> {
-  return (await api(`/rooms/${id}/reveal`)).json();
-}
-
-export interface DishListItem { dishName: string; venue: string }
-export interface DishList { id: string; title: string; authorId: string; parentListId: string | null; createdAt: number; items: DishListItem[]; clones: number }
-
-export async function createList(title: string, items: DishListItem[]): Promise<{ ok: boolean; list?: DishList; error?: string }> {
-  const res = await api("/lists", { method: "POST", body: JSON.stringify({ title, items }) });
-  return res.json();
-}
-
-export async function getListsFeed(): Promise<{ ok: boolean; lists: DishList[] }> {
-  return (await api("/lists")).json();
-}
-
-export async function cloneList(id: string, title?: string): Promise<{ ok: boolean; list?: DishList; error?: string }> {
-  const res = await api(`/lists/${id}/clone`, { method: "POST", body: JSON.stringify(title ? { title } : {}) });
-  return res.json();
-}
-
-// ===== Saved for later =====
-
-export interface SavedDish { name: string; venue: string; area: string; category: string; subtype: string; savedAt: number }
-
-export async function getSaves(): Promise<{ ok: boolean; saves: SavedDish[]; error?: string }> {
-  return (await api("/saves")).json();
-}
-
-export async function saveDish(dish: Omit<SavedDish, "savedAt">): Promise<{ ok: boolean; save?: SavedDish; created?: boolean; error?: string }> {
-  const res = await api("/saves", { method: "POST", body: JSON.stringify(dish) });
-  return res.json();
-}
-
-export async function unsaveDish(name: string, venue: string): Promise<{ ok: boolean; removed?: boolean; error?: string }> {
-  const res = await api("/saves", { method: "DELETE", body: JSON.stringify({ name, venue }) });
-  return res.json();
-}
-
-// ===== Log photos =====
-
-export async function uploadPhoto(photo: Blob): Promise<{ ok: boolean; url?: string; error?: string }> {
-  const res = await api("/photos", { method: "POST", headers: { "Content-Type": photo.type || "image/jpeg" }, body: photo });
-  try {
-    return await res.json();
-  } catch {
-    return { ok: false, error: "Couldn't upload that photo." };
-  }
-}
-
-export async function reportPhoto(logId: string): Promise<{ ok: boolean; hidden?: boolean; error?: string }> {
-  return (await api("/photos/report", { method: "POST", body: JSON.stringify({ logId }) })).json();
-}
-
-// ===== Taste game =====
-
-export interface TasteStatus {
-  ok: boolean;
-  minLogs: number;
-  minPlaces: number;
-  categories: { category: string; logs: number; places: number; answers: number; eligible: boolean }[];
-  error?: string;
-}
-
-export interface TasteQuestion {
-  id: string;
-  options: string[];
-}
-
-export interface TasteResults {
-  ok: boolean;
-  category: string;
-  answers: number;
-  ranking: { venue: string; strength: number; wins: number; losses: number; comparisons: number; yourLogs: number; yourAverage: number }[];
-  suggestions: { id: string; name: string; venue: string; area: string; subtype: string; communityAverage: number | null; logCount: number; reason: string }[];
-  source: "ai" | "community";
-  model: string | null;
-  error?: string;
-}
-
-export async function getTasteStatus(): Promise<TasteStatus> {
-  return (await api("/taste/status")).json();
-}
-
-export async function getTasteRound(category: string): Promise<{ ok: boolean; questions: TasteQuestion[]; error?: string }> {
-  return (await api(`/taste/round?category=${encodeURIComponent(category)}`)).json();
-}
-
-export async function answerTaste(category: string, options: string[], winner: string | null): Promise<{ ok: boolean; error?: string }> {
-  return (await api("/taste/answer", { method: "POST", body: JSON.stringify({ category, options, winner }) })).json();
-}
-
-export async function getTasteResults(category: string): Promise<TasteResults> {
-  return (await api(`/taste/results?category=${encodeURIComponent(category)}`)).json();
+export async function removeBookmark(id: string) {
+  await json(`/bookmarks/${encodeURIComponent(id)}`, { method: "DELETE" });
 }

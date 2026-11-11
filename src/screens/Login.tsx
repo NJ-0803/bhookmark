@@ -115,12 +115,12 @@ export default function Login({ onSignedIn }: { onSignedIn: () => void }) {
 
   return (
     <div className="px-5 pt-16 pb-10 flex flex-col min-h-dvh">
-      <p className="font-mono text-[11px] tracking-[0.14em] uppercase text-faint mb-2">Bangalore</p>
+      <p className="font-mono text-[11px] tracking-[0.14em] uppercase text-faint mb-2">Bhookmark · Bengaluru</p>
       <h1 className="font-display font-extrabold text-3xl leading-tight mb-2 text-ink">
         {step === "phone" ? "Sign in to Bhookmark" : "Enter the code"}
       </h1>
       <p className="text-muted text-sm mb-8 max-w-[32ch]">
-        {step === "phone" ? "One tap with Google, or use a phone number below." : `We sent a 6-digit code to ${phone}.`}
+        {step === "phone" ? "Save food you want to try, and keep your own notes and ratings." : `We sent a 6-digit code to ${phone}.`}
       </p>
 
       {step === "phone" && (
@@ -131,16 +131,16 @@ export default function Login({ onSignedIn }: { onSignedIn: () => void }) {
             </div>
           ) : (
             <div className="bg-surface2 border border-line rounded-xl px-4 py-3 text-xs text-faint mb-3">
-              Google Sign-In isn't configured on this deployment yet (missing VITE_GOOGLE_CLIENT_ID) — use a phone number below.
+              Sign-in is currently unavailable. You can continue exploring restaurants.
             </div>
           )}
           {googleError && <p className="text-bad text-sm mb-3">{googleError}</p>}
 
-          {GOOGLE_CLIENT_ID && !showPhoneFallback ? (
+          {import.meta.env.DEV && GOOGLE_CLIENT_ID && !showPhoneFallback ? (
             <button onClick={() => setShowPhoneFallback(true)} className="text-faint text-xs underline underline-offset-2 mx-auto mt-1">
               Use a phone number instead
             </button>
-          ) : (
+          ) : import.meta.env.DEV ? (
             <>
               <div className="h-px bg-line my-5" />
               <input
@@ -161,7 +161,7 @@ export default function Login({ onSignedIn }: { onSignedIn: () => void }) {
                 {loading ? "Sending…" : "Send code"}
               </button>
             </>
-          )}
+          ) : null}
         </>
       )}
 
@@ -197,7 +197,7 @@ export default function Login({ onSignedIn }: { onSignedIn: () => void }) {
 
       <div className="flex-1" />
       <p className="text-faint text-[11px] text-center">
-        Your phone number or Google account is only ever used to verify a log — it's never shown publicly.
+        Your account keeps your saved food, notes and ratings private.
       </p>
     </div>
   );

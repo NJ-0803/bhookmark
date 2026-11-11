@@ -136,3 +136,15 @@ body {
     transition-duration: 0.001ms !important;
   }
 }
+
+@layer components {
+  .field-label { @apply block text-[14px] text-muted; }
+  .field { @apply block w-full mt-2 rounded-xl border border-line bg-surface px-4 py-3 text-[15px] text-ink outline-none focus:border-rose focus:ring-1 focus:ring-rose; }
+  .field:read-only { @apply text-muted; }
+  .primary-button { @apply min-h-12 px-5 py-3 rounded-xl gradient-primary text-accentInk font-medium text-[15px] disabled:opacity-50 disabled:cursor-not-allowed; }
+  .secondary-button { @apply min-h-11 px-4 py-2.5 rounded-xl border border-line text-ink text-[14px] disabled:opacity-50; }
+  .bookmark-dialog { @apply bg-surface text-ink border border-line rounded-[24px] p-6 w-[calc(100%-24px)] max-w-[520px] max-h-[90dvh] overflow-y-auto; }
+  .bookmark-dialog::backdrop { background: rgb(var(--scrim) / 0.75); backdrop-filter: blur(5px); }
+}
+
+:focus-visible { outline: 2px solid rgb(var(--rose)); outline-offset: 3px; }

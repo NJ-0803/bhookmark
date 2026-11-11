@@ -3,24 +3,10 @@ import cors from "cors";
 import helmet from "helmet";
 import { createGlobalLimiter } from "./globalRateLimit";
 import { authRouter } from "./routes/auth";
-import { logsRouter } from "./routes/logs";
-import { dishesRouter } from "./routes/dishes";
-import { moderationRouter } from "./routes/moderation";
-import { devRouter } from "./routes/dev";
-import { profileRouter } from "./routes/profile";
-import { recommendationsRouter } from "./routes/recommendations";
-import { venuesRouter } from "./routes/venues";
-import { notificationsRouter } from "./routes/notifications";
-import { friendsRouter } from "./routes/friends";
-import { circlesRouter } from "./routes/circles";
-import { roomsRouter } from "./routes/rooms";
-import { listsRouter } from "./routes/lists";
-import { savesRouter } from "./routes/saves";
-import { photosRouter } from "./routes/photos";
-import { tasteRouter } from "./routes/taste";
+import { createBookmarksRouter } from "./routes/bookmarks";
+import { restaurantsRouter } from "./routes/restaurants";
 
 const app = express();
-const isProd = process.env.NODE_ENV === "production";
 
 // Real production fix: this app has been deployed behind Vercel's edge
 // network for a while now, but this flag was never set — meaning req.ip
@@ -45,36 +31,19 @@ app.use(
 );
 app.use(express.json({ limit: "1mb" }));
 
-// A13/global abuse floor: defense in depth behind the endpoint-specific
-// limiters in routes/auth.ts. Found by an actual 100-concurrent-user test
-// (see server/scripts/concurrency-100.mjs): keying this purely by IP means
-// 100 legitimate users behind one shared network (a hostel, an office, or
-// — as in the test itself — one laptop) exhaust the budget and get
-// wrongly throttled, which is exactly the T-03 failure mode the product
-// doc warns against ("don't ban on IP alone"). Authenticated requests are
-// keyed by their session token instead, so concurrent *different* users
-// never compete for the same budget; only genuinely unauthenticated
-// traffic (which can't yet be tied to a person) falls back to per-IP.
-// See globalRateLimit.ts and scripts/ip-isolation-test.ts for the isolation
-// test proving different IPs don't share this bucket.
+// Authenticated traffic is limited per verified user; anonymous requests
+// fall back to IP. Restaurant requests have an additional route limit.
 app.use(createGlobalLimiter());
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 app.use("/auth", authRouter);
-app.use("/logs", logsRouter);
-app.use("/dishes", dishesRouter);
-app.use("/moderation", moderationRouter);
-app.use("/profile", profileRouter);
-app.use("/recommendations", recommendationsRouter);
-app.use("/venues", venuesRouter);
-app.use("/notifications", notificationsRouter);
-app.use("/friends", friendsRouter);
-app.use("/circles", circlesRouter);
-app.use("/rooms", roomsRouter);
-app.use("/lists", listsRouter);
-app.use("/saves", savesRouter);
-app.use("/photos", photosRouter);
-app.use("/taste", tasteRouter);
-if (!isProd) app.use("/dev", devRouter);
+app.use("/bookmarks", createBookmarksRouter());
+app.use("/restaurants", restaurantsRouter);
+app.use((_req, res) => res.status(404).json({ ok: false, error: "Not found." }));
+app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  if (error instanceof SyntaxError) return res.status(400).json({ ok: false, error: "Invalid request." });
+  console.error("[api] Request failed", error instanceof Error ? error.name : "Unknown error");
+  return res.status(503).json({ ok: false, error: "Couldn't complete that request. Please try again." });
+});
 
 export default app;
