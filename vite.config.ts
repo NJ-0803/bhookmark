@@ -1,49 +1,16 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
-// https://vite.dev/config/
+const cert = './.cert/localhost+2.pem'
+const key = './.cert/localhost+2-key.pem'
 export default defineConfig({
   plugins: [react()],
   server: {
     host: true,
-    // mkcert-signed cert (see .cert/README below) instead of a plain
-    // self-signed one — the CA is only trusted after running
-    // `mkcert -install` yourself (a system trust-store change, so this
-    // project deliberately doesn't run it for you). Until then, browsers
-    // still show a one-time warning to click past, same as any local HTTPS
-    // dev server.
-    https: {
-      cert: readFileSync('./.cert/localhost+2.pem'),
-      key: readFileSync('./.cert/localhost+2-key.pem'),
-    },
-    // Proxy API calls to the backend so the browser only ever talks to one
-    // HTTPS origin — this is also what makes the phone treat the page as a
-    // secure context, which navigator.geolocation and the Push API both
-    // require. Without this, a plain http://<lan-ip> origin silently fails
-    // geolocation on iOS Safari with no permission prompt at all.
-    proxy: {
-      '/auth': 'http://localhost:4001',
-      '/logs': 'http://localhost:4001',
-      // /dishes is also where the static catalog photos live (public/dishes);
-      // only API calls should reach the backend.
-      '/dishes': {
-        target: 'http://localhost:4001',
-        bypass: (req) => (/\.(jpe?g|png|webp)$/.test(req.url ?? '') ? req.url : undefined),
-      },
-      '/venues': 'http://localhost:4001',
-      '/profile': 'http://localhost:4001',
-      '/recommendations': 'http://localhost:4001',
-      '/moderation': 'http://localhost:4001',
-      '/notifications': 'http://localhost:4001',
-      '/friends': 'http://localhost:4001',
-      '/circles': 'http://localhost:4001',
-      '/rooms': 'http://localhost:4001',
-      '/lists': 'http://localhost:4001',
-      '/saves': 'http://localhost:4001',
-      '/photos': 'http://localhost:4001',
-      '/taste': 'http://localhost:4001',
-      '/dev': 'http://localhost:4001',
-    },
+    // localhost is a secure browser context without a certificate. Optional
+    // mkcert files enable HTTPS for testing from a phone on the LAN.
+    ...(existsSync(cert) && existsSync(key) ? { https: { cert: readFileSync(cert), key: readFileSync(key) } } : {}),
+    proxy: Object.fromEntries(['/auth', '/bookmarks', '/restaurants', '/health'].map((path) => [path, 'http://localhost:4001'])),
   },
 })

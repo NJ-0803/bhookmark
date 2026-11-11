@@ -3,7 +3,7 @@ import type { Request } from "express";
 import { verifyAccessToken } from "./auth";
 
 // Extracted so the exact same limiter config can be exercised both by the
-// real app (index.ts) and by an isolated test harness (scripts/ip-isolation-test.ts)
+// real app and isolated test harnesses
 // without the two drifting apart.
 export function createGlobalLimiter() {
   return rateLimit({
@@ -30,6 +30,5 @@ export function createGlobalLimiter() {
       }
       return `ip:${ipKeyGenerator(req.ip ?? "")}`;
     },
-    skip: (req: Request) => req.method === "GET" && (req.path.startsWith("/dishes") || req.path.startsWith("/venues")),
   });
 }

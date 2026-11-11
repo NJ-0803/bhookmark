@@ -1,20 +1,8 @@
 {
   "rewrites": [
     { "source": "/auth/:path*", "destination": "/api" },
-    { "source": "/logs/:path*", "destination": "/api" },
-    { "source": "/dishes/:path*", "destination": "/api" },
-    { "source": "/venues/:path*", "destination": "/api" },
-    { "source": "/profile/:path*", "destination": "/api" },
-    { "source": "/recommendations/:path*", "destination": "/api" },
-    { "source": "/moderation/:path*", "destination": "/api" },
-    { "source": "/notifications/:path*", "destination": "/api" },
-    { "source": "/friends/:path*", "destination": "/api" },
-    { "source": "/circles/:path*", "destination": "/api" },
-    { "source": "/rooms/:path*", "destination": "/api" },
-    { "source": "/lists/:path*", "destination": "/api" },
-    { "source": "/saves/:path*", "destination": "/api" },
-    { "source": "/photos/:path*", "destination": "/api" },
-    { "source": "/taste/:path*", "destination": "/api" },
+    { "source": "/bookmarks/:path*", "destination": "/api" },
+    { "source": "/restaurants/:path*", "destination": "/api" },
     { "source": "/health", "destination": "/api" }
   ]
 }
