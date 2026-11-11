@@ -182,25 +182,27 @@ test("luxury picks lead without ratings and numeric chain names retain distinct 
   assert.ok(!branch.restaurants.some((r) => r.id === 'osm:pub-jp'));
 });
 
-test("ranking counts real manual raters once per branch and responds to editing or removing ratings", async () => {
-  await pg.exec("INSERT INTO users (id, created_at) VALUES ('rank-alice', 1), ('rank-bob', 1)");
+test("community promotion needs three real manual raters, counts people once, and responds to edits", async () => {
+  await pg.exec("INSERT INTO users (id, created_at) VALUES ('rank-alice', 1), ('rank-bob', 1), ('rank-charlie', 1)");
   const inputFor = (id: string, name: string, rating: number | null, tried = true) => ({ ...input, restaurantId: `osm:${id}`, restaurantName: id, name, tried, rating });
   await store.save('rank-alice', 'pop-1', inputFor('venue-1', 'First', 0));
   await store.save('rank-alice', 'pop-2', inputFor('venue-1', 'Second', 9));
   await store.save('rank-bob', 'pop-3', inputFor('venue-2', 'Only', 7));
   await store.save('rank-bob', 'unrated', inputFor('luxury-karavalli', 'Unrated', null, false));
   let results = (await searchLocal('', 0, connect as unknown as typeof sql)).restaurants;
-  assert.equal(results.find((r) => r.id === 'osm:venue-1')!.ratingCount, 1);
+  assert.equal(results.find((r) => r.id === 'osm:venue-1')!.ratingCount, 1); // zero counts, two dishes don't double-count
   assert.equal(results.find((r) => r.id === 'osm:luxury-karavalli')!.ratingCount, 0);
-  assert.equal(results[0].ratingCount, 1); // zero is a valid manual rating
+  assert.equal(results[0].id, 'osm:luxury-karavalli');
   await store.save('rank-alice', 'pop-4', inputFor('venue-2', 'Another', 6));
+  assert.equal((await searchLocal('', 0, connect as unknown as typeof sql)).restaurants[0].id, 'osm:luxury-karavalli');
+  await store.save('rank-charlie', 'pop-5', inputFor('venue-2', 'Third person', 8));
   results = (await searchLocal('', 0, connect as unknown as typeof sql)).restaurants;
-  assert.equal(results[0].id, 'osm:venue-2'); assert.equal(results[0].ratingCount, 2);
+  assert.equal(results[0].id, 'osm:venue-2'); assert.equal(results[0].ratingCount, 3);
   assert.ok(!('rating' in results[0])); assert.ok(!('userId' in results[0])); assert.ok(!('note' in results[0]));
   await store.update('rank-alice', 'pop-4', inputFor('venue-2', 'Another', null));
+  assert.equal((await searchLocal('', 0, connect as unknown as typeof sql)).restaurants[0].id, 'osm:luxury-karavalli');
   await store.remove('rank-bob', 'pop-3');
   results = (await searchLocal('', 0, connect as unknown as typeof sql)).restaurants;
-  assert.equal(results[0].id, 'osm:venue-1'); assert.equal(results[0].ratingCount, 1);
-  await store.remove('rank-alice', 'pop-1'); await store.remove('rank-alice', 'pop-2');
-  assert.equal((await searchLocal('', 0, connect as unknown as typeof sql)).restaurants[0].id, 'osm:luxury-karavalli');
+  assert.equal(results.find((r) => r.id === 'osm:venue-2')!.ratingCount, 1);
+  assert.equal(results[0].id, 'osm:luxury-karavalli');
 });

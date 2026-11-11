@@ -88,8 +88,9 @@ export async function searchLocal(q: string, offset = 0, connect: typeof sql = s
     FROM venues v LEFT JOIN ratings r ON r.restaurant_id = 'osm:' || v.id
     WHERE status = 'active' AND lat BETWEEN 12.75 AND 13.25 AND lng BETWEEN 77.30 AND 77.90
       AND (name ILIKE ${pattern} OR area ILIKE ${pattern} OR osm_id = ANY(${aliases}::text[]))
-    ORDER BY COALESCE(r.rating_count, 0) DESC,
-      COALESCE(array_position(${featured}::text[], osm_id), 1000),
+    ORDER BY CASE WHEN COALESCE(r.rating_count, 0) >= 3 THEN 0 ELSE 1 END,
+      CASE WHEN COALESCE(r.rating_count, 0) >= 3 THEN r.rating_count ELSE 0 END DESC,
+      COALESCE(array_position(${featured}::text[], osm_id), 1000), COALESCE(r.rating_count, 0) DESC,
       CASE WHEN ${q} = '' AND name ~ '^[0-9]' THEN 1 ELSE 0 END, lower(name), area, v.id LIMIT 21 OFFSET ${offset}`;
   return { restaurants: rows.slice(0, 20).map(localRestaurant), nextOffset: rows.length > 20 ? offset + 20 : null };
 }

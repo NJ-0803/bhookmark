@@ -14,7 +14,7 @@ export default function Explore({ bookmarks, onSave, onManual }: { bookmarks: Bo
   const [retry, setRetry] = useState(0);
   const [catalogOnly, setCatalogOnly] = useState(false);
   const [browseAll, setBrowseAll] = useState(false);
-  const featuredOnly = !query && !browseAll && result?.source === "osm" && result.restaurants.some((r) => r.featured || (r.ratingCount ?? 0) > 0);
+  const featuredOnly = !query && !browseAll && result?.source === "osm" && result.restaurants.some((r) => r.featured || (r.ratingCount ?? 0) >= 3);
   const sequence = useRef(0);
   useEffect(() => { getCoverage().then(setCoverage).catch(() => {}); }, []);
   useEffect(() => {
@@ -53,14 +53,14 @@ export default function Explore({ bookmarks, onSave, onManual }: { bookmarks: Bo
       <p>{result?.source === "google" ? "Live restaurant search · Google Maps" : query ? "Restaurants matching your search" : "Luxury, well-known spots & community favourites"}</p>
       <button onClick={onManual} className="text-rose underline underline-offset-4 shrink-0 min-h-11 -mt-3">Add a missing place</button>
     </div>
-    {!query && result?.source !== "google" && <p className="text-faint text-xs mb-6 max-w-[70ch]">Luxury and well-known places lead while the community grows. Restaurants rise as more people rate dishes there. Each person counts once per restaurant.</p>}
+    {!query && result?.source !== "google" && <p className="text-faint text-xs mb-6 max-w-[70ch]">Luxury and well-known places lead while the community grows. After at least 3 people rate dishes at a restaurant, it can rise above these picks. Each person counts once per restaurant.</p>}
     {coverage?.liveSearch && <div className="flex gap-2 mb-5" aria-label="Restaurant search source"><button onClick={() => setCatalogOnly(false)} aria-pressed={!catalogOnly} className={`secondary-button ${!catalogOnly ? "!border-accent !text-rose" : ""}`}>Live search</button><button onClick={() => setCatalogOnly(true)} aria-pressed={catalogOnly} className={`secondary-button ${catalogOnly ? "!border-accent !text-rose" : ""}`}>Bangalore catalog</button></div>}
     {result?.notice && <p role="status" className="text-muted text-sm border border-line rounded-xl p-4 mb-5">{result.notice}</p>}
     {error && <div role="alert" className="text-bad text-sm border border-bad/40 rounded-xl p-4 mb-5">{error} <button onClick={() => setRetry((n) => n + 1)} className="underline min-h-11 ml-2">Try again</button></div>}
     {loading ? <div role="status" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">{[1, 2, 3].map((n) => <div key={n} className="h-72 bg-surface border border-line rounded-card motion-safe:animate-pulse" />)}<span className="sr-only">Searching restaurants…</span></div> : <>
       {result && !result.restaurants.length && <div className="text-center border border-dashed border-line rounded-card px-5 py-12"><h2 className="dish-name text-[28px] mb-3">Couldn't find your spot?</h2><p className="text-muted text-sm mb-5">Try its branch or area, or add it yourself and save a food item.</p><button onClick={onManual} className="primary-button">Add restaurant & dish</button></div>}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 items-start">
-        {result?.restaurants.filter((r) => !featuredOnly || r.featured || (r.ratingCount ?? 0) > 0).map((restaurant) => {
+        {result?.restaurants.filter((r) => !featuredOnly || r.featured || (r.ratingCount ?? 0) >= 3).map((restaurant) => {
           const count = bookmarks.filter((b) => b.restaurantId === restaurant.id).length;
           return <FloatCard key={restaurant.id} id={restaurant.id} label={restaurant.name} wide className="bg-surface border border-line rounded-card overflow-hidden" panel={() => <RestaurantPanel restaurant={restaurant} onSave={onSave} />}>
             <RestaurantPhoto restaurant={restaurant} className="aspect-[16/10]" />
