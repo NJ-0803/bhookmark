@@ -1,6 +1,7 @@
 import express from "express";
 import { proxyTrust, permittedOrigin } from "./network";
 import { createChatPreviewRouter } from "./routes/chat";
+import { createWhatsAppReviewRouter } from "./whatsapp/review";
 import cors from "cors";
 import helmet from "helmet";
 import { createGlobalLimiter } from "./globalRateLimit";
@@ -16,6 +17,9 @@ app.use(helmet());
 // Same-origin requests need no CORS permission. Preview/custom origins must
 // be explicitly allowed, not every unrelated tenant on vercel.app.
 app.use(cors({ origin: (origin, done) => done(null, origin === undefined || permittedOrigin(origin)) }));
+// Raw signed payload must be checked before JSON parsing. This review route
+// is disabled by default and always returns404 in production.
+app.use("/whatsapp", createWhatsAppReviewRouter());
 app.use(express.json({ limit: "1mb" }));
 
 // Authenticated traffic is limited per verified user; anonymous requests
