@@ -47,7 +47,10 @@ CREATE TABLE IF NOT EXISTS refresh_families (
   revoked BOOLEAN NOT NULL DEFAULT false
 );
 
--- Additive refresh concurrency protection. Apply before deploying this branch.
+-- Optional legacy refresh metadata. Current code uses the existing current_jti
+-- column for atomic rotation and authenticated grace timestamps, so these
+-- columns are no longer required before deployment. Kept rerunnable for
+-- databases that applied the earlier review schema.
 ALTER TABLE refresh_families ADD COLUMN IF NOT EXISTS previous_jti TEXT;
 ALTER TABLE refresh_families ADD COLUMN IF NOT EXISTS rotated_at BIGINT;
 
