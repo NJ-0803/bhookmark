@@ -11,7 +11,8 @@
     "test": "node --import tsx --test server/tests/*.test.mts scripts/*.test.mts",
     "typecheck:server": "tsc --noEmit -p server/tsconfig.json",
     "dev:server": "tsx watch server/src/index.ts",
-    "demo:chat": "node --import tsx server/demo/chat.mts"
+    "demo:chat": "node --import tsx server/demo/chat.mts",
+    "demo:whatsapp": "node --import tsx server/demo/whatsapp.mts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",
