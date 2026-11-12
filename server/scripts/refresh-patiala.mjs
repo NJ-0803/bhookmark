@@ -12,7 +12,7 @@ if (commit && !databaseUrl) throw new Error("DATABASE_URL is required for --comm
 if (process.env.ALLOW_TEST_DB === "1") await import("./assertTestDatabase.mjs");
 if (commit && isKnownProductionUrl(databaseUrl) && process.env.CONFIRM_PROD !== "1") throw new Error("Production refresh requires CONFIRM_PROD=1.");
 const db = commit ? neon(databaseUrl) : null;
-const bbox = "30.25,76.30,30.45,76.50";
+const bbox = "30.25,76.29,30.45,76.50";
 const query = `[out:json][timeout:180];(
   nwr["amenity"~"^(restaurant|cafe|fast_food|pub|bar|biergarten|ice_cream|food_court)$"]["name"](${bbox});
   nwr["shop"~"^(bakery|confectionery|pastry)$"]["name"](${bbox});
@@ -30,7 +30,7 @@ const rows = (data.elements ?? []).flatMap((e) => {
   const name = e.tags?.name?.trim();
   const lat = e.lat ?? e.center?.lat;
   const lng = e.lon ?? e.center?.lon;
-  if (!name || !Number.isFinite(lat) || !Number.isFinite(lng) || lat < 30.25 || lat > 30.45 || lng < 76.30 || lng > 76.50) return [];
+  if (!name || !Number.isFinite(lat) || !Number.isFinite(lng) || lat < 30.25 || lat > 30.45 || lng < 76.29 || lng > 76.50) return [];
   return [{ id: randomUUID(), osm_id: `${e.type}/${e.id}`, name, lat, lng,
     area: e.tags["addr:suburb"] || e.tags["addr:neighbourhood"] || e.tags["addr:street"] || "Patiala", now }];
 });
