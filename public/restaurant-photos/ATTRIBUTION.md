@@ -19,13 +19,6 @@ Bundled:
 | --- | --- | --- |
 | Gopal Sweets | [Titodutta](https://commons.wikimedia.org/wiki/File:Gopal%27s_in_Patiala,_Punjab.jpg) | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) |
 
-The remaining Patiala photos are NOT bundled. They are hotlinked from each
-venue's official website and remain hosted by their publishers (same approach
-as Karavalli, LUPA and FarmLore in server/src/restaurantDirectory.ts). Source
-links are shown in the app; no open license is claimed for them. Per-venue
-source URLs are recorded in server/src/restaurantDirectoryPatiala.ts:
-Mocha Cafe & Bar, Dum Noorani, The Bellrocc Resto Bar, Door No. 3, Mojave,
-Kohli's, Boston & Co., Hotel Narain Continental, The Brew Estate,
-Cafe Delhi Heights, Churi House, Mauji's, Oye Kake, Wrapchik,
-Humble Krumble Garden Cafe, The Patiala & Neel at Ran Baas The Palace,
-Texas Smokehouse, Pirates of Grill, Sahni Bakery.
+Other Patiala official-website images reviewed on the same day are NOT enabled:
+publicly accessible is not reuse permission. They are preserved for review in
+server/scripts/patiala-photo-research.json.
