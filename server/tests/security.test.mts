@@ -46,7 +46,7 @@ test("refresh compare-and-swap admits one winner without revoking it", async () 
     const outcomes = await Promise.all([rotate("f", "old", "a"), rotate("f", "old", "b")]);
     assert.equal(outcomes.filter(Boolean).length, 1);
     const { rows } = await pg.query<{ current_jti: string; previous_jti: string; revoked: boolean }>("SELECT * FROM refresh_families WHERE family_id='f'");
-    assert.equal(rows[0].previous_jti, "old"); assert.equal(rows[0].revoked, false);
+    assert.equal(rows[0].revoked, false);
     assert.equal(await rotate("f", "old", "c"), false);
     await pg.exec("UPDATE refresh_families SET revoked=true WHERE family_id='f'");
     assert.equal(await rotate("f", rows[0].current_jti, "c"), false);
@@ -74,4 +74,23 @@ test("Google profile requires a verified email and stable subject", async () => 
   for (const value of [undefined, {}, { sub: "x", email: "x@example.com" }, { sub: "x", email: "x@example.com", email_verified: false }]) {
     assert.throws(() => verifiedGoogleIdentity(value));
   }
+});
+
+// The same race/security path must work before the optional columns exist.
+test("refresh rotation works without new schema columns and embeds grace in authenticated jti", async () => {
+  const { newRotationJti, refreshDisposition } = await import("../src/sessionSecurity");
+  const pg = new PGlite();
+  try {
+    await pg.exec("CREATE TABLE refresh_families(family_id text PRIMARY KEY,current_jti text NOT NULL,revoked boolean DEFAULT false); INSERT INTO refresh_families VALUES('f','old',false)");
+    const connect = () => (strings: TemplateStringsArray, ...params: unknown[]) => pg.query(strings.reduce((s, part, i) => s + (i ? `$${i}` : "") + part, ""), params).then(r => r.rows);
+    const rotate = createRefreshRotation(connect as any);
+    const stamp = 1794480000000, token = newRotationJti(stamp);
+    assert.equal(await rotate("f", "old", token), true);
+    assert.equal(await rotate("f", "old", "other"), false);
+    assert.equal(refreshDisposition({ currentJti: token }, "old", stamp+1), "conflict");
+    assert.equal(refreshDisposition({ currentJti: token }, "old", stamp+30_000), "replay");
+    assert.equal(refreshDisposition({ currentJti: token }, token, stamp+1), "current");
+    const refresh = verifyRefreshToken(issueRefreshToken("f", token, 10));
+    assert.equal(refresh.jti, token); assert.equal(refresh.authTime, 10);
+  } finally { await pg.close(); }
 });
