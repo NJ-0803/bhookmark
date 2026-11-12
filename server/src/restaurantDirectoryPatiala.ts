@@ -12,5 +12,5 @@ export const patialaDirectory: Record<string, DirectoryEntry> = {
   "seed-patiala-gopal-sweets": { name: "Gopal Sweets", address: "Two branches mapped in the city", aliases: "Gopal Sweets Gopal's Patiala",
     photo: { url: "/restaurant-photos/gopal-sweets-patiala.jpg", sourceUrl: "https://commons.wikimedia.org/wiki/File:Gopal%27s_in_Patiala,_Punjab.jpg", provider: "Wikimedia Commons", year: 2017,
       authors: [{ name: "Titodutta", url: "https://commons.wikimedia.org/wiki/User:Titodutta" }], license: { name: "CC BY-SA 4.0", url: "https://creativecommons.org/licenses/by-sa/4.0/" },
-      description: "Gopal's shopfront in Patiala, 2017" } },
+      description: "Gopal's shopfront in Patiala, 2017 (historical brand photo; branch not verified)" } },
 };
