@@ -321,14 +321,6 @@
    "coord_source": "openstreetmap node/10973218016"
   },
   {
-   "id": "seed-patiala-the-chocolate-box",
-   "name": "The Chocolate Box",
-   "area": "Desserts and cafe",
-   "lat": 30.3478614,
-   "lng": 76.4410919,
-   "coord_source": "gmaps (TENTATIVE: Maps names this unit the chocolate room; wanderon lists The Chocolate Box at same address)"
-  },
-  {
    "id": "seed-patiala-barista",
    "name": "Barista",
    "area": "Bhupindra Road, opposite State Bank of India, Punjabi Bagh",
@@ -594,5 +586,5 @@
   }
  ],
  "generated": 1794486206420,
- "note": "v2 full approved catalog: 58 approved-list + 16 research additions (incl. Vintona; Boheme deduped). BrewBakes held (closed/rebranded)."
+ "note": "v3: The Chocolate Box held (identity unresolved Chocolate Room vs Box). 73 venues = 57 approved-list + 16 research additions (incl. Vintona; Boheme deduped). Held: BrewBakes (closed/rebranded), Chocolate Box (identity)."
 }
