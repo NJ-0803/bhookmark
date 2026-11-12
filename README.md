@@ -95,3 +95,7 @@ live photo verification and real-phone QA remain deployment steps.
 ## Conversational preview (development only)
 
 A channel-neutral, authenticated read-only preview is documented in [docs/CHAT_PREVIEW.md](docs/CHAT_PREVIEW.md). It never saves data or connects a messaging provider.
+
+## Direct WhatsApp preparation (review only)
+
+Run `npm run demo:whatsapp` after `npm ci` for an isolated, terminal-based Meta-shaped webhook simulation. It checks signatures, duplicates and a shared dry-run reply cap using fictional data. No Meta account, access token, external messages or food writes. The normal review adapter is off by default and cannot run in production. Account linking, execution and outbound delivery are still pending. See [WhatsApp review guide](docs/WHATSAPP_REVIEW.md) for the exact scope and release blockers.
