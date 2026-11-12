@@ -13,7 +13,7 @@ import {
   verifyRefreshToken,
 } from "../auth";
 import { requireAuth } from "../middleware";
-import { verifiedGoogleIdentity, refreshDisposition } from "../sessionSecurity";
+import { verifiedGoogleIdentity, refreshDisposition, newRotationJti } from "../sessionSecurity";
 
 export const authRouter = Router();
 
@@ -216,7 +216,7 @@ authRouter.post("/refresh", async (req, res) => {
   const user = await db.getUserById(family.userId);
   if (!user) return res.status(401).json({ ok: false, error: "Session revoked. Sign in again." });
 
-  const newJti = nanoid();
+  const newJti = newRotationJti();
   if (!await db.rotateFamilyJti(family.familyId, payload.jti, newJti)) {
     return res.status(409).json({ ok: false, error: "refresh_conflict", retryable: false });
   }
