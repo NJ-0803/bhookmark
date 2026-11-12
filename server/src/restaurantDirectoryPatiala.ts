@@ -1,0 +1,60 @@
+import type { DirectoryEntry } from "./restaurantDirectory";
+
+// Patiala branch photos, reviewed on 2026-11-12. Keyed by the seed venue id
+// from server/scripts/patiala-catalog-seed.sql; localRestaurant falls back to
+// this map when a venue row has no OSM id. Official website images remain
+// hosted by their publishers. Source links are visible in the UI; no open
+// license or photographer attribution is invented. Gopal Sweets is a bundled
+// Wikimedia Commons image - see public/restaurant-photos/ATTRIBUTION.md.
+// Never reuse these images for another branch with a similar name.
+export const patialaDirectory: Record<string, DirectoryEntry> = {
+  "seed-patiala-mocha-cafe-bar": { name: "Mocha Cafe & Bar", address: "SCO 4-5, Ground Floor, Bhupindra Road, Model Town", aliases: "Mocha Cafe Bar Patiala",
+    photo: { url: "https://mocha.co.in/img/gallery-location-patiala-001.jpg", sourceUrl: "https://mocha.co.in/locations/mocha-patiala.html", provider: "Photo: Mocha official website, Patiala branch gallery", authors: [] } },
+  "seed-patiala-dum-noorani": { name: "Dum Noorani", address: "SCO 10, 2nd Floor, Raj Kamal Square, Bhupindra Road", aliases: "Dum Noorani Patiala",
+    photo: { url: "https://www.dumnoorani.com/desktop/6.jpg", sourceUrl: "https://www.dumnoorani.com/", provider: "Photo: Dum Noorani official website", authors: [] } },
+  "seed-patiala-the-bellrocc-resto-bar": { name: "The Bellrocc Resto Bar", address: "Building 149, 1st Floor, Model Town", aliases: "Bellrocc Resto Bar Patiala",
+    photo: { url: "https://www.thebellrocc.com/__l5e/assets-v1/d4d6a662-5456-4748-bf00-2477bbeabbc2/dining-hall.jpg", sourceUrl: "https://www.thebellrocc.com/", provider: "Photo: The Bellrocc official website", authors: [] } },
+  "seed-patiala-door-no-3": { name: "Door No. 3", address: "2nd Floor, Raj Kamal Square, Bhupindra Road", aliases: "Door No 3 Patiala",
+    photo: { url: "https://doorno3.in/images/resource/image-1.jpg", sourceUrl: "https://doorno3.in/", provider: "Photo: Door No. 3 official website", authors: [] } },
+  "seed-patiala-mojave-artisanal-kitchen-bar": { name: "Mojave - Artisanal Kitchen & Bar", address: "SCO 03, TJ Tower, Bhupindra Road", aliases: "Mojave Patiala",
+    photo: { url: "https://mojaveindia.com/wp-content/uploads/2025/06/5I0A7774-scaled.jpg", sourceUrl: "https://mojaveindia.com/", provider: "Photo: Mojave official website", authors: [] } },
+  "seed-patiala-kohli-s": { name: "Kohli's", address: "Bhupindra Road, Punjabi Bagh", aliases: "Kohli's Kohli Sweets Patiala",
+    photo: { url: "https://kohlisweets.com/wp-content/uploads/2026/09/KOHLI.jpeg", sourceUrl: "https://kohlisweets.com/restaurant/", provider: "Photo: Kohli's official website", authors: [] } },
+  "seed-patiala-boston-co": { name: "Boston & Co.", address: "Model Town", aliases: "Boston and Co Boston Bites Patiala",
+    photo: { url: "https://bostonandco.in/images/item-3.jpg", sourceUrl: "https://bostonandco.in/gallery.html", provider: "Food photo: Boston & Co. official website", authors: [],
+      description: "Food photo from the venue's official website gallery" } },
+  "seed-patiala-hotel-narain-continental": { name: "Hotel Narain Continental", address: "Hotel restaurant", aliases: "Hotel Narain Continental Patiala",
+    photo: { url: "https://www.hotelnarain.com/wp-content/gallery/food-dining/Food-Dinning-1.jpg", sourceUrl: "https://www.hotelnarain.com/food-dining/", provider: "Photo: Hotel Narain official website", authors: [] } },
+  "seed-patiala-the-brew-estate": { name: "The Brew Estate", address: "Showroom 5, Bhupindra Road, Model Town", aliases: "Brew Estate Patiala",
+    photo: { url: "https://brewestate.in/assets/images/homepage/tbe-patiala-banner.png", sourceUrl: "https://brewestate.in/", provider: "Photo: The Brew Estate official website, Patiala banner", authors: [] } },
+  "seed-patiala-cafe-delhi-heights": { name: "Cafe Delhi Heights", address: "Raj Kamal Square, Model Town", aliases: "Cafe Delhi Heights Patiala",
+    photo: { url: "https://d3i6zfjgu3z6d6.cloudfront.net/store_locator_FP/stores/18045/media/image/83f8b611838942dea00cb8e23193007c.jpg", sourceUrl: "https://stores.cafedelhiheights.com/store-pages/cafe-delhi-heights-patiala-patiala", provider: "Photo: Cafe Delhi Heights official store page, Patiala", authors: [] } },
+  "seed-patiala-churi-house": { name: "Churi House", address: "Shop 104, New Leela Bhawan", aliases: "Churi House Patiala",
+    photo: { url: "https://churihouse.com/images/upload/main-banner.jpeg", sourceUrl: "https://churihouse.com/", provider: "Photo: Churi House official website", authors: [],
+      description: "Brand photo from the venue's official website" } },
+  "seed-patiala-mauji-s": { name: "Mauji's", address: "22 Phatak Market, opp. Kohli Sweets, Model Town", aliases: "Mauji's Mauji Patiala",
+    photo: { url: "https://maujis.com/images/store-images.jpg", sourceUrl: "https://maujis.com/", provider: "Photo: Mauji's official website", authors: [] } },
+  "seed-patiala-oye-kake": { name: "Oye Kake", address: "Shop 8, Mansarovar Complex, Bhupindra Road, below O2 Gym", aliases: "Oye Kake Patiala",
+    photo: { url: "https://oyekake.in/uploads/1778150506026-Kulcha.jpg", sourceUrl: "https://oyekake.in/", provider: "Food photo: Oye Kake official website", authors: [],
+      description: "Brand food photo from the official website, not branch-specific" } },
+  "seed-patiala-wrapchik": { name: "Wrapchik", address: "Wraps and fast food", aliases: "Wrapchik Patiala",
+    photo: { url: "https://www.wrapchik.co.in/menu-photos/paneer-tikka-wrap.jpg", sourceUrl: "https://www.wrapchik.co.in/", provider: "Food photo: Wrapchik official website", authors: [],
+      description: "Food photo from the venue's official website menu" } },
+  "seed-patiala-humble-krumble-garden-cafe": { name: "Humble Krumble Garden Cafe", address: "Block B, Model Town Park", aliases: "Humble Krumble Patiala",
+    photo: { url: "https://humblekrumble.com/assets/cafe-interior-CkihK8zw.jpg", sourceUrl: "https://humblekrumble.com/", provider: "Photo: Humble Krumble official website", authors: [] } },
+  "seed-patiala-the-patiala-neel-at-ran-baas-the-palace": { name: "The Patiala & Neel at Ran Baas The Palace", address: "Baradari", aliases: "The Patiala Neel Ran Baas Palace",
+    photo: { url: "https://www.theparkhotels.com/images/site-specific/ran-baas-the-palace/dining/neel/neel-1.jpg", sourceUrl: "https://www.theparkhotels.com/ran-baas-the-palace/dining/neel.html", provider: "Photo: Ran Baas The Palace official website, Neel restaurant", authors: [] } },
+  "seed-patiala-texas-smokehouse": { name: "Texas Smokehouse", address: "Upper Mall Road, near YPS Chowk, opposite Polo Ground", aliases: "Texas Smokehouse Patiala",
+    photo: { url: "https://cdn.uengage.io/uploads/69733/image-461469-1793175596.jpeg", sourceUrl: "https://texassmokehouse.in/", provider: "Brand image: Texas Smokehouse official website", authors: [],
+      description: "Brand image from the official website, not branch-specific" } },
+  "seed-patiala-pirates-of-grill": { name: "Pirates of Grill", address: "2nd Floor, Raj Kamal Square, Bhupendra Road", aliases: "Pirates of Grill Patiala",
+    photo: { url: "https://www.piratesofgrill.com/images/intro.jpg", sourceUrl: "https://www.piratesofgrill.com/", provider: "Brand image: Pirates of Grill official website", authors: [],
+      description: "Brand image from the official website, not branch-specific" } },
+  "seed-patiala-sahni-bakery": { name: "Sahni Bakery", address: "Bakery", aliases: "Sahni Bakery Patiala",
+    photo: { url: "https://sahnibakery.com/cdn/shop/files/yummy-chocolate-photo-cake_799_600x.jpg", sourceUrl: "https://sahnibakery.com/", provider: "Product photo: Sahni Bakery official website", authors: [],
+      description: "Product photo from the venue's official website" } },
+  "seed-patiala-gopal-sweets": { name: "Gopal Sweets", address: "Two branches mapped in the city", aliases: "Gopal Sweets Gopal's Patiala",
+    photo: { url: "/restaurant-photos/gopal-sweets-patiala.jpg", sourceUrl: "https://commons.wikimedia.org/wiki/File:Gopal%27s_in_Patiala,_Punjab.jpg", provider: "Wikimedia Commons", year: 2017,
+      authors: [{ name: "Titodutta", url: "https://commons.wikimedia.org/wiki/User:Titodutta" }], license: { name: "CC BY-SA 4.0", url: "https://creativecommons.org/licenses/by-sa/4.0/" },
+      description: "Gopal's shopfront in Patiala, 2017" } },
+};
