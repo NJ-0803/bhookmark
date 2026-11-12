@@ -583,8 +583,24 @@
    "lat": 30.354298,
    "lng": 76.3621545,
    "coord_source": "openstreetmap node/12201827012"
+  },
+  {
+   "id": "seed-patiala-old-madrasi-dhaba",
+   "name": "Old Madrasi Dhaba",
+   "area": "beside Kali Mata Mandir Road, near Patiala Sahi Lassi, Sheran Wala Gate",
+   "lat": 30.3351432,
+   "lng": 76.3949101,
+   "coord_source": "google-maps place page (listed as 'Old Famous Madrasi Dosa', Sheran Wala Gate); user confirmed area 'shera wala gate' 12 Nov 2026"
+  },
+  {
+   "id": "seed-patiala-elysian-cookhouse",
+   "name": "Elysian Cookhouse",
+   "area": "Ground Floor, JP Tower, Punjabi Bagh",
+   "lat": 30.3422855,
+   "lng": 76.3815329,
+   "coord_source": "google-maps place page (Ground Floor, JP Tower, Punjabi Bagh, Patiala); user confirmed 12 Nov 2026 it is a separate business from Elysian Bakehouse (seeded independently)"
   }
  ],
  "generated": 1794486206420,
- "note": "v3: The Chocolate Box held (identity unresolved Chocolate Room vs Box). 73 venues = 57 approved-list + 16 research additions (incl. Vintona; Boheme deduped). Held: BrewBakes (closed/rebranded), Chocolate Box (identity)."
+ "note": "v4: +Old Madrasi Dhaba, +Elysian Cookhouse (both user-confirmed 12 Nov 2026). 75 venues = 57 approved-list + 18 research additions. Held: BrewBakes, Chocolate Box, Doner & Gyros, Dumpling Hood, Sear'D, Montage."
 }
