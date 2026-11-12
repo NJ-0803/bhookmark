@@ -1,6 +1,6 @@
 export interface RestaurantPhoto { url: string; sourceUrl: string; authors: { name: string; url: string }[]; provider?: string; license?: { name: string; url: string }; year?: number; description?: string }
 export interface Restaurant {
-  id: string; name: string; address: string; source: "google" | "osm" | "manual" | "legacy";
+  id: string; name: string; address: string; city?: string; source: "google" | "osm" | "manual" | "legacy";
   lat?: number; lng?: number; mapsUrl: string; photos: RestaurantPhoto[];
   attributions?: { provider: string; providerUri: string }[];
   featured?: boolean; category?: string; identitySource?: string; ratingCount?: number;
