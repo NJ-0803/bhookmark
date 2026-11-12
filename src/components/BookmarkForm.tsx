@@ -45,7 +45,7 @@ export default function BookmarkForm({ restaurant, bookmark, onSave, onClose }: 
     </div>
     <form onSubmit={submit} className="flex flex-col gap-4">
       <label className="field-label">Restaurant<input required maxLength={160} value={venue} onChange={(e) => setVenue(e.target.value)} readOnly={Boolean(restaurant || bookmark)} className="field" placeholder="Restaurant name" /></label>
-      <label className="field-label">Branch / address<input required maxLength={300} value={address} onChange={(e) => setAddress(e.target.value)} readOnly={Boolean(restaurant || bookmark)} className="field" placeholder="Area and branch, Bengaluru" /></label>
+      <label className="field-label">Branch / address<input required maxLength={300} value={address} onChange={(e) => setAddress(e.target.value)} readOnly={Boolean(restaurant || bookmark)} className="field" placeholder="Area and branch" /></label>
       <label className="field-label">Food item<input autoFocus required maxLength={120} value={name} onChange={(e) => setName(e.target.value)} readOnly={Boolean(bookmark)} className="field" placeholder="e.g. Truffle mushroom pizza" /></label>
       <label className="field-label">Notes <span className="text-faint">(optional)</span><textarea maxLength={2000} rows={3} value={note} onChange={(e) => setNote(e.target.value)} className="field resize-y" placeholder="What caught your eye? What should you order?" /></label>
       <label className="field-label">Reference link <span className="text-faint">(optional)</span><input type="url" maxLength={2000} value={referenceUrl} onChange={(e) => setReferenceUrl(e.target.value)} className="field" placeholder="A reel, menu or food photo link" /></label>
