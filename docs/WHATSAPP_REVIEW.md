@@ -41,13 +41,13 @@ WHATSAPP_REVIEW_REPLY_CAP=900
 WHATSAPP_ACCOUNT_TIMEZONE=UTC
 ```
 
-App secret and verification token must each be at least 32 characters. The account/number IDs must be numeric. Set the timezone to match the intended Meta messaging account before testing monthly boundaries. This configuration does not authorize connecting a real number or exposing a public webhook. No migrations run on server startup. The older refresh-family migration also remains required before any future release of this branch.
+App secret and verification token must each be at least 32 characters. The account/number IDs must be numeric. Set the timezone to match the intended Meta messaging account before testing monthly boundaries. This configuration does not authorize connecting a real number or exposing a public webhook. No migrations run on server startup. Refresh rotation is now backward-compatible with the legacy table without the optional new columns; see the follow-up in SECURITY_REVIEW.md. No live migration was run.
 
 ## What remains before a public pilot
 
 1. Owner-approved Meta business/app/number onboarding, then secure credential configuration, policy eligibility and permissions verification. Do not reuse sample credentials or informal WhatsApp Web automation.
-2. Two-sided, expiring account-link handshake: a recent authenticated Bhookmark session, proof from the WhatsApp sender, explicit account confirmation, single-use hashed tokens, revocation and rate limiting. A phone number alone is not account ownership.
-3. Transactional food execution, per-user serialization and conflict checks, explicit confirmations and safe undo. The existing preview engine proposes changes only.
+2. Production wiring/review of the now-implemented isolated two-sided, expiring account-link handshake: a recent authenticated Bhookmark session, proof from the WhatsApp sender, explicit account confirmation, single-use hashed tokens, revocation and rate limiting. A phone number alone is not account ownership.
+3. Production wiring/review of the now-implemented transactional food execution, user/row serialization, explicit confirmations and conflict-safe undo. The original preview endpoint remains read-only.
 4. Outbound worker using the direct Graph API; delivery-status reconciliation; immediate pre-send window/quota checks; opt-out and recipient limits; an account-wide cap consistent with all other sends from the number. Never mistake API acceptance for delivery. Timeouts can have uncertain send outcomes: do not blindly resend.
 5. Secure retention/cleanup, monitoring, and abuse controls. Review tables contain recipient/reply data; they are not a production privacy design. Keep event tombstones for the provider retry horizon while removing expired private bodies. No cleanup job is installed here.
 6. Cap warning and website fallback BEFORE exhaustion, not silent loss of saves. Reservations cannot guarantee Meta billing limits if another app/operator also uses the number. No paid fallback is authorized.
@@ -69,3 +69,13 @@ Current owning sources (the older `/docs/whatsapp/pricing` page still showed the
 - https://developers.facebook.com/documentation/business-messaging/whatsapp/messages/send-messages/
 
 No live migration, deployment, paid setup or real WhatsApp send is part of this change.
+
+## Linked execution follow-up (still isolated, no WhatsApp sends)
+
+Run `npm run demo:whatsapp:linked` for the full isolated sequence: signed-in fictional account starts a ten-minute link intent; signed Meta-shaped sender message proves the WhatsApp side; the authenticated account explicitly confirms the full number and one-time confirmation code; save with a zero rating; retry without duplication; update to8.5; undo; unlink. All use actual HTTP handlers and SQL transactions in disposable PGlite. No real account, environment secrets or DATABASE_URL is used. This is a terminal demonstration, not a new app screen or public service.
+
+`execution.ts` takes an explicitly injected interactive transaction database. It does not discover Neon credentials. `linkRoutes.ts` requires a freshly authenticated session (five minutes) and per-user request limits; it is not mounted in the normal app and cannot run in production. Link intents store SHA256 hashes of random192-bit tokens; each expires and can be claimed by only one sender, then must be confirmed from the signed-in account. Existing links cannot be silently displaced. Account-side unlink and chat STOP/UNLINK revoke the link and outstanding undo actions. No phone/email/profile matching is used to grant access.
+
+The execution transaction includes the message dedupe key, a conservative quota reservation, actual isolated food mutation and dry-run reply. Transaction failure rolls everything back, allowing a safe provider retry. Food matching retains restaurant-branch ID, nullable/manual half-point ratings (zero valid), notes and reference links. Recall returns only the linked user's rows, at most ten in a reply. Undo lasts ten minutes, belongs to the linked account and refuses to overwrite a dish edited after the original change. Existing web food writes coordinate through user/row locks. A cross-worker PostgreSQL advisory transaction lock serializes the review engine; PGlite's one-connection test adapter serializes transactions and skips that unsupported lock. Real multi-connection PostgreSQL stress testing is still needed before launch.
+
+This isolated execution path uses UTC month boundaries only and a fixed900 reservation ceiling. A future production composition must bind its timezone to the Meta account, combine every sender's usage, bound queries/abuse, implement durable cleanup and true delivery-status accounting, and integrate the website link-confirm UI. The ordinary server still returns the unlinked refusal, so merely merging these modules cannot enable private WhatsApp food access. All outgoing replies remain in a `dry-run`-only table. No Graph send worker exists.
