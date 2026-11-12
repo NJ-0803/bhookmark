@@ -89,6 +89,8 @@ export interface WhatsAppReviewOptions {
    * Never bind sender to a user by matching an unverified phone/profile/contact.
    */
   fixtureReply?: (message: IncomingText) => Promise<string>;
+  /** Isolated interactive-transaction execution; owns dedupe/quota/outbox itself. */
+  reviewExecution?: (message: IncomingText) => Promise<unknown>;
 }
 const UNLINKED = "Bhookmark WhatsApp is in review mode. Account linking is not enabled, so I cannot read or change your saved food. Use the Bhookmark website for now.";
 export function createWhatsAppReviewRouter(options?: WhatsAppReviewOptions) {
@@ -132,6 +134,7 @@ export function createWhatsAppReviewRouter(options?: WhatsAppReviewOptions) {
     for (const message of messages) {
       // No stale reply, or future timestamp that could extend the service window.
       if (message.timestamp > now + 60_000 || message.timestamp < now - 23 * 3600_000) continue;
+      if (o.reviewExecution) { await o.reviewExecution(message); continue; }
       const text = o.fixtureReply ? await o.fixtureReply(message) : UNLINKED;
       if (!text.trim() || text.length > 4000) throw new Error("Invalid review reply");
       await o.queue.enqueue({ phoneId: o.phoneId, month, messageId: message.id, recipient: message.sender,
