@@ -1,0 +1,598 @@
+{
+ "venues": [
+  {
+   "id": "seed-patiala-texas-smokehouse",
+   "name": "Texas Smokehouse",
+   "area": "Upper Mall Road, near YPS Chowk, opposite Polo Ground",
+   "lat": 30.3232498,
+   "lng": 76.3892671,
+   "coord_source": "texassmokehouse.in (official JSON-LD, Patiala branch; Bathinda/Mohali branches distinct)"
+  },
+  {
+   "id": "seed-patiala-royal-nutrition-house",
+   "name": "Royal Nutrition House",
+   "area": "13 Mansarovar Complex, near 22 Number Railway Flyover / City Center",
+   "lat": 30.3398,
+   "lng": 76.3869,
+   "coord_source": "royalnutritionhouse.in (official, maps embed)"
+  },
+  {
+   "id": "seed-patiala-mocha-cafe-bar",
+   "name": "Mocha Cafe & Bar",
+   "area": "SCO 4-5, Ground Floor, Bhupindra Road, Model Town",
+   "lat": 30.346005,
+   "lng": 76.378356,
+   "coord_source": "zomato.com page (Model Town branch)"
+  },
+  {
+   "id": "seed-patiala-dum-noorani",
+   "name": "Dum Noorani",
+   "area": "SCO 10, 2nd Floor, Raj Kamal Square, Bhupindra Road",
+   "lat": 30.3435498,
+   "lng": 76.378972,
+   "coord_source": "dumnoorani.com outlets page -> official maps link for SCO 10, Raj Kamal Square, Patiala branch"
+  },
+  {
+   "id": "seed-patiala-elevate",
+   "name": "Elevate",
+   "area": "SCO 5, 1st Floor, Rani Indira Kumari Scheme, Bhupindra Road, Model Town",
+   "lat": 30.345373,
+   "lng": 76.377563,
+   "coord_source": "zomato.com page (Model Town branch)"
+  },
+  {
+   "id": "seed-patiala-cava-bar-lounge",
+   "name": "Cava - Bar & Lounge",
+   "area": "SCO 14, 1st Floor, Bhupindra Road, Model Town",
+   "lat": 30.345136,
+   "lng": 76.377545,
+   "coord_source": "zomato.com page (Model Town branch)"
+  },
+  {
+   "id": "seed-patiala-oye-kake",
+   "name": "Oye Kake",
+   "area": "Shop 8, Mansarovar Complex, Bhupindra Road, below O2 Gym",
+   "lat": 30.342361,
+   "lng": 76.379269,
+   "coord_source": "exa.ai place record"
+  },
+  {
+   "id": "seed-patiala-storii-cafe",
+   "name": "Storii Cafe",
+   "area": "Shop 7, Mansarovar Complex, below O2 Gym, Model Town",
+   "lat": 30.342353,
+   "lng": 76.379242,
+   "coord_source": "exa.ai place record"
+  },
+  {
+   "id": "seed-patiala-elysian-bakehouse",
+   "name": "Elysian Bakehouse",
+   "area": "Ground Floor, Bhupindra Road, opp Sanjeevni Nursing Home, Model Town; Justdial also lists Upkar Nagar - branch or stale listing to check",
+   "lat": 30.346119,
+   "lng": 76.379135,
+   "coord_source": "zomato.com page (Model Town branch)"
+  },
+  {
+   "id": "seed-patiala-maharani-club",
+   "name": "Maharani Club",
+   "area": "Baradari",
+   "lat": 30.338978,
+   "lng": 76.389503,
+   "coord_source": "exa.ai place record (Baradari, opp RGMC Maharani Club Building)"
+  },
+  {
+   "id": "seed-patiala-bake-by-ecco",
+   "name": "Bake By Ecco",
+   "area": "Ground Floor & Basement, Punjabi Bagh, opposite Sanjeevani Hospital",
+   "lat": 30.346146,
+   "lng": 76.379354,
+   "coord_source": "zomato.com page (Punjabi Bagh branch)"
+  },
+  {
+   "id": "seed-patiala-bombay-pav-bhaji",
+   "name": "Bombay Pav Bhaji",
+   "area": "22 Phatak, Model Town (near Kohli Sweets per Justdial)",
+   "lat": 30.33895,
+   "lng": 76.381105,
+   "coord_source": "zomato.com page (Model Town branch)"
+  },
+  {
+   "id": "seed-patiala-boston-co",
+   "name": "Boston & Co.",
+   "area": "Model Town",
+   "lat": 30.33554,
+   "lng": 76.383125,
+   "coord_source": "zomato.com page (Model Town branch)"
+  },
+  {
+   "id": "seed-patiala-the-bellrocc-resto-bar",
+   "name": "The Bellrocc Resto Bar",
+   "area": "Building 149, 1st Floor, Model Town",
+   "lat": 30.345532,
+   "lng": 76.377414,
+   "coord_source": "zomato.com page (Model Town branch)"
+  },
+  {
+   "id": "seed-patiala-mauji-s",
+   "name": "Mauji's",
+   "area": "22 Phatak Market, opp. Kohli Sweets, Model Town",
+   "lat": 30.3394278,
+   "lng": 76.3785675,
+   "coord_source": "maujis.com (official, maps embed pb=)"
+  },
+  {
+   "id": "seed-patiala-vintona-kitchen-bar",
+   "name": "Vintona Kitchen & Bar",
+   "area": "The Lauriant Resorts, Rajgarh, NH 7, Patiala Cantt",
+   "lat": 30.2992176,
+   "lng": 76.2996566,
+   "coord_source": "district.in page (Rajgarh, NH 7, Patiala Cantt); identity confirmed across Swiggy/district/eazydiner; inside widened west bound 76.29"
+  },
+  {
+   "id": "seed-patiala-cafe-delhi-heights",
+   "name": "Cafe Delhi Heights",
+   "area": "Raj Kamal Square, Model Town",
+   "lat": 30.3437421,
+   "lng": 76.3791538,
+   "coord_source": "gmaps"
+  },
+  {
+   "id": "seed-patiala-door-no-3",
+   "name": "Door No. 3",
+   "area": "2nd Floor, Raj Kamal Square, Bhupindra Road",
+   "lat": 30.3436876,
+   "lng": 76.3790261,
+   "coord_source": "gmaps"
+  },
+  {
+   "id": "seed-patiala-humble-krumble-garden-cafe",
+   "name": "Humble Krumble Garden Cafe",
+   "area": "Block B, Model Town Park",
+   "lat": 30.3445044,
+   "lng": 76.3683885,
+   "coord_source": "gmaps"
+  },
+  {
+   "id": "seed-patiala-mojave-artisanal-kitchen-bar",
+   "name": "Mojave - Artisanal Kitchen & Bar",
+   "area": "SCO 03, TJ Tower, Bhupindra Road",
+   "lat": 30.346781,
+   "lng": 76.3765045,
+   "coord_source": "gmaps"
+  },
+  {
+   "id": "seed-patiala-reset-brew-beats",
+   "name": "Reset Brew & Beats",
+   "area": "1st Floor, next to Tanishq, Main Bhupindra Road",
+   "lat": 30.348805,
+   "lng": 76.3758128,
+   "coord_source": "gmaps"
+  },
+  {
+   "id": "seed-patiala-pirates-of-grill",
+   "name": "Pirates of Grill",
+   "area": "2nd Floor, Raj Kamal Square, Bhupendra Road",
+   "lat": 30.3437296,
+   "lng": 76.379121,
+   "coord_source": "gmaps"
+  },
+  {
+   "id": "seed-patiala-jaggi-s-restaurant",
+   "name": "Jaggi's Restaurant",
+   "area": "Adalat Bazaar, plus a second branch at 22 Fatak, Bhupindra Road",
+   "lat": 30.3436359,
+   "lng": 76.3785014,
+   "coord_source": "openstreetmap node/7429317578"
+  },
+  {
+   "id": "seed-patiala-kohli-s",
+   "name": "Kohli's",
+   "area": "Bhupindra Road, Punjabi Bagh",
+   "lat": 30.345901,
+   "lng": 76.377799,
+   "coord_source": "zomato"
+  },
+  {
+   "id": "seed-patiala-the-garden-resort",
+   "name": "The Garden Resort",
+   "area": "Rajbaha Road, Model Town",
+   "lat": 30.33822,
+   "lng": 76.386244,
+   "coord_source": "gmaps"
+  },
+  {
+   "id": "seed-patiala-the-brew-estate",
+   "name": "The Brew Estate",
+   "area": "Showroom 5, Bhupindra Road, Model Town",
+   "lat": 30.3462227,
+   "lng": 76.3786668,
+   "coord_source": "gmaps"
+  },
+  {
+   "id": "seed-patiala-boheme-kitchen-bar",
+   "name": "Boheme - Kitchen & Bar",
+   "area": "2nd Floor, Bhupindra Road, opposite Kaintal School, Model Town",
+   "lat": 30.345984,
+   "lng": 76.378326,
+   "coord_source": "zomato (research JSON, dedupe-confirmed vs boheme.co.in)"
+  },
+  {
+   "id": "seed-patiala-rize-gastro-bar-cocktails-by-wok-singh",
+   "name": "Rize Gastro Bar & Cocktails by Wok Singh",
+   "area": "Gastro bar, Japanese and Chinese",
+   "lat": 30.3515404,
+   "lng": 76.387228,
+   "coord_source": "gmaps"
+  },
+  {
+   "id": "seed-patiala-the-hot-shots",
+   "name": "The Hot Shots",
+   "area": "SCO 97/98, Leela Bhavan, Bank Colony",
+   "lat": 30.3353855,
+   "lng": 76.3830401,
+   "coord_source": "gmaps"
+  },
+  {
+   "id": "seed-patiala-scotland-yard-pub-bar",
+   "name": "Scotland Yard Pub & Bar",
+   "area": "SCO 109, Urban Estate Phase 2",
+   "lat": 30.3473608,
+   "lng": 76.4406244,
+   "coord_source": "zomato"
+  },
+  {
+   "id": "seed-patiala-ignite-bar-lounge",
+   "name": "Ignite Bar & Lounge",
+   "area": "LG 13, Bhupindra Road, adjoining Kapsons",
+   "lat": 30.3357977,
+   "lng": 76.3849387,
+   "coord_source": "gmaps"
+  },
+  {
+   "id": "seed-patiala-street-club-bar",
+   "name": "Street Club Bar",
+   "area": "Bar",
+   "lat": 30.345963,
+   "lng": 76.3782339,
+   "coord_source": "gmaps"
+  },
+  {
+   "id": "seed-patiala-rosha-cafe-restaurant-bar",
+   "name": "Rosha - Cafe Restaurant & Bar",
+   "area": "Cafe-bar",
+   "lat": 30.3460015,
+   "lng": 76.3792232,
+   "coord_source": "zomato"
+  },
+  {
+   "id": "seed-patiala-the-patiala-neel-at-ran-baas-the-palace",
+   "name": "The Patiala & Neel at Ran Baas The Palace",
+   "area": "Baradari",
+   "lat": 30.324388,
+   "lng": 76.4032529,
+   "coord_source": "gmaps"
+  },
+  {
+   "id": "seed-patiala-club-16",
+   "name": "Club-16",
+   "area": "Club and restaurant",
+   "lat": 30.3234273,
+   "lng": 76.3892689,
+   "coord_source": "openstreetmap way/934565096"
+  },
+  {
+   "id": "seed-patiala-meroma",
+   "name": "Meroma",
+   "area": "Tripuri",
+   "lat": 30.3684687,
+   "lng": 76.4019541,
+   "coord_source": "gmaps"
+  },
+  {
+   "id": "seed-patiala-the-coffee-bean-tea-leaf",
+   "name": "The Coffee Bean & Tea Leaf",
+   "area": "Moti Bagh",
+   "lat": 30.3454802,
+   "lng": 76.3769067,
+   "coord_source": "gmaps"
+  },
+  {
+   "id": "seed-patiala-tic-tacs",
+   "name": "Tic-Tacs",
+   "area": "Cafe, coffee, sandwiches",
+   "lat": 30.3459523,
+   "lng": 76.378256,
+   "coord_source": "gmaps"
+  },
+  {
+   "id": "seed-patiala-la-baracca",
+   "name": "La Baracca",
+   "area": "Italian-Indian cafe and bar",
+   "lat": 30.3462176,
+   "lng": 76.3784523,
+   "coord_source": "gmaps"
+  },
+  {
+   "id": "seed-patiala-ecco-cafe-alehouse",
+   "name": "Ecco Cafe & Alehouse",
+   "area": "Bhagat Singh Marg, Punjabi Bagh",
+   "lat": 30.3454151,
+   "lng": 76.3801213,
+   "coord_source": "openstreetmap node/10973218016"
+  },
+  {
+   "id": "seed-patiala-the-chocolate-box",
+   "name": "The Chocolate Box",
+   "area": "Desserts and cafe",
+   "lat": 30.3478614,
+   "lng": 76.4410919,
+   "coord_source": "gmaps (TENTATIVE: Maps names this unit the chocolate room; wanderon lists The Chocolate Box at same address)"
+  },
+  {
+   "id": "seed-patiala-barista",
+   "name": "Barista",
+   "area": "Bhupindra Road, opposite State Bank of India, Punjabi Bagh",
+   "lat": 30.3454785,
+   "lng": 76.377885,
+   "coord_source": "gmaps"
+  },
+  {
+   "id": "seed-patiala-cool-n-fire",
+   "name": "Cool N Fire",
+   "area": "New Leela Bhawan",
+   "lat": 30.3348931,
+   "lng": 76.3835331,
+   "coord_source": "openstreetmap node/8003760347"
+  },
+  {
+   "id": "seed-patiala-the-brooks-central",
+   "name": "The Brooks Central",
+   "area": "2nd Floor, Randhawa Arcade, YPS Market",
+   "lat": 30.3208329,
+   "lng": 76.3846395,
+   "coord_source": "openstreetmap node/6766478660"
+  },
+  {
+   "id": "seed-patiala-the-cafe-infi",
+   "name": "The Cafe Infi",
+   "area": "Cafe",
+   "lat": 30.3349371,
+   "lng": 76.3829733,
+   "coord_source": "gmaps"
+  },
+  {
+   "id": "seed-patiala-brixton-town-cafe",
+   "name": "Brixton Town Cafe",
+   "area": "Cafe",
+   "lat": 30.3351597,
+   "lng": 76.3837333,
+   "coord_source": "gmaps"
+  },
+  {
+   "id": "seed-patiala-cafeo-bake-house",
+   "name": "Cafeo Bake House",
+   "area": "Bakery-cafe",
+   "lat": 30.3211359,
+   "lng": 76.3827247,
+   "coord_source": "gmaps"
+  },
+  {
+   "id": "seed-patiala-brew-lounge-cafe",
+   "name": "Brew Lounge Cafe",
+   "area": "Cafe",
+   "lat": 30.339641,
+   "lng": 76.3810126,
+   "coord_source": "gmaps"
+  },
+  {
+   "id": "seed-patiala-tim-hortons",
+   "name": "Tim Hortons",
+   "area": "Coffee chain",
+   "lat": 30.3459963,
+   "lng": 76.3770732,
+   "coord_source": "gmaps"
+  },
+  {
+   "id": "seed-patiala-coffee-brew",
+   "name": "Coffee Brew",
+   "area": "Karheri, Urban Estate",
+   "lat": 30.3554836,
+   "lng": 76.4550152,
+   "coord_source": "openstreetmap node/13390333990"
+  },
+  {
+   "id": "seed-patiala-baithak",
+   "name": "Baithak",
+   "area": "Ranjit Nagar",
+   "lat": 30.3154724,
+   "lng": 76.3975066,
+   "coord_source": "openstreetmap way/1427965357"
+  },
+  {
+   "id": "seed-patiala-aneja-s",
+   "name": "Aneja's",
+   "area": "SCO 8, Urban Estate Phase II",
+   "lat": 30.3507069,
+   "lng": 76.4391033,
+   "coord_source": "gmaps"
+  },
+  {
+   "id": "seed-patiala-kohli-dhaba",
+   "name": "Kohli Dhaba",
+   "area": "Opposite Polo Ground, near Sai Market, Nabha Gate",
+   "lat": 30.325302,
+   "lng": 76.3922182,
+   "coord_source": "gmaps"
+  },
+  {
+   "id": "seed-patiala-sahni-dhaba",
+   "name": "Sahni Dhaba",
+   "area": "Anardana Chowk",
+   "lat": 30.3260194,
+   "lng": 76.39814,
+   "coord_source": "gmaps"
+  },
+  {
+   "id": "seed-patiala-jaggi-sweets",
+   "name": "Jaggi Sweets",
+   "area": "Iconic Patiala sweet shop",
+   "lat": 30.3266028,
+   "lng": 76.399256,
+   "coord_source": "gmaps"
+  },
+  {
+   "id": "seed-patiala-gopal-sweets",
+   "name": "Gopal Sweets",
+   "area": "Two branches mapped in the city",
+   "lat": 30.3355518,
+   "lng": 76.3849177,
+   "coord_source": "openstreetmap node/1512552168"
+  },
+  {
+   "id": "seed-patiala-chawla-s-chicken-treat",
+   "name": "Chawla's Chicken Treat",
+   "area": "Non-veg restaurant",
+   "lat": 30.3386465,
+   "lng": 76.3815716,
+   "coord_source": "openstreetmap node/1330738634"
+  },
+  {
+   "id": "seed-patiala-pammi-puri-wala",
+   "name": "Pammi Puri Wala",
+   "area": "Ghalori Gate, Dal Dalia Chowk, Adalat Bazaar",
+   "lat": 30.3215811,
+   "lng": 76.4037028,
+   "coord_source": "gmaps"
+  },
+  {
+   "id": "seed-patiala-fountain-food-court",
+   "name": "Fountain Food Court",
+   "area": "Fountain Chowk, Post Office Road",
+   "lat": 30.3318807,
+   "lng": 76.3883433,
+   "coord_source": "gmaps"
+  },
+  {
+   "id": "seed-patiala-churi-house",
+   "name": "Churi House",
+   "area": "Shop 104, New Leela Bhawan",
+   "lat": 30.3350326,
+   "lng": 76.3831143,
+   "coord_source": "openstreetmap way/1267935898"
+  },
+  {
+   "id": "seed-patiala-the-dessert-club",
+   "name": "The Dessert Club",
+   "area": "Leela Bhawan",
+   "lat": 30.3357004,
+   "lng": 76.3829249,
+   "coord_source": "openstreetmap node/9246656968"
+  },
+  {
+   "id": "seed-patiala-hotel-narain-continental",
+   "name": "Hotel Narain Continental",
+   "area": "Hotel restaurant",
+   "lat": 30.3316443,
+   "lng": 76.3929687,
+   "coord_source": "openstreetmap node/9706450354"
+  },
+  {
+   "id": "seed-patiala-patiala-house",
+   "name": "Patiala House",
+   "area": "Restaurant",
+   "lat": 30.3260868,
+   "lng": 76.3914183,
+   "coord_source": "openstreetmap way/934565091"
+  },
+  {
+   "id": "seed-patiala-wrapchik",
+   "name": "Wrapchik",
+   "area": "Wraps and fast food",
+   "lat": 30.3543873,
+   "lng": 76.3620755,
+   "coord_source": "openstreetmap node/3979965261"
+  },
+  {
+   "id": "seed-patiala-pizza-nation",
+   "name": "Pizza Nation",
+   "area": "Pizza",
+   "lat": 30.3541779,
+   "lng": 76.3622927,
+   "coord_source": "openstreetmap node/7429306564"
+  },
+  {
+   "id": "seed-patiala-sahni-bakery",
+   "name": "Sahni Bakery",
+   "area": "Bakery",
+   "lat": 30.3426741,
+   "lng": 76.3796578,
+   "coord_source": "openstreetmap node/1514012404"
+  },
+  {
+   "id": "seed-patiala-divine-cafe",
+   "name": "Divine Cafe",
+   "area": "Cafe",
+   "lat": 30.3342181,
+   "lng": 76.3915506,
+   "coord_source": "gmaps"
+  },
+  {
+   "id": "seed-patiala-koffee-shofee",
+   "name": "Koffee Shofee",
+   "area": "Cafe",
+   "lat": 30.3486815,
+   "lng": 76.3755448,
+   "coord_source": "gmaps"
+  },
+  {
+   "id": "seed-patiala-cafe-coffee-day",
+   "name": "Cafe Coffee Day",
+   "area": "Coffee chain",
+   "lat": 30.3458786,
+   "lng": 76.3771499,
+   "coord_source": "openstreetmap node/1512568472"
+  },
+  {
+   "id": "seed-patiala-streat-cafe",
+   "name": "Streat Cafe",
+   "area": "Cafe",
+   "lat": 30.3527009,
+   "lng": 76.3707744,
+   "coord_source": "openstreetmap way/395276318"
+  },
+  {
+   "id": "seed-patiala-baithak-cafe",
+   "name": "Baithak Cafe",
+   "area": "Lower Mall Road side",
+   "lat": 30.3154724,
+   "lng": 76.3975066,
+   "coord_source": "openstreetmap way/1427965357"
+  },
+  {
+   "id": "seed-patiala-flevaro-cafe",
+   "name": "flevaro cafe",
+   "area": "Karheri, Urban Estate",
+   "lat": 30.3562796,
+   "lng": 76.4549424,
+   "coord_source": "openstreetmap node/11097319677"
+  },
+  {
+   "id": "seed-patiala-sangam",
+   "name": "Sangam",
+   "area": "Fast food",
+   "lat": 30.3610663,
+   "lng": 76.4195915,
+   "coord_source": "openstreetmap node/6977706223"
+  },
+  {
+   "id": "seed-patiala-iqbal-juice-corner",
+   "name": "Iqbal Juice Corner",
+   "area": "Juices",
+   "lat": 30.354298,
+   "lng": 76.3621545,
+   "coord_source": "openstreetmap node/12201827012"
+  }
+ ],
+ "generated": 1794486206420,
+ "note": "v2 full approved catalog: 58 approved-list + 16 research additions (incl. Vintona; Boheme deduped). BrewBakes held (closed/rebranded)."
+}
