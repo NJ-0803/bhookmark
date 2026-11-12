@@ -6,7 +6,7 @@ import { restaurantDirectory } from "./restaurantDirectory";
 export interface City { key: string; label: string; low: { latitude: number; longitude: number }; high: { latitude: number; longitude: number } }
 export const CITIES: Record<string, City> = {
   bengaluru: { key: "bengaluru", label: "Bengaluru", low: { latitude: 12.75, longitude: 77.30 }, high: { latitude: 13.25, longitude: 77.90 } },
-  patiala: { key: "patiala", label: "Patiala", low: { latitude: 30.25, longitude: 76.30 }, high: { latitude: 30.45, longitude: 76.50 } },
+  patiala: { key: "patiala", label: "Patiala", low: { latitude: 30.25, longitude: 76.29 }, high: { latitude: 30.45, longitude: 76.50 } },
 };
 export const DEFAULT_CITY = "bengaluru";
 export const cityByKey = (key?: string | null): City => CITIES[String(key ?? "")] ?? CITIES[DEFAULT_CITY];
