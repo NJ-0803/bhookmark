@@ -14,7 +14,7 @@ export const bookmarkSchema = z.object({
   address: z.string().trim().max(300).default(""),
   name: z.string().trim().min(1).max(120),
   note: z.string().trim().max(2000).default(""),
-  referenceUrl: z.union([z.literal(""), z.url().refine((s) => /^https?:\/\//i.test(s))]).default(""),
+  referenceUrl: z.union([z.literal(""), z.url().max(2000).refine((s) => /^https?:\/\//i.test(s))]).default(""),
   tried: z.boolean().default(false),
   rating: z.number().min(0).max(10).multipleOf(0.5).nullable().default(null),
 }).strict().refine((b) => b.rating === null || b.tried, { message: "Mark this dish tried before rating it.", path: ["rating"] });

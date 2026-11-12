@@ -91,3 +91,15 @@ Tests run against an isolated in-process PostgreSQL engine (PGlite), DOM
 components and mocked provider responses; they never mutate a live database
 or call paid services. Public production migration, catalog refresh, Google credentials,
 live photo verification and real-phone QA remain deployment steps.
+
+## Conversational preview (development only)
+
+A channel-neutral, authenticated read-only preview is documented in [docs/CHAT_PREVIEW.md](docs/CHAT_PREVIEW.md). It never saves data or connects a messaging provider.
+
+## Direct WhatsApp preparation (review only)
+
+Run `npm run demo:whatsapp` after `npm ci` for an isolated, terminal-based Meta-shaped webhook simulation. It checks signatures, duplicates and a shared dry-run reply cap using fictional data. No Meta account, access token, external messages or food writes. The normal review adapter is off by default and cannot run in production. Account linking, execution and outbound delivery are still pending. See [WhatsApp review guide](docs/WHATSAPP_REVIEW.md) for the exact scope and release blockers.
+
+### Isolated linking + save/rating execution
+
+`npm run demo:whatsapp:linked` exercises the account confirmation, signed sender proof, real SQL saves/ratings, deduplication, undo and unlink in a temporary fictional database. All WhatsApp replies stay in a dry-run outbox; nothing is sent externally. Production integration, real credentials and deployment remain separately gated. Refresh rotation now works on the legacy schema too; no live migration was run.

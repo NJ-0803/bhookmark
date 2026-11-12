@@ -90,6 +90,9 @@ async function refresh(): Promise<boolean> {
     });
     const body = await res.json();
     if (!body.ok) {
+      // A concurrent tab can have already rotated this token. Never erase a
+      // winning session on a conflict; allow a later caller to retry normally.
+      if (res.status === 409 && body.error === "refresh_conflict") return false;
       clearSession();
       return false;
     }

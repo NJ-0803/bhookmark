@@ -41,6 +41,8 @@ export interface RefreshFamily {
   deviceId: string;
   currentJti: string;
   revoked: boolean;
+  previousJti?: string | null;
+  rotatedAt?: number | null;
 }
 
 export interface OtpRecord {
@@ -68,7 +70,7 @@ function deviceFromRow(r: any): Device {
 }
 
 function familyFromRow(r: any): RefreshFamily {
-  return { familyId: r.family_id, userId: r.user_id, deviceId: r.device_id, currentJti: r.current_jti, revoked: r.revoked };
+  return { familyId: r.family_id, userId: r.user_id, deviceId: r.device_id, currentJti: r.current_jti, revoked: r.revoked, previousJti: r.previous_jti ?? null, rotatedAt: r.rotated_at == null ? null : Number(r.rotated_at) };
 }
 
 // ---------- Users ----------
@@ -142,9 +144,14 @@ export async function revokeFamily(familyId: string): Promise<void> {
   await sql()`UPDATE refresh_families SET revoked = true WHERE family_id = ${familyId}`;
 }
 
-export async function rotateFamilyJti(familyId: string, newJti: string): Promise<void> {
-  await sql()`UPDATE refresh_families SET current_jti = ${newJti} WHERE family_id = ${familyId}`;
+export function createRefreshRotation(connect: typeof sql = sql) {
+  return async (familyId: string, oldJti: string, newJti: string): Promise<boolean> => {
+    const rows = await connect()`UPDATE refresh_families SET current_jti = ${newJti}
+      WHERE family_id = ${familyId} AND current_jti = ${oldJti} AND NOT revoked RETURNING family_id`;
+    return rows.length === 1;
+  };
 }
+export const rotateFamilyJti = createRefreshRotation();
 
 export async function getDevice(deviceId: string): Promise<Device | undefined> {
   const rows = await sql()`SELECT * FROM devices WHERE id = ${deviceId}`;
