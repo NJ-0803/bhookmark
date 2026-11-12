@@ -149,20 +149,21 @@ async function json<T>(path: string, options?: RequestInit): Promise<T> {
   return body;
 }
 
-export async function searchRestaurants(q: string, page?: { source: string; offset?: number; pageToken?: string }, signal?: AbortSignal) {
+export async function searchRestaurants(q: string, page?: { source?: string; offset?: number; pageToken?: string; city?: string }, signal?: AbortSignal) {
   const query = new URLSearchParams({ q });
   if (page) {
-    query.set("source", page.source);
+    if (page.source) query.set("source", page.source);
     if (page.offset !== undefined) query.set("offset", String(page.offset));
     if (page.pageToken) query.set("pageToken", page.pageToken);
+    if (page.city) query.set("city", page.city);
   }
   return json<import("./wishlist").SearchResult>(`/restaurants/search?${query}`, { signal });
 }
 export async function getRestaurant(id: string) {
   return (await json<{ restaurant: import("./wishlist").Restaurant }>(`/restaurants/${encodeURIComponent(id)}`)).restaurant;
 }
-export function getCoverage() {
-  return json<{ catalogCount: number; catalogUpdatedAt: number | null; liveSearch: boolean; complete: false }>("/restaurants/coverage");
+export function getCoverage(city?: string) {
+  return json<{ city: string; cityKey: string; cities: { key: string; label: string }[]; catalogCount: number; catalogUpdatedAt: number | null; liveSearch: boolean; complete: false }>(`/restaurants/coverage${city ? `?city=${encodeURIComponent(city)}` : ""}`);
 }
 export async function getBookmarks() {
   return (await json<{ bookmarks: import("./wishlist").Bookmark[] }>("/bookmarks")).bookmarks;
