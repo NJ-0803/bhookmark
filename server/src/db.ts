@@ -146,7 +146,7 @@ export async function revokeFamily(familyId: string): Promise<void> {
 
 export function createRefreshRotation(connect: typeof sql = sql) {
   return async (familyId: string, oldJti: string, newJti: string): Promise<boolean> => {
-    const rows = await connect()`UPDATE refresh_families SET previous_jti = current_jti, current_jti = ${newJti}, rotated_at = ${Date.now()}
+    const rows = await connect()`UPDATE refresh_families SET current_jti = ${newJti}
       WHERE family_id = ${familyId} AND current_jti = ${oldJti} AND NOT revoked RETURNING family_id`;
     return rows.length === 1;
   };
