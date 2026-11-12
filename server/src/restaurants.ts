@@ -1,5 +1,6 @@
 import { sql } from "./bookmarks";
 import { restaurantDirectory } from "./restaurantDirectory";
+import { patialaDirectory } from "./restaurantDirectoryPatiala";
 
 // Per-city search regions, not completeness claims. The Bengaluru boundary
 // includes the suburbs omitted by the old 12.90..13.02 seed import.
@@ -74,7 +75,8 @@ export async function searchGoogle(q: string, cityKey: string = DEFAULT_CITY, pa
 
 function localRestaurant(v: Record<string, any>): Restaurant {
   // Photos belong to a reviewed OSM branch, never a fuzzy chain-name match.
-  const verified = restaurantDirectory[v.osm_id];
+  // Seed-imported rows (Patiala) carry no OSM id; their reviewed entries key on the venue id.
+  const verified = restaurantDirectory[v.osm_id] ?? patialaDirectory[v.id];
   const cityLabel = String(v.city || CITIES[DEFAULT_CITY].label);
   const area = String(v.area || "").trim();
   const address = !area || /^(bengaluru|bangalore)$/i.test(area) ? cityLabel : new RegExp(`(?:${cityLabel})$`, "i").test(area) ? area : `${area}, ${cityLabel}`;
