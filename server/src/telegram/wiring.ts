@@ -1,5 +1,6 @@
 import { Pool } from "@neondatabase/serverless";
 import { Router } from "express";
+import { createWhatsAppLinkRouter } from "../whatsapp/linkRoutes";
 import { searchLocal } from "../restaurants";
 import { createWhatsAppExecution, type QueryClient, type TransactionDatabase } from "../whatsapp/execution";
 import { createTelegramRouter } from "./adapter";
@@ -34,16 +35,23 @@ export function createPoolDatabase(url: string): TransactionDatabase {
 }
 
 /** Off unless BHOOKMARK_TELEGRAM=1 and all secrets are present. Sending needs BHOOKMARK_TELEGRAM_SEND=1 as well.
- * Enabling in production is a deliberate deployment decision made outside this code. */
+ * Enabling in production is a deliberate deployment decision made outside this code.
+ * Routes: POST /webhook (Telegram), and the signed-in website linking API under /link. */
 export function createTelegramRouterFromEnv(env = process.env): Router {
   const enabled = env.BHOOKMARK_TELEGRAM === "1" && !!env.DATABASE_URL;
   const botToken = env.TELEGRAM_BOT_TOKEN ?? "";
   const botId = botToken.split(":")[0] ?? "";
   if (!enabled) return Router().use((_req, res) => res.sendStatus(404));
   const engine = createWhatsAppExecution(createPoolDatabase(env.DATABASE_URL!), async q => (await searchLocal(q)).restaurants, Date.now, Number(env.TELEGRAM_MONTHLY_REPLY_CAP ?? 20000));
-  return createTelegramRouter({
+  const botUsername = /^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(env.TELEGRAM_BOT_USERNAME ?? "") ? env.TELEGRAM_BOT_USERNAME! : null;
+  const router = Router();
+  // Public and harmless: lets the website know whether and where to send people.
+  router.get("/link/config", (_req, res) => { res.set("Cache-Control", "no-store"); return botUsername ? res.json({ ok: true, botUsername }) : res.sendStatus(404); });
+  router.use("/link", createWhatsAppLinkRouter(engine, !!botUsername, true));
+  router.use(createTelegramRouter({
     enabled, secretToken: env.TELEGRAM_WEBHOOK_SECRET ?? "", botId,
     execute: m => engine.process(m),
     send: env.BHOOKMARK_TELEGRAM_SEND === "1" ? createTelegramSender(botToken) : undefined,
-  });
+  }));
+  return router;
 }
