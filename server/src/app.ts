@@ -2,6 +2,7 @@ import express from "express";
 import { proxyTrust, permittedOrigin } from "./network";
 import { createChatPreviewRouter } from "./routes/chat";
 import { createWhatsAppReviewRouter } from "./whatsapp/review";
+import { createTelegramRouterFromEnv } from "./telegram/wiring";
 import cors from "cors";
 import helmet from "helmet";
 import { createGlobalLimiter } from "./globalRateLimit";
@@ -20,6 +21,8 @@ app.use(cors({ origin: (origin, done) => done(null, origin === undefined || perm
 // Raw signed payload must be checked before JSON parsing. This review route
 // is disabled by default and always returns404 in production.
 app.use("/whatsapp", createWhatsAppReviewRouter());
+// Telegram webhook: 404 unless BHOOKMARK_TELEGRAM=1 plus secrets; secret-token checked before any work.
+app.use("/telegram", createTelegramRouterFromEnv());
 app.use(express.json({ limit: "1mb" }));
 
 // Authenticated traffic is limited per verified user; anonymous requests
