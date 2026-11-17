@@ -1,3 +1,4 @@
+import "./tg-env.mts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import express from "express";
