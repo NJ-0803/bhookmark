@@ -14,6 +14,13 @@ const update = z.object({
     from: z.object({ id: z.number().int().positive(), is_bot: z.boolean().optional() }).optional(),
     text: z.string().trim().min(1).max(2000).optional(),
   }).optional(),
+  callback_query: z.object({
+    id: z.string().min(1).max(100),
+    from: z.object({ id: z.number().int().positive(), is_bot: z.boolean().optional() }),
+    // Telegram limits callback data to 1-64 bytes.
+    data: z.string().min(1).max(64).optional(),
+    message: z.object({ message_id: z.number().int(), date: z.number().int().optional(), chat: z.object({ id: z.number().int(), type: z.string() }) }).passthrough().optional(),
+  }).passthrough().optional(),
 }).passthrough();
 
 export function validSecretToken(header: unknown, secret: string): boolean {
@@ -24,7 +31,13 @@ export function validSecretToken(header: unknown, secret: string): boolean {
 
 /** Private chats only. "/start CODE" becomes the engine's "LINK CODE" command. */
 export function parseTelegramText(body: unknown, botId: string): IncomingText | null {
-  const u = update.parse(body), m = u.message;
+  const u = update.parse(body), m = u.message, q = u.callback_query;
+  if (!/^\d{3,20}$/.test(botId)) throw new Error("Invalid bot id");
+  if (q) {
+    // Only a press on a button we sent in the sender's own private chat. Ownership comes from Telegram's `from`.
+    if (q.from.is_bot || !q.data || !q.message || q.message.chat.type !== "private" || q.message.chat.id !== q.from.id) return null;
+    return { id: String(u.update_id), sender: `tg:${q.from.id}`, phoneId: `tg:${botId}`, timestamp: Date.now(), text: "[button]", callback: { data: q.data, queryId: q.id } };
+  }
   if (!m || !m.text || !m.from || m.from.is_bot || m.chat.type !== "private" || m.chat.id !== m.from.id) return null;
   if (!/^\d{3,20}$/.test(botId)) throw new Error("Invalid bot id");
   const start = /^\/start(?:@\w+)?\s+([a-f0-9]{48})$/.exec(m.text);
@@ -33,9 +46,13 @@ export function parseTelegramText(body: unknown, botId: string): IncomingText | 
 
 export interface TelegramOptions {
   enabled: boolean; secretToken: string; botId: string;
-  execute: (message: IncomingText) => Promise<{ reply: string | null }>;
+  execute: (message: IncomingText) => Promise<{ reply: string | null; buttons?: { text: string; data?: string; url?: string }[][] }>;
   /** Injected only after the owner approves live sending. Absent = reply is not sent. */
-  send?: (chatId: string, text: string) => Promise<void>;
+  send?: (chatId: string, text: string, buttons?: { text: string; data?: string; url?: string }[][]) => Promise<void>;
+  /** Stops the button's loading spinner. Best effort; never affects the result. */
+  answer?: (callbackQueryId: string) => Promise<void>;
+  /** Content-free failure log (error name only). */
+  onError?: (e: unknown) => void;
 }
 export function createTelegramRouter(o: TelegramOptions) {
   const router = Router();
@@ -49,8 +66,20 @@ export function createTelegramRouter(o: TelegramOptions) {
     let message: IncomingText | null;
     try { message = parseTelegramText(req.body, o.botId); } catch { return res.sendStatus(400); }
     if (message) {
-      const { reply } = await o.execute(message);
-      if (reply && o.send) await o.send(message.sender.slice(3), reply);
+      // Never acknowledge before the work is durably committed: any failure here is a 5xx so Telegram retries
+      // (the engine is idempotent by update_id).
+      let out: Awaited<ReturnType<TelegramOptions["execute"]>>;
+      try { out = await o.execute(message); } catch (e) { o.onError?.(e); return res.sendStatus(503); }
+      if (message.callback && o.answer) await o.answer(message.callback.queryId).catch(() => {});
+      if (out.reply && o.send) {
+        try { await o.send(message.sender.slice(3), out.reply, out.buttons); }
+        catch (e) {
+          o.onError?.(e);
+          // The save is already committed. Retry only when a resend can help: rate limit, server error or network.
+          const status = (e as { status?: number }).status;
+          if (status === undefined || status === 429 || status >= 500) return res.sendStatus(503);
+        }
+      }
     }
     return res.sendStatus(200);
   });
