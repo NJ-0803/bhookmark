@@ -63,7 +63,7 @@ export function createTelegramRouterFromEnv(env = process.env): Router {
   if (!enabled) return Router().use((_req, res) => res.sendStatus(404));
   // New behaviour is opt-in so the deployed bot is unchanged until the matching migration
   // (server/migrations/telegram-conversation.sql) has been applied and tested on staging.
-  const engine = createWhatsAppExecution(createPoolDatabase(env.DATABASE_URL!), async q => (await searchLocal(q)).restaurants, Date.now, Number(env.TELEGRAM_MONTHLY_REPLY_CAP ?? 20000), {
+  const engine = createWhatsAppExecution(createPoolDatabase(env.DATABASE_URL!), async (q, city) => (await searchLocal(q, city)).restaurants, Date.now, Number(env.TELEGRAM_MONTHLY_REPLY_CAP ?? 20000), {
     locking: env.TELEGRAM_LOCKING === "fine" ? "fine" : "global",
     conversation: env.TELEGRAM_CONVERSATION === "1",
     // Receipt wording is staging-safe unless production is explicitly declared.
