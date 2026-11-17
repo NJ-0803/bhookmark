@@ -1,0 +1,138 @@
+{
+  "note": "RESEARCH ONLY - NOT ENABLED IN THE APP. Reviewed 2026-11-12. These official-website images are publicly accessible but carry no verified reuse license or supported embed grant; accessible URL != reuse permission. Preserved here for review; enable per-venue only after grounding permission (venue consent, explicit license, or a supported embed/API such as Google Places photos with an authorized key). Each candidate was downloaded and visually verified as a genuine venue/food image of the correct Patiala business.",
+  "candidates": [
+    {
+      "venue_id": "seed-patiala-mocha-cafe-bar",
+      "name": "Mocha Cafe & Bar",
+      "image_url": "https://mocha.co.in/img/gallery-location-patiala-001.jpg",
+      "source_page": "https://mocha.co.in/locations/mocha-patiala.html",
+      "source_label": "Mocha official website, Patiala branch gallery"
+    },
+    {
+      "venue_id": "seed-patiala-dum-noorani",
+      "name": "Dum Noorani",
+      "image_url": "https://www.dumnoorani.com/desktop/6.jpg",
+      "source_page": "https://www.dumnoorani.com/",
+      "source_label": "Dum Noorani official website"
+    },
+    {
+      "venue_id": "seed-patiala-the-bellrocc-resto-bar",
+      "name": "The Bellrocc Resto Bar",
+      "image_url": "https://www.thebellrocc.com/__l5e/assets-v1/d4d6a662-5456-4748-bf00-2477bbeabbc2/dining-hall.jpg",
+      "source_page": "https://www.thebellrocc.com/",
+      "source_label": "The Bellrocc official website"
+    },
+    {
+      "venue_id": "seed-patiala-door-no-3",
+      "name": "Door No. 3",
+      "image_url": "https://doorno3.in/images/resource/image-1.jpg",
+      "source_page": "https://doorno3.in/",
+      "source_label": "Door No. 3 official website"
+    },
+    {
+      "venue_id": "seed-patiala-mojave-artisanal-kitchen-bar",
+      "name": "Mojave - Artisanal Kitchen & Bar",
+      "image_url": "https://mojaveindia.com/wp-content/uploads/2025/06/5I0A7774-scaled.jpg",
+      "source_page": "https://mojaveindia.com/",
+      "source_label": "Mojave official website"
+    },
+    {
+      "venue_id": "seed-patiala-kohli-s",
+      "name": "Kohli's",
+      "image_url": "https://kohlisweets.com/wp-content/uploads/2026/09/KOHLI.jpeg",
+      "source_page": "https://kohlisweets.com/restaurant/",
+      "source_label": "Kohli's official website"
+    },
+    {
+      "venue_id": "seed-patiala-boston-co",
+      "name": "Boston & Co.",
+      "image_url": "https://bostonandco.in/images/item-3.jpg",
+      "source_page": "https://bostonandco.in/gallery.html",
+      "source_label": "Boston & Co. official website (food gallery)"
+    },
+    {
+      "venue_id": "seed-patiala-hotel-narain-continental",
+      "name": "Hotel Narain Continental",
+      "image_url": "https://www.hotelnarain.com/wp-content/gallery/food-dining/Food-Dinning-1.jpg",
+      "source_page": "https://www.hotelnarain.com/food-dining/",
+      "source_label": "Hotel Narain official website"
+    },
+    {
+      "venue_id": "seed-patiala-the-brew-estate",
+      "name": "The Brew Estate",
+      "image_url": "https://brewestate.in/assets/images/homepage/tbe-patiala-banner.png",
+      "source_page": "https://brewestate.in/",
+      "source_label": "The Brew Estate official website, Patiala banner"
+    },
+    {
+      "venue_id": "seed-patiala-cafe-delhi-heights",
+      "name": "Cafe Delhi Heights",
+      "image_url": "https://d3i6zfjgu3z6d6.cloudfront.net/store_locator_FP/stores/18045/media/image/83f8b611838942dea00cb8e23193007c.jpg",
+      "source_page": "https://stores.cafedelhiheights.com/store-pages/cafe-delhi-heights-patiala-patiala",
+      "source_label": "Cafe Delhi Heights official store page, Patiala"
+    },
+    {
+      "venue_id": "seed-patiala-churi-house",
+      "name": "Churi House",
+      "image_url": "https://churihouse.com/images/upload/main-banner.jpeg",
+      "source_page": "https://churihouse.com/",
+      "source_label": "Churi House official website"
+    },
+    {
+      "venue_id": "seed-patiala-mauji-s",
+      "name": "Mauji's",
+      "image_url": "https://maujis.com/images/store-images.jpg",
+      "source_page": "https://maujis.com/",
+      "source_label": "Mauji's official website"
+    },
+    {
+      "venue_id": "seed-patiala-oye-kake",
+      "name": "Oye Kake",
+      "image_url": "https://oyekake.in/uploads/1778150506026-Kulcha.jpg",
+      "source_page": "https://oyekake.in/",
+      "source_label": "Oye Kake official website (brand food photo)"
+    },
+    {
+      "venue_id": "seed-patiala-wrapchik",
+      "name": "Wrapchik",
+      "image_url": "https://www.wrapchik.co.in/menu-photos/paneer-tikka-wrap.jpg",
+      "source_page": "https://www.wrapchik.co.in/",
+      "source_label": "Wrapchik official website (menu photo)"
+    },
+    {
+      "venue_id": "seed-patiala-humble-krumble-garden-cafe",
+      "name": "Humble Krumble Garden Cafe",
+      "image_url": "https://humblekrumble.com/assets/cafe-interior-CkihK8zw.jpg",
+      "source_page": "https://humblekrumble.com/",
+      "source_label": "Humble Krumble official website"
+    },
+    {
+      "venue_id": "seed-patiala-the-patiala-neel-at-ran-baas-the-palace",
+      "name": "The Patiala & Neel at Ran Baas The Palace",
+      "image_url": "https://www.theparkhotels.com/images/site-specific/ran-baas-the-palace/dining/neel/neel-1.jpg",
+      "source_page": "https://www.theparkhotels.com/ran-baas-the-palace/dining/neel.html",
+      "source_label": "Ran Baas The Palace official website (Neel restaurant)"
+    },
+    {
+      "venue_id": "seed-patiala-texas-smokehouse",
+      "name": "Texas Smokehouse",
+      "image_url": "https://cdn.uengage.io/uploads/69733/image-461469-1793175596.jpeg",
+      "source_page": "https://texassmokehouse.in/",
+      "source_label": "Texas Smokehouse official website (brand image)"
+    },
+    {
+      "venue_id": "seed-patiala-pirates-of-grill",
+      "name": "Pirates of Grill",
+      "image_url": "https://www.piratesofgrill.com/images/intro.jpg",
+      "source_page": "https://www.piratesofgrill.com/",
+      "source_label": "Pirates of Grill official website (brand image)"
+    },
+    {
+      "venue_id": "seed-patiala-sahni-bakery",
+      "name": "Sahni Bakery",
+      "image_url": "https://sahnibakery.com/cdn/shop/files/yummy-chocolate-photo-cake_799_600x.jpg",
+      "source_page": "https://sahnibakery.com/",
+      "source_label": "Sahni Bakery official website (product photo)"
+    }
+  ]
+}

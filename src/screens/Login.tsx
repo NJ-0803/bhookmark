@@ -115,7 +115,7 @@ export default function Login({ onSignedIn }: { onSignedIn: () => void }) {
 
   return (
     <div className="px-5 pt-16 pb-10 flex flex-col min-h-dvh">
-      <p className="font-mono text-[11px] tracking-[0.14em] uppercase text-faint mb-2">Bhookmark · Bengaluru</p>
+      <p className="font-mono text-[11px] tracking-[0.14em] uppercase text-faint mb-2">Bhookmark · Bengaluru & Patiala</p>
       <h1 className="font-display font-extrabold text-3xl leading-tight mb-2 text-ink">
         {step === "phone" ? "Sign in to Bhookmark" : "Enter the code"}
       </h1>

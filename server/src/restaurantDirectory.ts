@@ -1,7 +1,7 @@
 import { verifiedRestaurants } from "./verifiedRestaurants";
 import type { RestaurantPhoto } from "./restaurants";
 
-interface DirectoryEntry {
+export interface DirectoryEntry {
   name: string; address: string; aliases: string;
   identitySource?: string;
   category?: "Fine dining" | "Well-known" | "Bengaluru classic";

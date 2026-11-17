@@ -114,27 +114,27 @@ test("live discovery requests photos but never imported ratings; bounds and pagi
     ], nextPageToken: "page-3" });
   };
   try {
-    const r = await searchGoogle("pizza", "page-2"); assert.ok(observed); assert.equal(r.restaurants.length, 1); assert.equal(r.nextPageToken, "page-3");
+    const r = await searchGoogle("pizza", "bengaluru", "page-2"); assert.ok(observed); assert.equal(r.restaurants.length, 1); assert.equal(r.nextPageToken, "page-3");
     const place = r.restaurants[0]; assert.equal(place.photos[0].authors[0].name, "Photographer"); assert.ok(!("rating" in place)); assert.ok(!JSON.stringify(place).includes("test-key"));
   } finally { globalThis.fetch = nativeFetch; }
 });
 
 test("unconfigured provider fails honestly and malformed place IDs cannot trigger requests", async () => {
   delete process.env.GOOGLE_PLACES_API_KEY;
-  await assert.rejects(() => searchGoogle("coffee"));
+  await assert.rejects(() => searchGoogle("coffee", "bengaluru"));
   assert.equal(await getRestaurant("google:../../secrets"), null);
 });
 
 test("local search includes uncategorized restaurants, distinct branches and suburbs, with pagination", async () => {
   await pg.exec(`INSERT INTO venues (id, name, area, lat, lng, source, created_at, updated_at)
     SELECT 'venue-'||n, 'Cafe '||n, 'Whitefield', 12.97, 77.75 + n * 0.001, 'osm', 1, 1 FROM generate_series(1,25) n`);
-  const first = await searchLocal("Whitefield", 0, connect as unknown as typeof sql);
-  const second = await searchLocal("Whitefield", 20, connect as unknown as typeof sql);
+  const first = await searchLocal("Whitefield", "bengaluru", 0, connect as unknown as typeof sql);
+  const second = await searchLocal("Whitefield", "bengaluru", 20, connect as unknown as typeof sql);
   assert.equal(first.restaurants.length, 20); assert.equal(first.nextOffset, 20);
   assert.equal(second.restaurants.length, 5); assert.equal(second.nextOffset, null);
   assert.equal(new Set([...first.restaurants, ...second.restaurants].map((r) => r.id)).size, 25);
   assert.ok(first.restaurants.every((r) => r.photos.length === 0));
-  assert.equal((await searchLocal("%", 0, connect as unknown as typeof sql)).restaurants.length, 0);
+  assert.equal((await searchLocal("%", "bengaluru", 0, connect as unknown as typeof sql)).restaurants.length, 0);
 });
 
 test("removed feature APIs are unreachable", async () => {
@@ -152,16 +152,16 @@ test("verified photographs belong only to the exact branch and featured venues p
     ('verified-mtr', 'node/429833271', 'Mavalli Tiffin Rooms', 'Lalbagh Road', 12.9551683, 77.5855225, 'osm', 1, 1),
     ('other-mtr', 'node/1675540997', 'Mavalli Tiffin Rooms', 'Bengaluru', 12.9721761, 77.6009542, 'osm', 1, 1),
     ('numeric', 'node/test-numeric', '080 Lounge', 'Bengaluru', 12.97, 77.60, 'osm', 1, 1)`);
-  const defaultPage = await searchLocal('', 0, connect as unknown as typeof sql);
+  const defaultPage = await searchLocal('', "bengaluru", 0, connect as unknown as typeof sql);
   assert.equal(defaultPage.restaurants[0].id, 'osm:verified-mtr');
   assert.ok(defaultPage.restaurants[0].photos[0].url.endsWith('/mtr-lalbagh.jpg'));
-  const branches = await searchLocal('Mavalli', 0, connect as unknown as typeof sql);
+  const branches = await searchLocal('Mavalli', "bengaluru", 0, connect as unknown as typeof sql);
   assert.equal(branches.restaurants.length, 2);
   const other = branches.restaurants.find((r) => r.id === 'osm:other-mtr')!;
   assert.equal(other.photos.length, 0); assert.equal(other.address, 'Bengaluru');
-  const acronym = await searchLocal('MTR', 0, connect as unknown as typeof sql);
+  const acronym = await searchLocal('MTR', "bengaluru", 0, connect as unknown as typeof sql);
   assert.ok(acronym.restaurants.some((r) => r.id === 'osm:verified-mtr'));
-  const numeric = await searchLocal('080', 0, connect as unknown as typeof sql);
+  const numeric = await searchLocal('080', "bengaluru", 0, connect as unknown as typeof sql);
   assert.equal(numeric.restaurants[0].name, '080 Lounge');
 });
 
@@ -171,13 +171,13 @@ test("luxury picks lead without ratings and numeric chain names retain distinct 
     ('luxury-lupa', 'node/10591455581', 'LUPA', 'MG Road', 12.9755984, 77.6045793, 'osm', 1, 1),
     ('pub-jp', 'node/11303671252', '1522', 'Bengaluru', 12.9062943, 77.5758493, 'osm', 1, 1),
     ('pub-kor', 'node/3782893189', '1522', 'Bengaluru', 12.9342864, 77.6301111, 'osm', 1, 1)`);
-  const page = await searchLocal('', 0, connect as unknown as typeof sql);
+  const page = await searchLocal('', "bengaluru", 0, connect as unknown as typeof sql);
   assert.deepEqual(page.restaurants.slice(0, 2).map((r) => r.name), ['Karavalli', 'LUPA']);
   assert.equal(page.restaurants[0].category, 'Fine dining');
-  const pubs = await searchLocal('1522', 0, connect as unknown as typeof sql);
+  const pubs = await searchLocal('1522', "bengaluru", 0, connect as unknown as typeof sql);
   assert.equal(pubs.restaurants.length, 2);
   assert.deepEqual(new Set(pubs.restaurants.map((r) => r.name)), new Set(['1522 The Pub · JP Nagar', '1522 The Pub · Koramangala']));
-  const branch = await searchLocal('Koramangala', 0, connect as unknown as typeof sql);
+  const branch = await searchLocal('Koramangala', "bengaluru", 0, connect as unknown as typeof sql);
   assert.ok(branch.restaurants.some((r) => r.id === 'osm:pub-kor'));
   assert.ok(!branch.restaurants.some((r) => r.id === 'osm:pub-jp'));
 });
@@ -189,20 +189,44 @@ test("community promotion needs three real manual raters, counts people once, an
   await store.save('rank-alice', 'pop-2', inputFor('venue-1', 'Second', 9));
   await store.save('rank-bob', 'pop-3', inputFor('venue-2', 'Only', 7));
   await store.save('rank-bob', 'unrated', inputFor('luxury-karavalli', 'Unrated', null, false));
-  let results = (await searchLocal('', 0, connect as unknown as typeof sql)).restaurants;
+  let results = (await searchLocal('', "bengaluru", 0, connect as unknown as typeof sql)).restaurants;
   assert.equal(results.find((r) => r.id === 'osm:venue-1')!.ratingCount, 1); // zero counts, two dishes don't double-count
   assert.equal(results.find((r) => r.id === 'osm:luxury-karavalli')!.ratingCount, 0);
   assert.equal(results[0].id, 'osm:luxury-karavalli');
   await store.save('rank-alice', 'pop-4', inputFor('venue-2', 'Another', 6));
-  assert.equal((await searchLocal('', 0, connect as unknown as typeof sql)).restaurants[0].id, 'osm:luxury-karavalli');
+  assert.equal((await searchLocal('', "bengaluru", 0, connect as unknown as typeof sql)).restaurants[0].id, 'osm:luxury-karavalli');
   await store.save('rank-charlie', 'pop-5', inputFor('venue-2', 'Third person', 8));
-  results = (await searchLocal('', 0, connect as unknown as typeof sql)).restaurants;
+  results = (await searchLocal('', "bengaluru", 0, connect as unknown as typeof sql)).restaurants;
   assert.equal(results[0].id, 'osm:venue-2'); assert.equal(results[0].ratingCount, 3);
   assert.ok(!('rating' in results[0])); assert.ok(!('userId' in results[0])); assert.ok(!('note' in results[0]));
   await store.update('rank-alice', 'pop-4', inputFor('venue-2', 'Another', null));
-  assert.equal((await searchLocal('', 0, connect as unknown as typeof sql)).restaurants[0].id, 'osm:luxury-karavalli');
+  assert.equal((await searchLocal('', "bengaluru", 0, connect as unknown as typeof sql)).restaurants[0].id, 'osm:luxury-karavalli');
   await store.remove('rank-bob', 'pop-3');
-  results = (await searchLocal('', 0, connect as unknown as typeof sql)).restaurants;
+  results = (await searchLocal('', "bengaluru", 0, connect as unknown as typeof sql)).restaurants;
   assert.equal(results.find((r) => r.id === 'osm:venue-2')!.ratingCount, 1);
   assert.equal(results[0].id, 'osm:luxury-karavalli');
+});
+
+test("city filter keeps Patiala and Bengaluru catalogs strictly separate", async () => {
+  const { coverage } = await import("../src/restaurants");
+  await pg.exec(`INSERT INTO venues (id, osm_id, name, area, city, lat, lng, source, created_at, updated_at) VALUES
+    ('patiala-mojave', 'node/pat-1', 'Mojave - Artisanal Kitchen & Bar', 'Bhupindra Road', 'Patiala', 30.3436, 76.3790, 'osm', 1, 1),
+    ('patiala-jaggi', 'node/pat-2', 'Jaggi''s Restaurant', 'Adalat Bazaar', 'Patiala', 30.3250, 76.3950, 'osm', 1, 1),
+    ('misfiled', 'node/pat-3', 'Wrongly Filed Cafe', 'Patiala', 'Patiala', 12.97, 77.59, 'osm', 1, 1)`);
+  const patiala = await searchLocal('', "patiala", 0, connect as unknown as typeof sql);
+  assert.deepEqual(new Set(patiala.restaurants.map((r) => r.id)), new Set(['osm:patiala-mojave', 'osm:patiala-jaggi']), "only in-region Patiala venues");
+  assert.ok(patiala.restaurants.every((r) => r.city === 'Patiala'));
+  const bengaluru = await searchLocal('', "bengaluru", 0, connect as unknown as typeof sql);
+  assert.ok(!bengaluru.restaurants.some((r) => r.city === 'Patiala'), "Bengaluru search must never include Patiala venues");
+  assert.ok(!bengaluru.restaurants.some((r) => r.id === 'osm:misfiled'), "a Patiala-labelled row with Bengaluru coordinates belongs to neither catalog view");
+  const named = await searchLocal('Mojave', "bengaluru", 0, connect as unknown as typeof sql);
+  assert.equal(named.restaurants.length, 0, "a Patiala name must not surface in a Bengaluru search");
+  const direct = await getRestaurant('osm:patiala-mojave', connect as unknown as typeof sql);
+  assert.equal(direct?.city, 'Patiala', "direct restaurant links work for both cities");
+  const covPat = await coverage("patiala", connect as unknown as typeof sql);
+  assert.equal(covPat.city, 'Patiala'); assert.equal(covPat.catalogCount, 2, "misfiled coordinates are excluded from the city count");
+  const covBlr = await coverage("bengaluru", connect as unknown as typeof sql);
+  assert.equal(covBlr.city, 'Bengaluru');
+  assert.ok(covBlr.catalogCount > covPat.catalogCount);
+  assert.deepEqual(covPat.cities.map((c) => c.key), ['bengaluru', 'patiala']);
 });
