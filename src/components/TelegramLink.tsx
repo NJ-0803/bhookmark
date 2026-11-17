@@ -72,6 +72,8 @@ export default function TelegramLink({ request = api }: { request?: Request }) {
       <button disabled={busy || code.trim().length !== 48} onClick={() => confirm(state.sender)} className="primary-button w-full mt-4">{busy ? "Confirming…" : "Confirm and link"}</button></>}
     {state.kind === "linked" && <>
       <p className="text-muted text-sm leading-relaxed mb-4">Linked to Telegram account <strong className="text-ink">{tgId(state.sender)}</strong>. Messages from it can read and change your saved food. Send STOP to the bot or unlink here.</p>
+      <a href={`https://t.me/${bot}`} target="_blank" rel="noopener noreferrer" className="primary-button w-full block text-center mb-3">Return to Telegram</a>
+      <p className="text-muted text-[13px] mb-4">Then send any message to the bot to see your menu.</p>
       <button disabled={busy} onClick={unlink} className="secondary-button w-full">{busy ? "Unlinking…" : "Unlink Telegram"}</button></>}
     {error && <p role="alert" className="text-bad text-sm mt-4">{error}</p>}
   </section>;
