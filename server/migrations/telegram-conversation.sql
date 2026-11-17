@@ -1,13 +1,21 @@
--- Telegram beta safety migration. NOT applied automatically. Review and apply to an isolated
--- staging database first; the live database is a separate, explicit decision.
--- Idempotent: safe to run twice.
+-- Telegram beta safety migration. NOT applied automatically. Review it, then apply to an isolated
+-- staging database first; applying it to the live database is a separate, explicit decision.
+-- Idempotent: safe to run twice. Nothing here is required while the new Telegram flags are off.
 
--- 1. whatsapp-review.sql capped reserved at 900, which is below the Telegram default monthly cap
---    (TELEGRAM_MONTHLY_REPLY_CAP, 20000). Without this, the 901st reply in a month fails the CHECK
---    and every message after it errors instead of being refused cleanly.
-ALTER TABLE whatsapp_review_quota DROP CONSTRAINT IF EXISTS whatsapp_review_quota_reserved_check;
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'whatsapp_review_quota_reserved_nonneg') THEN
+-- 1. whatsapp-review.sql defines CHECK (reserved BETWEEN 0 AND 900) on whatsapp_review_quota.
+--    The Telegram monthly cap defaults to 20000 (TELEGRAM_MONTHLY_REPLY_CAP, code maximum 100000), so a
+--    database created from that file would reject the 901st reservation in a month. Replace that
+--    check with a non-negative check. Constraints are found by definition, not by generated name.
+DO $$
+DECLARE c record;
+BEGIN
+  FOR c IN SELECT conname FROM pg_constraint
+    WHERE conrelid = 'whatsapp_review_quota'::regclass AND contype = 'c'
+      AND pg_get_constraintdef(oid) ~ 'reserved' AND pg_get_constraintdef(oid) ~ '900'
+  LOOP
+    EXECUTE format('ALTER TABLE whatsapp_review_quota DROP CONSTRAINT %I', c.conname);
+  END LOOP;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'whatsapp_review_quota'::regclass AND conname = 'whatsapp_review_quota_reserved_nonneg') THEN
     ALTER TABLE whatsapp_review_quota ADD CONSTRAINT whatsapp_review_quota_reserved_nonneg CHECK (reserved >= 0);
   END IF;
 END $$;
@@ -31,3 +39,6 @@ CREATE TABLE IF NOT EXISTS whatsapp_sender_window (
   count integer NOT NULL DEFAULT 0,
   PRIMARY KEY (phone_id, sender, bucket)
 );
+
+-- 4. A redelivered Telegram update must get the same buttons back, not just the text.
+ALTER TABLE whatsapp_execution_events ADD COLUMN IF NOT EXISTS buttons jsonb;
