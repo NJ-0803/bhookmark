@@ -1,8 +1,24 @@
 {
   "rewrites": [
-    { "source": "/auth/:path*", "destination": "/api" },
-    { "source": "/bookmarks/:path*", "destination": "/api" },
-    { "source": "/restaurants/:path*", "destination": "/api" },
-    { "source": "/health", "destination": "/api" }
+    {
+      "source": "/auth/:path*",
+      "destination": "/api"
+    },
+    {
+      "source": "/bookmarks/:path*",
+      "destination": "/api"
+    },
+    {
+      "source": "/restaurants/:path*",
+      "destination": "/api"
+    },
+    {
+      "source": "/telegram/:path*",
+      "destination": "/api"
+    },
+    {
+      "source": "/health",
+      "destination": "/api"
+    }
   ]
 }
