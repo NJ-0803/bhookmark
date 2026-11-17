@@ -13,6 +13,7 @@ dom.window.HTMLDialogElement.prototype.close = function () { this.removeAttribut
 const { render, screen, fireEvent, waitFor, cleanup } = await import('@testing-library/react');
 const { default: BookmarkForm } = await import('../src/components/BookmarkForm.tsx');
 const { default: Saved } = await import('../src/screens/Saved.tsx');
+const { default: TelegramLink } = await import('../src/components/TelegramLink.tsx');
 const { default: RestaurantPhoto } = await import('../src/components/RestaurantPhoto.tsx');
 afterEach(cleanup);
 const restaurant = { id: 'osm:branch-a', name: 'Restaurant', address: 'Indiranagar, Bengaluru', source: 'osm' as const, photos: [], mapsUrl: '' };
@@ -70,4 +71,12 @@ test('Commons photos show their actual provider, author, date and license', () =
   assert.ok(screen.getByRole('link', { name: 'Wikimedia Commons · 2021' }));
   assert.ok(screen.getByRole('link', { name: 'CC BY-SA 4.0' }));
   assert.equal(screen.queryByRole('link', { name: /Google Maps/ }), null);
+});
+
+test('linked Telegram account offers a Return to Telegram button to the bot, and the account tab opens from the bot link', async () => {
+  const request = async (path: string) => new Response(JSON.stringify(path.endsWith('config') ? { ok: true, botUsername: 'Bhook_mark_it_bot' } : { pendingSender: null, linkedSender: 'tg:555' }), { status: 200 });
+  render(React.createElement(TelegramLink, { request }));
+  const back = await screen.findByRole('link', { name: 'Return to Telegram' });
+  assert.equal(back.getAttribute('href'), 'https://t.me/Bhook_mark_it_bot');
+  assert.ok(screen.getByRole('button', { name: 'Unlink Telegram' }));
 });
