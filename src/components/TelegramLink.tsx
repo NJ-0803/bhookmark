@@ -23,7 +23,9 @@ export default function TelegramLink({ request = api }: { request?: Request }) {
     const status = await request("/telegram/link/status");
     if (!status.ok) return setState({ kind: "hidden" });
     const s = await status.json() as { pendingSender: string | null; linkedSender: string | null };
-    setState(s.linkedSender ? { kind: "linked", sender: s.linkedSender } : s.pendingSender ? { kind: "pending", sender: s.pendingSender } : { kind: "idle" });
+    setState((prev) => s.linkedSender ? { kind: "linked", sender: s.linkedSender } : s.pendingSender ? { kind: "pending", sender: s.pendingSender }
+      // An open link stays open until the person presses Start or it expires; polling must not reset it.
+      : prev.kind === "started" && prev.expiresAt > Date.now() ? prev : { kind: "idle" });
   }, [request]);
   useEffect(() => { void refresh().catch(() => setState({ kind: "hidden" })); }, [refresh]);
   // While a link is open, check whether the person has pressed Start in Telegram.
@@ -55,7 +57,7 @@ export default function TelegramLink({ request = api }: { request?: Request }) {
   });
 
   if (state.kind === "loading" || state.kind === "hidden") return null;
-  return <section aria-labelledby="telegram-link-title" className="mt-8 p-5 bg-surface border border-line rounded-3xl">
+  return <section aria-labelledby="telegram-link-title" className="mt-8 mb-4 p-5 bg-surface border border-line rounded-3xl">
     <h2 id="telegram-link-title" className="font-display text-[20px] mb-2">Save by Telegram</h2>
     {state.kind === "idle" && <>
       <p className="text-muted text-sm leading-relaxed mb-4">Message the Bhookmark bot to save and rate dishes, like "Had butter chicken at Toit Indiranagar, 9/10". Link your account first.</p>
