@@ -53,8 +53,8 @@ test("link expiry, conflicts, unlink and unknown sender fail closed without acco
   assert.match((await f.engine.process(f.message(expired.command))).reply!, /expired/);
   await f.link();
   const other = await f.engine.beginLink("bob"), p = await f.engine.process(f.message(other.command));
-  const c = p.reply!.match(/code ([a-f0-9]{48})/)![1];
-  assert.equal(await f.engine.confirmLink("bob", "15555550101", c), false);
+  assert.match(p.reply!, /already linked.*Nothing was changed/);
+  assert.equal(await f.engine.confirmLink("bob", "15555550101", "0".repeat(48)), false);
   assert.match((await f.engine.process(f.message("STOP"))).reply!, /link removed/);
   await f.engine.unlink("alice");
   assert.match((await f.engine.process(f.message("Had pizza at Toit Indiranagar, 8/10"))).reply!, /No food has been read/);
