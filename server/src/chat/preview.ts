@@ -14,7 +14,7 @@ export interface PreviewDependencies {
 const HELP = 'Try "Save pizza at Toit Indiranagar", "Had pizza at Toit Indiranagar, 8.5/10", or "Show my saves". This preview never changes your saved food.';
 export const normalized = (s: string) => s.trim().replace(/\s+/g, " ").toLocaleLowerCase("en-IN");
 const plain = (s: string) => normalized(s).replace(/[^\p{L}\p{N} ]/gu, "").replace(/\s+/g, " ").trim();
-const sameRestaurant = (query: string, r: ChatRestaurant) => {
+export const sameRestaurant = (query: string, r: ChatRestaurant) => {
   const q = plain(query), name = plain(r.name), address = plain(r.address);
   return q === name || q === plain(`${r.name} ${r.address}`)
     || (q.startsWith(`${name} `) && address.includes(q.slice(name.length + 1)));
@@ -64,4 +64,18 @@ export async function previewMessage(userId: string, message: string, deps: Prev
   });
   if (!input.success) return { kind: "clarify", reply: "Those dish details couldn't be validated. Nothing has been saved." };
   return { kind: "proposal", reply: `Preview only: ${old ? "update" : "save"} ${input.data.name} at ${restaurant.name}${input.data.rating !== null ? `, ${input.data.rating}/10` : ""}. Nothing has been saved.`, operation: old ? "update" : "save", ...(old ? { bookmarkId: old.id } : {}), input: input.data };
+}
+
+/** Same narrow grammar as previewMessage, split out so the Telegram conversation can
+ * reuse it without guessing. Returns null when the text is not a one-line save/ate message. */
+export function parseDishLine(message: string): { dish: string; query: string; ate: boolean; rating: number | null; badRating: boolean } | null {
+  const text = message.trim();
+  const rated = /^(?:had|ate|rate|i had|i ate) (.+?) at (.+?),\s*([+-]?\d+(?:\.\d+)?)\s*\/\s*10[.!]?$/i.exec(text);
+  const save = /^save (.+?) at (.+?)[.!]?$/i.exec(text);
+  const eaten = /^(?:had|ate|i had|i ate) (.+?) at (.+?)[.!]?$/i.exec(text);
+  const m = rated ?? save ?? eaten;
+  if (!m) return null;
+  const rating = rated ? Number(rated[3]) : null;
+  const badRating = rated !== null && (!Number.isFinite(rating) || rating! < 0 || rating! > 10 || !Number.isInteger(rating! * 2));
+  return { dish: m[1].trim(), query: m[2].trim(), ate: Boolean(rated || eaten), rating: badRating ? null : rating, badRating };
 }
