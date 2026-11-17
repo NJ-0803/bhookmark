@@ -17,7 +17,7 @@ export default function App() { return <CardStageProvider><WishlistApp /></CardS
 
 function WishlistApp() {
   const [authed, setAuthed] = useState(() => Boolean(getSession()));
-  const [tab, setTab] = useState<Tab>("explore");
+  const [tab, setTab] = useState<Tab>(() => typeof location !== "undefined" && location.hash === "#account" ? "account" : "explore"); // the Telegram bot's Link account button opens /#account
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
