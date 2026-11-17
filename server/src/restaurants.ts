@@ -91,6 +91,8 @@ export async function searchLocal(q: string, cityKey: string = DEFAULT_CITY, off
   const city = cityByKey(cityKey);
   const db = connect();
   const pattern = `%${q.replace(/[\\%_]/g, "\\$&")}%`;
+  // Also match when every typed word appears somewhere in name + area, so "paris panini indiranagar" finds "Paris Panini".
+  const tokens = q.trim().split(/\s+/).filter(Boolean).map((t) => `%${t.replace(/[\\%_]/g, "\\$&")}%`);
   const featured = Object.entries(restaurantDirectory).filter(([, v]) => v.featuredRank !== undefined).sort((a, b) => a[1].featuredRank! - b[1].featuredRank!).map(([id]) => id);
   const aliases = Object.entries(restaurantDirectory).filter(([, v]) => `${v.name} ${v.address} ${v.aliases}`.toLowerCase().includes(q.toLowerCase())).map(([id]) => id);
   // One person counts once per branch, regardless of how many dishes they rate.
@@ -104,7 +106,7 @@ export async function searchLocal(q: string, cityKey: string = DEFAULT_CITY, off
     FROM venues v LEFT JOIN ratings r ON r.restaurant_id = 'osm:' || v.id
     WHERE status = 'active' AND city = ${city.label}
       AND lat BETWEEN ${city.low.latitude} AND ${city.high.latitude} AND lng BETWEEN ${city.low.longitude} AND ${city.high.longitude}
-      AND (name ILIKE ${pattern} OR area ILIKE ${pattern} OR osm_id = ANY(${aliases}::text[]))
+      AND (name ILIKE ${pattern} OR area ILIKE ${pattern} OR (name || ' ' || area) ILIKE ALL(${tokens}::text[]) OR osm_id = ANY(${aliases}::text[]))
     ORDER BY CASE WHEN COALESCE(r.rating_count, 0) >= 3 THEN 0 ELSE 1 END,
       CASE WHEN COALESCE(r.rating_count, 0) >= 3 THEN r.rating_count ELSE 0 END DESC,
       COALESCE(array_position(${featured}::text[], osm_id), 1000), COALESCE(r.rating_count, 0) DESC,
