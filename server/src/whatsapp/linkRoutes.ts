@@ -5,11 +5,11 @@ import { requireAuth, requireRecentAuth } from "../middleware";
 import { senderPattern, type createWhatsAppExecution } from "./execution";
 
 /** Explicit injection only. Not mounted in the normal/production app. */
-export function createWhatsAppLinkRouter(engine: ReturnType<typeof createWhatsAppExecution>, enabled = false) {
+export function createWhatsAppLinkRouter(engine: ReturnType<typeof createWhatsAppExecution>, enabled = false, allowProduction = false) {
   const router = Router();
   router.use((_req, res, next) => {
     res.set("Cache-Control", "private, no-store");
-    if (!enabled || process.env.NODE_ENV === "production") return res.sendStatus(404);
+    if (!enabled || (process.env.NODE_ENV === "production" && !allowProduction)) return res.sendStatus(404);
     next();
   });
   router.use(express.json({ limit: "4kb" }), requireAuth, requireRecentAuth(300));
