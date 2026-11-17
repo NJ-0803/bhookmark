@@ -6,6 +6,8 @@ import { sql } from "../bookmarks";
 /** Review adapter only: no Graph API client, access token or outbound network. */
 export interface IncomingText {
   id: string; sender: string; phoneId: string; timestamp: number; text: string;
+  /** Telegram inline-button press. `text` is a placeholder; only the engine reads `data`. */
+  callback?: { data: string; queryId: string };
 }
 export interface ReviewReply {
   phoneId: string; month: string; messageId: string; recipient: string;
