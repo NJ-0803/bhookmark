@@ -9,9 +9,9 @@ import { normalized, parseDishLine, sameRestaurant, type ChatRestaurant } from "
  * dish, restaurant or rating, and it never writes: it only returns a `save` request after an
  * explicit Confirm, which the execution engine applies under its own locks.
  */
-export type Step = "kind" | "dish" | "split" | "restaurant" | "pick" | "rating" | "review" | "reviewtext" | "target" | "confirm" | "edit";
+export type Step = "kind" | "dish" | "split" | "city" | "restaurant" | "pick" | "rating" | "review" | "reviewtext" | "target" | "confirm" | "edit";
 export interface Draft {
-  ate?: boolean; dish?: string; query?: string; restaurant?: ChatRestaurant;
+  ate?: boolean; dish?: string; query?: string; city?: "patiala" | "bengaluru"; restaurant?: ChatRestaurant;
   choices?: ChatRestaurant[]; parts?: string[]; rating?: number | null; ratingAsked?: boolean;
   /** Optional private review, stored in the dish note. "keep" leaves any existing note untouched. */
   note?: string; noteMode?: "keep" | "set" | "clear"; reviewAsked?: boolean;
@@ -26,7 +26,7 @@ export interface ConvResult {
   command?: "list";
 }
 export type ConvInput = { text: string } | { data: string };
-export interface ConvDeps { existing: Bookmark[]; search: (query: string) => Promise<ChatRestaurant[]>; now: number }
+export interface ConvDeps { existing: Bookmark[]; search: (query: string, city?: string) => Promise<ChatRestaurant[]>; now: number }
 export const CONVERSATION_TTL_MS = 10 * 60_000;
 export const MAX_DISHES = 500;
 export const BAD_RATING = "Choose a rating from 1 to 10 in half-point steps, such as 8 or 8.5. I won't round it for you.";
@@ -52,7 +52,7 @@ const navRow = (s: ConvState): Button[] => row(s, [...(s.history.length ? [["Bac
 function nextStep(d: Draft): Step {
   if (d.ate === undefined) return "kind";
   if (!d.dish) return "dish";
-  if (!d.restaurant) return "restaurant";
+  if (!d.restaurant) return d.city ? "restaurant" : "city";
   if (d.ate && !d.ratingAsked) return "rating";
   if (d.ate && !d.reviewAsked) return "review";
   return "confirm";
@@ -79,6 +79,7 @@ export function render(step: Step, draft: Draft, now: number, history: Step[], d
     case "dish": return { state: s, reply: `${L}What's the dish? Type its name (up to 120 characters).`, buttons: [navRow(s)] };
     case "split": return { state: s, reply: `${L}That looks like more than one dish. I save one at a time. Which first?${draft.parts!.map((p, i) => `\n${i + 1}. ${p}`).join("")}`,
       buttons: [...draft.parts!.map((p, i) => row(s, [[short(p), `sp${i}`]])), row(s, [["Keep it as one dish name", "spa"]]), navRow(s)] };
+    case "city": return { state: s, reply: `${L}Which city is the restaurant in?`, buttons: [row(s, [["Patiala", "cp"], ["Bengaluru", "cb"]]), navRow(s)] };
     case "restaurant": return { state: s, reply: `${L}Which restaurant? Send its name and branch or area.`, buttons: [navRow(s)] };
     case "pick": return { state: s, reply: `${L}Which one do you mean?${draft.choices!.map((c, i) => `\n${i + 1}. ${c.name} - ${c.address}`).join("")}`,
       buttons: [...draft.choices!.map((c, i) => row(s, [[short(`${c.name} - ${c.address}`), `p${i}`]])), row(s, [["None of these", "pn"]]), navRow(s)] };
@@ -97,10 +98,10 @@ export function render(step: Step, draft: Draft, now: number, history: Step[], d
   }
 }
 
-async function candidates(query: string, deps: ConvDeps): Promise<ChatRestaurant[]> {
+async function candidates(query: string, city: string | undefined, deps: ConvDeps): Promise<ChatRestaurant[]> {
   const known = deps.existing.filter(b => sameRestaurant(query, { id: b.restaurantId, name: b.restaurantName, address: b.address }))
     .map(b => ({ id: b.restaurantId, name: b.restaurantName, address: b.address }));
-  const unique = Array.from(new Map([...known, ...await deps.search(query)].map(r => [r.id, r])).values());
+  const unique = Array.from(new Map([...known, ...await deps.search(query, city)].map(r => [r.id, r])).values());
   const exact = unique.filter(r => sameRestaurant(query, r));
   return (exact.length ? exact : unique).slice(0, 5);
 }
@@ -108,7 +109,8 @@ async function candidates(query: string, deps: ConvDeps): Promise<ChatRestaurant
 /** Applies a restaurant query to the draft: one match moves on, several become choices, none re-asks. */
 async function resolve(draft: Draft, query: string, deps: ConvDeps, history: Step[], from: Step, lead = ""): Promise<ConvResult> {
   if (query.length > 120) return render("restaurant", draft, deps.now, history, deps, "Please use a shorter restaurant name (120 characters at most).");
-  const found = await candidates(query, deps);
+  if (!draft.city) return render("city", { ...draft, query }, deps.now, [...history, from], deps, lead);
+  const found = await candidates(query, draft.city, deps);
   if (!found.length) return render("restaurant", { ...draft, query }, deps.now, history, deps, "I couldn't find that restaurant. Include its name and branch or area. Nothing has been saved.");
   const h = [...history, from];
   if (found.length > 1) return render("pick", { ...draft, query, choices: found }, deps.now, h, deps, lead);
@@ -207,6 +209,11 @@ async function handleCode(st: ConvState, code: string, deps: ConvDeps): Promise<
       const note = d.parts.length > 1 ? `Saving "${dish}" first. Send the others one at a time afterwards.` : "";
       return afterDish({ ...d, dish, parts: undefined }, note);
     }
+    case "city": {
+      if (code !== "cp" && code !== "cb") return bad();
+      const nd: Draft = { ...d, city: code === "cp" ? "patiala" : "bengaluru" };
+      return nd.query ? resolve(nd, nd.query, deps, h, "city") : go(nd);
+    }
     case "pick": {
       if (code === "pn") return render("restaurant", { ...d, choices: undefined }, deps.now, [...h, "pick"], deps, "Okay. Send the restaurant name with its branch or area.");
       const i = /^p(\d)$/.exec(code), pick = i && d.choices?.[Number(i[1])]; if (!pick) return bad();
@@ -263,6 +270,12 @@ async function handleText(st: ConvState, text: string, deps: ConvDeps): Promise<
       return go({ ...d, dish: text });
     }
     case "split": return reprompt("Please tap one of the choices.");
+    case "city": {
+      const c = /^(patiala)$/i.test(text) ? "patiala" : /^(bengaluru|bangalore|banglore|blr)$/i.test(text) ? "bengaluru" : null;
+      if (!c) return reprompt("Please tap Patiala or Bengaluru.");
+      const nd: Draft = { ...d, city: c };
+      return nd.query ? resolve(nd, nd.query, deps, h, "city") : go(nd);
+    }
     case "restaurant": return resolve(d, text, deps, h, "restaurant");
     case "pick": {
       const choices = d.choices ?? [];

@@ -230,3 +230,15 @@ test("city filter keeps Patiala and Bengaluru catalogs strictly separate", async
   assert.ok(covBlr.catalogCount > covPat.catalogCount);
   assert.deepEqual(covPat.cities.map((c) => c.key), ['bengaluru', 'patiala']);
 });
+
+test("search matches every typed word across name and area, without cross-city leaks", async () => {
+  await pg.exec(`INSERT INTO venues (id, osm_id, name, area, lat, lng, source, created_at, updated_at) VALUES
+    ('tok-paris', 'node/tok-paris', 'Paris Panini', 'Indiranagar area, Bengaluru', 12.97, 77.64, 'osm', 1, 1)`);
+  const db = connect as unknown as typeof sql;
+  for (const q of ['paris panini indiranagar', 'Panini Paris', 'paris panini']) {
+    assert.ok((await searchLocal(q, "bengaluru", 0, db)).restaurants.some((r) => r.id === 'osm:tok-paris'), q);
+  }
+  assert.ok(!(await searchLocal('paris panini koramangala', "bengaluru", 0, db)).restaurants.some((r) => r.id === 'osm:tok-paris'));
+  assert.ok(!(await searchLocal('paris panini', "patiala", 0, db)).restaurants.some((r) => r.id === 'osm:tok-paris'));
+  assert.equal((await searchLocal('%', "bengaluru", 0, db)).restaurants.length, 0);
+});

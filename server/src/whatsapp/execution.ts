@@ -47,7 +47,7 @@ const keyedLock = (c: QueryClient, key: string) => c.query("SELECT pg_advisory_x
  * No environment/database discovery, network send or production mounting.
  * The caller owns authenticated user identity and signed webhook verification.
  */
-export function createWhatsAppExecution(db: TransactionDatabase, search: (q: string) => Promise<ChatRestaurant[]>, now = Date.now, quotaCap = 900, opts: EngineOptions = {}) {
+export function createWhatsAppExecution(db: TransactionDatabase, search: (q: string, city?: string) => Promise<ChatRestaurant[]>, now = Date.now, quotaCap = 900, opts: EngineOptions = {}) {
   if (!Number.isInteger(quotaCap) || quotaCap < 1 || quotaCap > 100000) throw new Error("Invalid quota cap");
   const fine = opts.locking === "fine", limits = opts.senderLimits ?? null;
   const locked = <T>(run: (c: QueryClient) => Promise<T>) => db.transaction(async c => {

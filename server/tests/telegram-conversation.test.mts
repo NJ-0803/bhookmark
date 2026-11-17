@@ -22,7 +22,13 @@ const mk = (over: Partial<Bookmark> = {}): Bookmark => ({ id: "b1", restaurantId
 
 // ---------- conversation unit tests (pure, no database) ----------
 let t = NOW;
-const step = (s: ConvState | null, input: { text: string } | { data: string }, existing: Bookmark[] = []) => advance(s, input, { existing, search, now: t });
+const rawStep = (s: ConvState | null, input: { text: string } | { data: string }, existing: Bookmark[] = []) => advance(s, input, { existing, search, now: t });
+// Most flows below are about the later steps, so they answer the city question (Bengaluru) automatically.
+// The city step itself is tested explicitly with rawStep.
+const step = async (s: ConvState | null, input: { text: string } | { data: string }, existing: Bookmark[] = []) => {
+  const r = await rawStep(s, input, existing);
+  return r.state?.step === "city" ? rawStep(r.state, { data: `v1:${r.state.nonce}:cb` }, existing) : r;
+};
 const tap = (r: ConvResult, code: string, existing: Bookmark[] = []) => step(r.state, { data: `v1:${r.state!.nonce}:${code}` }, existing);
 const say = (r: ConvResult, text: string, existing: Bookmark[] = []) => step(r.state, { text }, existing);
 const skipReview = (r: ConvResult, existing: Bookmark[] = []) => { assert.equal(r.state!.step, "review"); return tap(r, "rk", existing); };
@@ -95,7 +101,9 @@ test("several dishes in one message: choose one, or keep the name as written", a
   assert.equal(splitDishes("Butter Chicken"), null);
   let r = await step(null, { text: "Save pizza and pasta at Toit Indiranagar" });
   assert.equal(r.state!.step, "split"); assert.match(r.reply, /one at a time/);
-  const first = await tap(r, "sp1"); assert.match(first.reply, /Saving "pasta" first/); assert.match(first.reply, /Save pasta at Toit/);
+  const asked = await rawStep(r.state, { data: `v1:${r.state!.nonce}:sp1` }); // city is asked before the lookup, and the note survives that prompt
+  assert.equal(asked.state!.step, "city"); assert.match(asked.reply, /Saving "pasta" first/);
+  const first = await tap(r, "sp1"); assert.match(first.reply, /Save pasta at Toit/);
   const keep = await tap(r, "spa"); assert.match(keep.reply, /Save pizza and pasta at Toit/);
   r = await tap(await step(null, { text: "x" }), "kl"); r = await say(r, "mac & cheese");
   assert.equal(r.state!.step, "split");
@@ -181,10 +189,17 @@ async function fixture(run: (f: any) => Promise<void>, opts: EngineOptions = { c
   for (const file of ["../schema.sql", "../migrations/whatsapp-review.sql", "../migrations/whatsapp-linking.sql", "../migrations/telegram-conversation.sql"]) await pg.exec(readFileSync(new URL(file, import.meta.url), "utf8"));
   await pg.exec("INSERT INTO users(id,created_at) VALUES('alice',1),('bob',1)");
   let time = NOW, seq = 0; const locks: string[][] = [];
-  const engine = createWhatsAppExecution({ transaction: r => pg.transaction(tx => { const log: string[] = []; locks.push(log); return r({ query: async (q: string, p?: any[]) => {
+  const rawEngine = createWhatsAppExecution({ transaction: r => pg.transaction(tx => { const log: string[] = []; locks.push(log); return r({ query: async (q: string, p?: any[]) => {
     if (q.includes("pg_advisory_xact_lock")) { log.push(p?.[0] ?? "global"); return { rows: [] }; }
     return tx.query(q, p);
   } } as QueryClient); }) }, search, () => time, cap, opts);
+  // Same convention as the unit helpers: answer the city question with Bengaluru unless a test uses rawEngine.
+  const engine: any = new Proxy(rawEngine, { get: (target: any, k: string) => k !== "process" ? target[k] : async (m: any) => {
+    const r = await target.process(m);
+    if (!/Which city is the restaurant in/.test(r.reply ?? "")) return r;
+    const from = Number(String(m.sender).replace("tg:", ""));
+    return target.process(press(`v1:${await nonceOf(from)}:cb`, from));
+  } });
   const upd = (from: number, over: any) => ({ update_id: ++seq, ...over(from) });
   const text = (s: string, from = 555111222, id?: number) => parseTelegramText({ update_id: id ?? ++seq, message: { message_id: 1, date: Math.floor(time / 1000), chat: { id: from, type: "private" }, from: { id: from }, text: s } }, "999")!;
   const press = (data: string, from = 555111222, id?: number) => ({ ...parseTelegramText({ update_id: id ?? ++seq, callback_query: { id: "cbq" + seq, from: { id: from }, data, message: { message_id: 5, chat: { id: from, type: "private" } } } }, "999")!, timestamp: time }); // production stamps receipt time
@@ -195,7 +210,7 @@ async function fixture(run: (f: any) => Promise<void>, opts: EngineOptions = { c
   };
   const dishes = async (u = "alice") => (await pg.query<any>("SELECT name,rating,tried FROM food_bookmarks WHERE user_id=$1 ORDER BY name", [u])).rows;
   const nonceOf = async (from = 555111222) => (await pg.query<any>("SELECT state FROM tg_conversations WHERE sender=$1", [`tg:${from}`])).rows[0]?.state.nonce as string | undefined;
-  try { await run({ pg, engine, text, press, link, dishes, nonceOf, locks, advance: (ms: number) => { time += ms; }, upd }); } finally { await pg.close(); }
+  try { await run({ pg, engine, rawEngine, text, press, link, dishes, nonceOf, locks, advance: (ms: number) => { time += ms; }, upd }); } finally { await pg.close(); }
 }
 const data = (n: string, code: string) => `v1:${n}:${code}`;
 
@@ -256,18 +271,18 @@ test("engine: WhatsApp and conversation-off behaviour is unchanged (one-line sav
 }, {}));
 
 test("engine: monthly cap refuses cleanly, rolls back the whole turn, and exceeds the old 900 CHECK", async () => fixture(async f => {
-  await f.link(); // uses 1 reply of 3
-  await f.engine.process(f.text("Save pizza at Toit Indiranagar")); // 2
-  const r = await f.engine.process(f.text("yes")); // 3
+  await f.link(); // uses 1 reply of 4
+  await f.engine.process(f.text("Save pizza at Toit Indiranagar")); // 2 and 3 (city question, then the Bengaluru tap)
+  const r = await f.engine.process(f.text("yes")); // 4
   assert.match(r.reply, /Saved/);
   const before = (await f.dishes()).length;
   const over = await f.engine.process(f.text("Save dosa at Toit Indiranagar")); // cap reached
   assert.equal(over.reply, null);
-  assert.equal((await f.pg.query<any>("SELECT reserved FROM whatsapp_review_quota")).rows[0].reserved, 3);
+  assert.equal((await f.pg.query<any>("SELECT reserved FROM whatsapp_review_quota")).rows[0].reserved, 4);
   assert.equal((await f.pg.query<any>("SELECT count(*)::int n FROM tg_conversations")).rows[0].n, 0); // no draft created by a refused turn
   assert.equal((await f.dishes()).length, before);
   await f.pg.exec("UPDATE whatsapp_review_quota SET reserved=900"); // old schema would reject 901
-}, { conversation: true }, 3));
+}, { conversation: true }, 4));
 
 test("engine: the 900 limit from whatsapp-review.sql is gone after the migration", async () => fixture(async f => {
   await f.pg.exec("INSERT INTO whatsapp_review_quota(phone_id,month,reserved) VALUES('x','2026-11',20000)");
@@ -480,6 +495,8 @@ test("engine: no success receipt when the write fails; the draft stays so the us
   } } as QueryClient)) }, search, () => NOW, 900, { conversation: true });
   const text = (s: string, id = ++seq) => parseTelegramText({ update_id: id, message: { message_id: 1, date: NOW / 1000, chat: { id: 111, type: "private" }, from: { id: 111 }, text: s } }, "999")!;
   await engine.process(text("Save pizza at Toit Indiranagar"));
+  const cityNonce = (await pg.query<any>("SELECT state FROM tg_conversations")).rows[0].state.nonce;
+  await engine.process({ ...parseTelegramText({ update_id: 40, callback_query: { id: "cbq40", from: { id: 111 }, data: `v1:${cityNonce}:cb`, message: { message_id: 5, chat: { id: 111, type: "private" } } } }, "999")!, timestamp: NOW });
   fail = true; await assert.rejects(engine.process(text("yes", 50)), /injected/);
   assert.equal((await pg.query<any>("SELECT count(*)::int n FROM food_bookmarks")).rows[0].n, 0);
   assert.equal((await pg.query<any>("SELECT count(*)::int n FROM tg_conversations")).rows[0].n, 1); // still confirmable
@@ -495,3 +512,24 @@ test("engine: a redelivered update gets its buttons back, so the flow is never s
   assert.ok(again.buttons.flat().length >= 3);
   const typed = await f.engine.process(f.text("menu")); assert.ok(typed.buttons); // MENU always recovers
 }));
+
+// ---------- city choice ----------
+test("city is asked (Patiala or Bengaluru) before any restaurant lookup, and the lookup is scoped to it", async () => {
+  const calls: [string, string | undefined][] = [];
+  const spy = async (q: string, city?: string) => { calls.push([q, city]); return city === "patiala" ? [{ id: "osm:pat1", name: "Kaim's Kitchen", address: "Leela Bhawan, Patiala" }] : []; };
+  const go = (s: ConvState | null, input: { text: string } | { data: string }) => advance(s, input, { existing: [], search: spy, now: t });
+  let r = await go(null, { text: "Save butter chicken at Kaim's Kitchen" });
+  assert.equal(r.state!.step, "city"); assert.deepEqual(labels(r).slice(0, 2), ["Patiala", "Bengaluru"]);
+  assert.deepEqual(calls, []); // nothing searched before the city is known
+  assert.equal((await go(r.state, { text: "Mumbai" })).state!.step, "city"); // never guesses
+  r = await go(r.state, { data: `v1:${r.state!.nonce}:cp` });
+  assert.deepEqual(calls, [["Kaim's Kitchen", "patiala"]]);
+  assert.match(r.reply, /Kaim's Kitchen/);
+  // Step-by-step flow: city comes after the dish and before the restaurant; typed answers and spellings work.
+  let s = await go(null, { text: "menu" }); s = await go(s.state, { data: `v1:${s.state!.nonce}:kl` });
+  s = await go(s.state, { text: "Pizza" }); assert.equal(s.state!.step, "city"); assert.match(s.reply, /Which city/);
+  s = await go(s.state, { text: "Banglore" }); assert.equal(s.state!.step, "restaurant"); assert.equal(s.state!.draft.city, "bengaluru");
+  const back = await go(s.state, { data: `v1:${s.state!.nonce}:bk` }); assert.equal(back.state!.step, "city");
+  calls.length = 0; s = await go(s.state, { text: "Toit" });
+  assert.deepEqual(calls, [["Toit", "bengaluru"]]);
+});

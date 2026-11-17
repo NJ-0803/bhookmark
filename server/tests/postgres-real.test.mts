@@ -49,7 +49,7 @@ test('2 redelivery of the same update id from many connections writes once; 3 pa
   const nonce = async () => (await f.pool.query("SELECT state FROM tg_conversations WHERE sender='tg:111'")).rows[0]?.state.nonce as string;
   await f.engine.process(f.text("hi", 111));
   await f.engine.process(f.press(`v1:${await nonce()}:ka`, 111));
-  await f.engine.process(f.text("Pizza", 111)); await f.engine.process(f.text("Toit Indiranagar", 111));
+  await f.engine.process(f.text("Pizza", 111)); await f.engine.process(f.press(`v1:${await nonce()}:cb`, 111)); await f.engine.process(f.text("Toit Indiranagar", 111));
   await f.engine.process(f.press(`v1:${await nonce()}:r8`, 111)); await f.engine.process(f.press(`v1:${await nonce()}:rk`, 111));
   const nn = await nonce();
   const outs = await Promise.all(Array.from({ length: 8 }, () => f.engine.process(f.press(`v1:${nn}:ok`, 111, 900))));
@@ -74,5 +74,27 @@ test('4 unlink racing messages: no deadlock, no lock timeout', { skip }, async (
 test('5 quota CHECK: constraint now allows the 20000 default cap', { skip }, async () => {
   const f = await fresh("chk", 20000);
   await f.pool.query("INSERT INTO whatsapp_review_quota(phone_id,month,reserved) VALUES($1,$2,20000)",["p","2026-11"]);
+  await f.pool.end();
+});
+test('6 UNDO: parallel UNDO of one save reverses once; another user cannot use the token; reuse is refused', { skip }, async () => {
+  const f = await fresh("undo", 900);
+  for (const [u, s] of [["alice", 111], ["bob", 222]] as const) { await f.pool.query("INSERT INTO users(id,created_at) VALUES($1,1)", [u]); await f.link(u, s); }
+  const nonce = async () => (await f.pool.query("SELECT state FROM tg_conversations WHERE sender='tg:111'")).rows[0]?.state.nonce as string;
+  await f.engine.process(f.text("hi", 111));
+  await f.engine.process(f.press(`v1:${await nonce()}:ka`, 111));
+  await f.engine.process(f.text("Pizza", 111)); await f.engine.process(f.press(`v1:${await nonce()}:cb`, 111)); await f.engine.process(f.text("Toit Indiranagar", 111));
+  await f.engine.process(f.press(`v1:${await nonce()}:r8`, 111)); await f.engine.process(f.press(`v1:${await nonce()}:rk`, 111));
+  const saved: any = await f.engine.process(f.press(`v1:${await nonce()}:ok`, 111));
+  assert.equal((await f.pool.query("SELECT count(*)::int c FROM food_bookmarks")).rows[0].c, 1);
+  const tok = /UNDO ([a-f0-9]{48})/.exec(String(saved.reply))?.[1];
+  assert.ok(tok, "receipt carries an UNDO token");
+  const other: any = await f.engine.process(f.text(`UNDO ${tok}`, 222));
+  assert.match(String(other.reply), /Cannot undo/);
+  assert.equal((await f.pool.query("SELECT count(*)::int c FROM food_bookmarks")).rows[0].c, 1);
+  const outs: any[] = await Promise.all(Array.from({ length: 6 }, () => f.engine.process(f.text(`UNDO ${tok}`, 111))));
+  assert.equal((await f.pool.query("SELECT count(*)::int c FROM food_bookmarks")).rows[0].c, 0);
+  assert.equal(outs.filter(o => !/Cannot undo/.test(String(o.reply))).length, 1);
+  const again: any = await f.engine.process(f.text(`UNDO ${tok}`, 111));
+  assert.match(String(again.reply), /Cannot undo/);
   await f.pool.end();
 });
