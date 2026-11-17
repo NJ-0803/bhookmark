@@ -11,7 +11,10 @@ export interface TransactionDatabase {
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 const freshToken = () => randomBytes(24).toString("hex");
 const commandToken = /^[a-f0-9]{48}$/;
-const senderPattern = /^\d{7,15}$/;
+/** WhatsApp numbers are bare digits. Telegram user ids are namespaced "tg:<id>" so the
+ * two channels can never collide in the shared link, event, quota or undo tables. */
+export const senderPattern = /^(?:\d{7,15}|tg:[1-9]\d{0,15})$/;
+const channelOf = (sender: string) => sender.startsWith("tg:") ? { name: "Telegram", what: "Telegram account id" } : { name: "WhatsApp", what: "full WhatsApp number" };
 const sameFood = (a: Bookmark, b: Bookmark) => a.restaurantId === b.restaurantId && normalized(a.name) === normalized(b.name)
   && a.note === b.note && a.referenceUrl === b.referenceUrl && a.tried === b.tried && a.rating === b.rating;
 
@@ -19,7 +22,8 @@ const sameFood = (a: Bookmark, b: Bookmark) => a.restaurantId === b.restaurantId
  * No environment/database discovery, network send or production mounting.
  * The caller owns authenticated user identity and signed webhook verification.
  */
-export function createWhatsAppExecution(db: TransactionDatabase, search: (q: string) => Promise<ChatRestaurant[]>, now = Date.now) {
+export function createWhatsAppExecution(db: TransactionDatabase, search: (q: string) => Promise<ChatRestaurant[]>, now = Date.now, quotaCap = 900) {
+  if (!Number.isInteger(quotaCap) || quotaCap < 1 || quotaCap > 100000) throw new Error("Invalid quota cap");
   const locked = <T>(run: (c: QueryClient) => Promise<T>) => db.transaction(async c => {
     // Serializes linking/WhatsApp messages across workers; user/food row locks
     // additionally coordinate with existing web bookmark writes.
@@ -81,7 +85,7 @@ export function createWhatsAppExecution(db: TransactionDatabase, search: (q: str
         if (message.timestamp > time + 60_000 || message.timestamp < time - 23 * 3600_000) return { reply: null, duplicate: false };
         const month = new Date(time).toISOString().slice(0, 7); // Isolated harness uses UTC only.
         await c.query("INSERT INTO whatsapp_review_quota(phone_id,month,reserved) VALUES($1,$2,0) ON CONFLICT DO NOTHING", [message.phoneId, month]);
-        const quota = (await c.query("UPDATE whatsapp_review_quota SET reserved=reserved+1 WHERE phone_id=$1 AND month=$2 AND reserved<900 RETURNING reserved", [message.phoneId, month])).rows[0];
+        const quota = (await c.query("UPDATE whatsapp_review_quota SET reserved=reserved+1 WHERE phone_id=$1 AND month=$2 AND reserved<$3 RETURNING reserved", [message.phoneId, month, quotaCap])).rows[0];
         if (!quota) {
           await c.query("INSERT INTO whatsapp_execution_events(phone_id,message_id,reply) VALUES($1,$2,$3)", [message.phoneId, message.id, "Review cap reached. No food changed. Use the website."]);
           return { reply: null, duplicate: false };
@@ -91,10 +95,13 @@ export function createWhatsAppExecution(db: TransactionDatabase, search: (q: str
         if (linkCommand) {
           const intent = (await c.query("SELECT * FROM whatsapp_link_intents WHERE token_hash=$1 AND expires_at>$2 AND NOT confirmed FOR UPDATE", [hash(linkCommand[1]), time])).rows[0];
           if (!intent || intent.sender) reply = "That link code is invalid, used or expired. Start again while signed into Bhookmark.";
-          else {
+          else if ((await c.query("SELECT 1 FROM whatsapp_links WHERE user_id=$1 OR sender=$2", [intent.user_id, message.sender])).rows.length) {
+            // One link per account and per sender, across channels. Never displace an existing link.
+            reply = "This Bhookmark account or this chat is already linked. Nothing was changed. Unlink the existing one from Bhookmark first, then try again.";
+          } else {
             const confirmation = freshToken();
             await c.query("UPDATE whatsapp_link_intents SET sender=$2,confirmation_hash=$3 WHERE user_id=$1", [intent.user_id, message.sender, hash(confirmation)]);
-            reply = `Return to the signed-in Bhookmark account and confirm your full WhatsApp number with code ${confirmation}. No food is accessible until you confirm.`;
+            reply = `Return to the signed-in Bhookmark account and confirm your ${channelOf(message.sender).what} with code ${confirmation}. No food is accessible until you confirm.`;
           }
         } else {
           const link = (await c.query("SELECT user_id FROM whatsapp_links WHERE sender=$1", [message.sender])).rows[0];
@@ -104,7 +111,7 @@ export function createWhatsAppExecution(db: TransactionDatabase, search: (q: str
             await c.query("DELETE FROM whatsapp_links WHERE user_id=$1", [userId]);
             await c.query("DELETE FROM whatsapp_link_intents WHERE user_id=$1", [userId]);
             await c.query("UPDATE whatsapp_undo SET consumed=true WHERE user_id=$1", [userId]);
-            reply = "WhatsApp account link removed. No more food can be read or changed from this number unless you link again.";
+            reply = `${channelOf(message.sender).name} account link removed. No more food can be read or changed from this ${channelOf(message.sender).name} account unless you link again.`;
           } else {
             await c.query("SELECT id FROM users WHERE id=$1 FOR UPDATE", [userId]);
             const rows = (await c.query("SELECT * FROM food_bookmarks WHERE user_id=$1 ORDER BY created_at DESC FOR UPDATE", [userId])).rows;
