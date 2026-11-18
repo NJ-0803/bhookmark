@@ -11,15 +11,23 @@ export function formatTelegramHtml(text: string): string {
   return text.split(/(\b[0-9a-f]{32,}\b)/).map((part, i) => (i % 2 ? `<code>${part}</code>` : esc(part))).join("");
 }
 
+/** The first long hex code in a message (link confirmation or UNDO), if any. Used for a one-tap Copy button. */
+export function copyableCode(text: string): string | undefined {
+  return text.match(/\b[0-9a-f]{32,256}\b/)?.[0];
+}
+
 /** Bot API sender. Only built when sends are explicitly enabled. */
 export function createTelegramSender(token: string, fetchImpl: typeof fetch = fetch) {
   if (!/^\d{3,20}:[A-Za-z0-9_-]{30,}$/.test(token)) throw new Error("Invalid bot token format");
   return async (chatId: string, text: string, buttons?: { text: string; data?: string; url?: string }[][]) => {
     if (!/^[1-9]\d{0,15}$/.test(chatId)) throw new Error("Invalid chat id");
+    const code = copyableCode(text);
+    const rows: Record<string, unknown>[][] = (buttons ?? []).map(r => r.map(b => (b.url ? { text: b.text, url: b.url } : { text: b.text, callback_data: b.data })));
+    if (code) rows.push([{ text: "Copy code", copy_text: { text: code }, style: "primary" }]);
     const res = await fetchImpl(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ chat_id: Number(chatId), text: formatTelegramHtml(text.slice(0, 3500)), parse_mode: "HTML", disable_web_page_preview: true,
-        ...(buttons?.length ? { reply_markup: { inline_keyboard: buttons.map(r => r.map(b => (b.url ? { text: b.text, url: b.url } : { text: b.text, callback_data: b.data }))) } } : {}) }),
+        ...(rows.length ? { reply_markup: { inline_keyboard: rows } } : {}) }),
       signal: AbortSignal.timeout(8000),
     });
     // never log token or body. `status` lets the webhook decide whether a retry can help.
