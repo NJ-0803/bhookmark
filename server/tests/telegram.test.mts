@@ -149,6 +149,17 @@ test("long hex codes are wrapped as tap-to-copy code and other text is escaped",
   assert.equal(formatTelegramHtml("UNDO " + code), `UNDO <code>${code}</code>`);
   assert.equal(formatTelegramHtml("Saved 4.5/10 <b>x</b>"), "Saved 4.5/10 &lt;b&gt;x&lt;/b&gt;");
 });
+test("a message with a long code gets a blue native Copy code button after the existing buttons", async () => {
+  const token = "123456789:" + "A".repeat(35); const code = "cd34".repeat(12);
+  const calls: any[] = [];
+  const send = createTelegramSender(token, (async (_u: string, init: any) => { calls.push(JSON.parse(init.body)); return { ok: true, status: 200 }; }) as any);
+  await send("555111222", `Confirm with code ${code}. Done.`);
+  assert.deepEqual(calls[0].reply_markup.inline_keyboard, [[{ text: "Copy code", copy_text: { text: code }, style: "primary" }]]);
+  await send("555111222", `UNDO ${code}`, [[{ text: "Menu", data: "m" }]]);
+  assert.deepEqual(calls[1].reply_markup.inline_keyboard, [[{ text: "Menu", callback_data: "m" }], [{ text: "Copy code", copy_text: { text: code }, style: "primary" }]]);
+  await send("555111222", "no code here");
+  assert.equal(calls[2].reply_markup, undefined);
+});
 test("env wiring is a 404 unless explicitly enabled", async () => {
   const app = express(); app.use("/telegram", createTelegramRouterFromEnv({ DATABASE_URL: "postgres://x" } as any));
   const server = app.listen(0, "127.0.0.1"); await new Promise<void>(r => server.once("listening", r));
