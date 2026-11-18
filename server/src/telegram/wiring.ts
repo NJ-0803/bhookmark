@@ -5,6 +5,12 @@ import { searchLocal } from "../restaurants";
 import { createWhatsAppExecution, type QueryClient, type TransactionDatabase } from "../whatsapp/execution";
 import { createTelegramRouter } from "./adapter";
 
+/** HTML-escape the message and wrap each long hex token (link confirmation, UNDO) in <code> so one tap copies only the token. */
+export function formatTelegramHtml(text: string): string {
+  const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return text.split(/(\b[0-9a-f]{32,}\b)/).map((part, i) => (i % 2 ? `<code>${part}</code>` : esc(part))).join("");
+}
+
 /** Bot API sender. Only built when sends are explicitly enabled. */
 export function createTelegramSender(token: string, fetchImpl: typeof fetch = fetch) {
   if (!/^\d{3,20}:[A-Za-z0-9_-]{30,}$/.test(token)) throw new Error("Invalid bot token format");
@@ -12,7 +18,7 @@ export function createTelegramSender(token: string, fetchImpl: typeof fetch = fe
     if (!/^[1-9]\d{0,15}$/.test(chatId)) throw new Error("Invalid chat id");
     const res = await fetchImpl(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ chat_id: Number(chatId), text: text.slice(0, 4000), disable_web_page_preview: true,
+      body: JSON.stringify({ chat_id: Number(chatId), text: formatTelegramHtml(text.slice(0, 3500)), parse_mode: "HTML", disable_web_page_preview: true,
         ...(buttons?.length ? { reply_markup: { inline_keyboard: buttons.map(r => r.map(b => (b.url ? { text: b.text, url: b.url } : { text: b.text, callback_data: b.data }))) } } : {}) }),
       signal: AbortSignal.timeout(8000),
     });
