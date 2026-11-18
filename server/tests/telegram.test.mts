@@ -137,10 +137,17 @@ test("sender validates token/chat id, posts once, and never leaks the token in e
   const calls: any[] = [];
   const send = createTelegramSender(token, (async (url: string, init: any) => { calls.push([url, JSON.parse(init.body)]); return { ok: true, status: 200 }; }) as any);
   await send("555111222", "hi");
-  assert.deepEqual(calls[0][1], { chat_id: 555111222, text: "hi", disable_web_page_preview: true });
+  assert.deepEqual(calls[0][1], { chat_id: 555111222, text: "hi", parse_mode: "HTML", disable_web_page_preview: true });
   await assert.rejects(() => send("abc", "x"));
   const failing = createTelegramSender(token, (async () => ({ ok: false, status: 500 })) as any);
   await assert.rejects(() => failing("5", "x"), (e: Error) => !e.message.includes(token));
+});
+test("long hex codes are wrapped as tap-to-copy code and other text is escaped", async () => {
+  const { formatTelegramHtml } = await import("../src/telegram/wiring");
+  const code = "ab12".repeat(12);
+  assert.equal(formatTelegramHtml(`confirm with code ${code}. a<b & c`), `confirm with code <code>${code}</code>. a&lt;b &amp; c`);
+  assert.equal(formatTelegramHtml("UNDO " + code), `UNDO <code>${code}</code>`);
+  assert.equal(formatTelegramHtml("Saved 4.5/10 <b>x</b>"), "Saved 4.5/10 &lt;b&gt;x&lt;/b&gt;");
 });
 test("env wiring is a 404 unless explicitly enabled", async () => {
   const app = express(); app.use("/telegram", createTelegramRouterFromEnv({ DATABASE_URL: "postgres://x" } as any));
